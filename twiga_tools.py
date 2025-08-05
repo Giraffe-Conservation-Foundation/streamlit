@@ -12,7 +12,7 @@ sys.path.append(str(current_dir / "shared"))
 
 st.set_page_config(
     page_title="Twiga Tools - GCF Conservation Platform",
-   # page_icon="",
+    page_icon="🦒",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -55,7 +55,7 @@ tool_choice = st.sidebar.selectbox(
     "🛠️ Select a Tool:",
     [
         "🏠 Home",
-        "🆔 Create an ID book", 
+        "📖 Create an ID book", 
         "📊 NANW Event Dashboard",
         "📸 Image Management System",
         "🌍 EarthRanger Integration"
@@ -64,7 +64,7 @@ tool_choice = st.sidebar.selectbox(
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📋 Tool Status")
-st.sidebar.markdown("✅ **Wildbook ID Generator** - Active")
+st.sidebar.markdown("✅ **Create an ID book** - Active")
 st.sidebar.markdown("✅ **NANW Dashboard** - Active") 
 st.sidebar.markdown("✅ **Image Management** - Active")
 st.sidebar.markdown("🚧 **EarthRanger** - In Development")
@@ -96,7 +96,7 @@ if tool_choice == "🏠 Home":
         with st.container():
             st.markdown("""
             <div class="tool-card">
-                <h3>🆔 Wildbook ID Generator</h3>
+                <h3>📖 Create an ID book</h3>
                 <p><strong>Status:</strong> ✅ Production Ready</p>
                 <p>Generate unique identifiers for individual giraffes in the Wildbook database. Features include ID validation, batch processing, and export capabilities for research teams.</p>
                 <ul>
@@ -214,8 +214,8 @@ if tool_choice == "🏠 Home":
         - Keep your access tokens secure
         """)
 
-elif tool_choice == "🆔 Wildbook ID Generator":
-    st.title("🆔 Wildbook ID Generator")
+elif tool_choice == "📖 Create an ID book":
+    st.title("📖 Create an ID book")
     st.markdown("*Individual Giraffe Identification System*")
     
     try:
@@ -261,10 +261,10 @@ elif tool_choice == "🆔 Wildbook ID Generator":
                 # Always restore original directory
                 os.chdir(original_dir)
         else:
-            st.error("❌ Wildbook ID Generator not found!")
+            st.error("❌ Create an ID book not found!")
             st.info("Please ensure the wildbook_id_generator/app.py file exists.")
     except Exception as e:
-        st.error(f"❌ Error loading Wildbook ID Generator: {e}")
+        st.error(f"❌ Error loading Create an ID book: {e}")
         st.info("Please check that all required dependencies are installed.")
 
 elif tool_choice == "📊 NANW Event Dashboard":
