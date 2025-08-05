@@ -47,9 +47,9 @@ st.markdown("""
 
 # Sidebar for tool selection
 st.sidebar.image(str(current_dir / "shared" / "logo.png") if (current_dir / "shared" / "logo.png").exists() else None, width=200)
-st.sidebar.markdown("# Twiga Tools")
-st.sidebar.markdown("*Conservation Technology Platform*")
-st.sidebar.markdown("---")
+# st.sidebar.markdown("# Twiga Tools")
+# st.sidebar.markdown("*Conservation Technology Platform*")
+# st.sidebar.markdown("---")
 
 tool_choice = st.sidebar.selectbox(
     "🛠️ Select a Tool:",
@@ -57,7 +57,8 @@ tool_choice = st.sidebar.selectbox(
         "🏠 Home",
         "📖 Create an ID book", 
         "📊 NANW Event Dashboard",
-        "📸 Upload camera trap images to cloud",
+        "� Upload camera trap images",
+        "🔍 Upload survey images",
         "🌍 EarthRanger Integration"
     ]
 )
@@ -67,7 +68,8 @@ st.sidebar.markdown("### 📋 Tool Status")
 st.sidebar.markdown("✅ **Create an ID book** - active")
 st.sidebar.markdown("✅ **NANW Dashboard** - active") 
 st.sidebar.markdown("✅ **Upload camera trap images** - active")
-st.sidebar.markdown("🚧 **Giraffe life history** - in development")
+st.sidebar.markdown("✅ **Upload survey images** - active")
+st.sidebar.markdown("🚧 **EarthRanger** - in development")
 
 # Main content area
 if tool_choice == "🏠 Home":
@@ -110,14 +112,14 @@ if tool_choice == "🏠 Home":
         with st.container():
             st.markdown("""
             <div class="tool-card">
-                <h3>📸 Upload camera trap images to cloud</h3>
+                <h3>� Upload camera trap images</h3>
                 <p><strong>Status:</strong> ✅ Production Ready</p>
-                <p>Complete workflow for managing giraffe conservation images with Google Cloud Storage integration, automated processing, and standardized naming.</p>
+                <p>Upload camera trap images with automated naming and organization. Images are renamed as country_site_station_camera_yyyymmdd_originalname and organized by camera type and date.</p>
                 <ul>
-                    <li>Google Cloud Storage integration</li>
-                    <li>Automated image processing</li>
-                    <li>Standardized naming conventions</li>
-                    <li>Batch upload capabilities</li>
+                    <li>Camera trap specific naming</li>
+                    <li>Station and camera metadata</li>
+                    <li>Fence/grid organization</li>
+                    <li>Date-based folder structure</li>
                 </ul>
             </div>
             """, unsafe_allow_html=True)
@@ -134,6 +136,21 @@ if tool_choice == "🏠 Home":
                     <li>Subject history visualization</li>
                     <li>Interactive dashboards</li>
                     <li>Data export tools</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with st.container():
+            st.markdown("""
+            <div class="tool-card">
+                <h3>🔍 Upload survey images</h3>
+                <p><strong>Status:</strong> ✅ Production Ready</p>
+                <p>Upload survey images with standardized naming and organization. Images are renamed as country_site_initials_yyyymmdd_original and organized by survey date.</p>
+                <ul>
+                    <li>Survey specific naming</li>
+                    <li>Researcher initial tracking</li>
+                    <li>Monthly organization</li>
+                    <li>Cloud storage integration</li>
                 </ul>
             </div>
             """, unsafe_allow_html=True)
@@ -161,7 +178,7 @@ if tool_choice == "🏠 Home":
     
     with col1:
         st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-        st.metric("Active Tools", "3", "All operational")
+        st.metric("Active Tools", "4", "All operational")
         st.markdown('</div>', unsafe_allow_html=True)
     
     with col2:
@@ -321,9 +338,11 @@ elif tool_choice == "📊 NANW Event Dashboard":
         else:
             st.info("Please check that all required dependencies are installed and EarthRanger credentials are configured.")
 
-elif tool_choice == "📸 Upload camera trap images to cloud":
-    st.title("📸 Upload camera trap images to cloud")
-    st.markdown("*Giraffe Conservation Image Processing & Cloud Storage*")
+elif tool_choice == "� Upload camera trap images":
+    st.title("� Upload camera trap images")
+    st.markdown("*Camera Trap Image Processing & Cloud Storage*")
+    st.markdown("**Naming Format:** `country_site_station_camera_yyyymmdd_originalname`")
+    st.markdown("**Storage Path:** `site_country/camera_trap/camera_fence` OR `camera_grid/yyyymm/`")
     
     try:
         # Import the image management system
@@ -361,17 +380,81 @@ elif tool_choice == "📸 Upload camera trap images to cloud":
                         app_code,
                         flags=re.MULTILINE | re.DOTALL
                     )
-                    exec(cleaned_code)
+                    
+                    # Add camera trap mode flag to the app
+                    camera_mode_code = "CAMERA_TRAP_MODE = True\n" + cleaned_code
+                    exec(camera_mode_code)
                 else:
-                    st.error("❌ Image Management app.py not found!")
+                    st.error("❌ Upload camera trap images app.py not found!")
             finally:
                 # Always restore original directory
                 os.chdir(original_dir)
         else:
-            st.error("❌ Upload camera trap images to cloud not found!")
+            st.error("❌ Upload camera trap images tool not found!")
             st.info("Please ensure the image_management/app.py file exists.")
     except Exception as e:
-        st.error(f"❌ Error loading Upload camera trap images to cloud: {e}")
+        st.error(f"❌ Error loading Upload camera trap images: {e}")
+        if "dotenv" in str(e):
+            st.info("💡 **Solution**: Install python-dotenv with: `pip install python-dotenv`")
+        else:
+            st.info("Please check that Google Cloud credentials are properly configured.")
+
+elif tool_choice == "🔍 Upload survey images":
+    st.title("🔍 Upload survey images")
+    st.markdown("*Survey Image Processing & Cloud Storage*")
+    st.markdown("**Naming Format:** `country_site_initials_yyyymmdd_original`")
+    st.markdown("**Storage Path:** `country_site/survey/survey_yyyymm/`")
+    
+    try:
+        # Import the image management system (same backend, different UI)
+        image_path = current_dir / "image_management"
+        if image_path.exists():
+            # Store original working directory
+            original_dir = os.getcwd()
+            
+            try:
+                sys.path.insert(0, str(image_path))
+                
+                # Load environment variables if available
+                try:
+                    from dotenv import load_dotenv
+                    load_dotenv()
+                except ImportError:
+                    st.warning("⚠️ python-dotenv not installed. Environment variables from .env file won't be loaded.")
+                    st.info("Install with: `pip install python-dotenv`")
+                
+                # Change to the app directory
+                os.chdir(image_path)
+                
+                # Execute the image management app with proper encoding
+                app_file = image_path / "app.py"
+                if app_file.exists():
+                    with open("app.py", "r", encoding="utf-8") as f:
+                        app_code = f.read()
+                        
+                    # Remove any set_page_config calls
+                    import re
+                    # Use regex to remove set_page_config blocks more reliably
+                    cleaned_code = re.sub(
+                        r'st\.set_page_config\s*\([^)]*\)',
+                        '',
+                        app_code,
+                        flags=re.MULTILINE | re.DOTALL
+                    )
+                    
+                    # Add survey mode flag to the app
+                    survey_mode_code = "SURVEY_MODE = True\n" + cleaned_code
+                    exec(survey_mode_code)
+                else:
+                    st.error("❌ Upload survey images app.py not found!")
+            finally:
+                # Always restore original directory
+                os.chdir(original_dir)
+        else:
+            st.error("❌ Upload survey images tool not found!")
+            st.info("Please ensure the image_management/app.py file exists.")
+    except Exception as e:
+        st.error(f"❌ Error loading Upload survey images: {e}")
         if "dotenv" in str(e):
             st.info("💡 **Solution**: Install python-dotenv with: `pip install python-dotenv`")
         else:
