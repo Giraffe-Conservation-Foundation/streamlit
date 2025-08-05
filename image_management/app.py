@@ -50,13 +50,9 @@ st.markdown("""
 # Constants
 BUCKET_NAME = "giraffe-conservation-images"  # Replace with your actual bucket name
 
-# Country and site options - will be populated from available buckets
-COUNTRIES_SITES = {}
-
 def extract_countries_sites_from_buckets(bucket_names):
     """Extract country and site combinations from bucket names following gcf_country_site pattern"""
-    global COUNTRIES_SITES
-    COUNTRIES_SITES = {}
+    countries_sites = {}
     
     for bucket_name in bucket_names:
         # Check if bucket follows the gcf_country_site pattern
@@ -68,12 +64,12 @@ def extract_countries_sites_from_buckets(bucket_names):
                 country = parts[1].upper()  # Convert to uppercase for consistency
                 site = parts[2].upper()     # Convert to uppercase for consistency
                 
-                # Add to COUNTRIES_SITES dictionary
-                if country not in COUNTRIES_SITES:
-                    COUNTRIES_SITES[country] = []
+                # Add to countries_sites dictionary
+                if country not in countries_sites:
+                    countries_sites[country] = []
                 
-                if site not in COUNTRIES_SITES[country]:
-                    COUNTRIES_SITES[country].append(site)
+                if site not in countries_sites[country]:
+                    countries_sites[country].append(site)
             
             # Also handle patterns with dashes (gcf-country-site)
             elif '-' in bucket_name:
@@ -82,17 +78,20 @@ def extract_countries_sites_from_buckets(bucket_names):
                     country = parts[1].upper()
                     site = parts[2].upper()
                     
-                    if country not in COUNTRIES_SITES:
-                        COUNTRIES_SITES[country] = []
+                    if country not in countries_sites:
+                        countries_sites[country] = []
                     
-                    if site not in COUNTRIES_SITES[country]:
-                        COUNTRIES_SITES[country].append(site)
+                    if site not in countries_sites[country]:
+                        countries_sites[country].append(site)
     
     # Sort countries and sites for consistent display
-    for country in COUNTRIES_SITES:
-        COUNTRIES_SITES[country].sort()
+    for country in countries_sites:
+        countries_sites[country].sort()
     
-    return COUNTRIES_SITES
+    # Store in session state for persistence
+    st.session_state.countries_sites = countries_sites
+    
+    return countries_sites
 
 def init_session_state():
     """Initialize session state variables"""
@@ -114,25 +113,27 @@ def init_session_state():
         st.session_state.available_buckets = []
     if 'folder_name' not in st.session_state:
         st.session_state.folder_name = None
+    if 'countries_sites' not in st.session_state:
+        st.session_state.countries_sites = {}
     
     # Reset incompatible country/site combinations
     validate_country_site_compatibility()
 
 def validate_country_site_compatibility():
     """Ensure selected country and site are compatible with current structure"""
-    global COUNTRIES_SITES
+    countries_sites = st.session_state.get('countries_sites', {})
     current_country = st.session_state.get('selected_country')
     current_site = st.session_state.get('selected_site')
     
     # Check if current country is valid
-    if current_country and current_country not in COUNTRIES_SITES:
+    if current_country and current_country not in countries_sites:
         st.session_state.selected_country = None
         st.session_state.selected_site = None
         st.session_state.site_selection_complete = False
     
     # Check if current site is valid for the current country
     elif current_country and current_site:
-        available_sites = COUNTRIES_SITES.get(current_country, [])
+        available_sites = countries_sites.get(current_country, [])
         if current_site not in available_sites:
             st.session_state.selected_site = None
             st.session_state.site_selection_complete = False
@@ -249,9 +250,19 @@ def site_selection():
     """Handle site selection interface"""
     st.header("📍 Site Selection")
     
+    # Get countries/sites from session state instead of global variable
+    countries_sites = st.session_state.get('countries_sites', {})
+    
+    # Debug information
+    with st.expander("🔧 Debug Information", expanded=False):
+        st.write("**Session State Keys:**", list(st.session_state.keys()))
+        st.write("**Countries/Sites in Session:**", countries_sites)
+        st.write("**Available Buckets:**", st.session_state.get('available_buckets', []))
+        if st.session_state.get('available_buckets'):
+            st.write("**GCF Pattern Buckets:**", [b for b in st.session_state.available_buckets if b.lower().startswith('gcf')])
+    
     # Check if we have any countries/sites extracted from buckets
-    global COUNTRIES_SITES
-    if not COUNTRIES_SITES:
+    if not countries_sites:
         st.error("❌ **No countries/sites available**")
         st.info("""
         **Possible causes:**
@@ -262,13 +273,26 @@ def site_selection():
         **Expected bucket naming:** `gcf_ago_llnp`, `gcf_nam_ehgr`, etc.
         """)
         
+        # Try to re-extract from available buckets if they exist
+        if st.session_state.get('available_buckets'):
+            st.info("🔄 **Attempting to re-extract countries/sites from available buckets...**")
+            available_buckets = st.session_state.get('available_buckets', [])
+            countries_sites = extract_countries_sites_from_buckets(available_buckets)
+            
+            if countries_sites:
+                st.success(f"✅ **Re-extracted:** {len(countries_sites)} countries found!")
+                st.rerun()  # Refresh to use the newly extracted data
+            else:
+                st.warning("⚠️ **Re-extraction failed:** No GCF pattern buckets found")
+        
         if st.button("🔄 Refresh Authentication", type="secondary"):
             st.session_state.authenticated = False
+            st.session_state.countries_sites = {}
             st.rerun()
         return False
     
     # Country selection dropdown with proper error handling
-    available_countries = list(COUNTRIES_SITES.keys())
+    available_countries = list(countries_sites.keys())
     
     if not available_countries:
         st.error("❌ No countries available from your bucket access")
@@ -288,7 +312,7 @@ def site_selection():
         st.session_state.selected_country = available_countries[0]
     
     # Display available locations info
-    total_locations = sum(len(sites) for sites in COUNTRIES_SITES.values())
+    total_locations = sum(len(sites) for sites in countries_sites.values())
     st.success(f"🌍 **{len(available_countries)} countries, {total_locations} locations available** (from your bucket access)")
     
     selected_country = st.selectbox(
@@ -302,7 +326,7 @@ def site_selection():
     st.session_state.selected_country = selected_country
     
     # Site selection dropdown based on selected country with proper error handling
-    available_sites = COUNTRIES_SITES[selected_country]
+    available_sites = countries_sites[selected_country]
     
     # Get the current site from session state, with fallback
     current_site = st.session_state.get('selected_site')
