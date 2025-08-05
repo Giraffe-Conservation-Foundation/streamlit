@@ -13,6 +13,8 @@ try:
     load_dotenv()
 except ImportError:
     st.sidebar.warning("⚠️ python-dotenv not installed. Using default settings.")
+    
+# Force deployment update - timestamp: Aug 5, 2025
 
 # Configuration - can be overridden by environment variables
 EARTHRANGER_SERVER = os.getenv('EARTHRANGER_SERVER', 'https://twiga.pamdas.org')
