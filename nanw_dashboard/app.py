@@ -6,10 +6,13 @@ from ecoscope.io.earthranger import EarthRangerIO
 from pandas import json_normalize, to_datetime
 import requests
 import os
-from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Try to load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    st.sidebar.warning("⚠️ python-dotenv not installed. Using default settings.")
 
 # Configuration - can be overridden by environment variables
 EARTHRANGER_SERVER = os.getenv('EARTHRANGER_SERVER', 'https://twiga.pamdas.org')

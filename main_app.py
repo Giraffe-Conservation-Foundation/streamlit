@@ -71,6 +71,7 @@ st.sidebar.markdown("🚧 **EarthRanger** - In Development")
 
 # Main content area
 if tool_choice == "🏠 Dashboard Home":
+if tool_choice == "🏠 Dashboard Home":
     # Header with logo and title
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -215,6 +216,7 @@ if tool_choice == "🏠 Dashboard Home":
         """)
 
 elif tool_choice == "🆔 Wildbook ID Generator":
+elif tool_choice == "🆔 Wildbook ID Generator":
     st.title("🆔 Wildbook ID Generator")
     st.markdown("*Individual Giraffe Identification System*")
     
@@ -231,14 +233,9 @@ elif tool_choice == "🆔 Wildbook ID Generator":
             except ImportError:
                 pass  # dotenv not required for this tool
             
-            # Execute the wildbook app with proper encoding
-            app_file = wildbook_path / "app.py"
-            if app_file.exists():
-                os.chdir(wildbook_path)
-                with open("app.py", "r", encoding="utf-8") as f:
-                    exec(f.read())
-            else:
-                st.error("❌ Wildbook app.py not found!")
+            # Execute the wildbook app
+            os.chdir(wildbook_path)
+            exec(open("app.py").read())
         else:
             st.error("❌ Wildbook ID Generator not found!")
             st.info("Please ensure the wildbook_id_generator/app.py file exists.")
@@ -256,31 +253,19 @@ elif tool_choice == "📊 NANW Event Dashboard":
         if nanw_path.exists():
             sys.path.insert(0, str(nanw_path))
             
-            # Load environment variables if available
-            try:
-                from dotenv import load_dotenv
-                load_dotenv()
-            except ImportError:
-                st.warning("⚠️ python-dotenv not installed. Environment variables from .env file won't be loaded.")
-                st.info("Install with: `pip install python-dotenv`")
+            # Load environment variables
+            from dotenv import load_dotenv
+            load_dotenv()
             
-            # Execute the NANW dashboard app with proper encoding
-            app_file = nanw_path / "app.py"
-            if app_file.exists():
-                os.chdir(nanw_path)
-                with open("app.py", "r", encoding="utf-8") as f:
-                    exec(f.read())
-            else:
-                st.error("❌ NANW app.py not found!")
+            # Execute the NANW dashboard app
+            os.chdir(nanw_path)
+            exec(open("app.py").read())
         else:
             st.error("❌ NANW Dashboard not found!")
             st.info("Please ensure the nanw_dashboard/app.py file exists.")
     except Exception as e:
         st.error(f"❌ Error loading NANW Dashboard: {e}")
-        if "dotenv" in str(e):
-            st.info("💡 **Solution**: Install python-dotenv with: `pip install python-dotenv`")
-        else:
-            st.info("Please check that all required dependencies are installed and EarthRanger credentials are configured.")
+        st.info("Please check that all required dependencies are installed and EarthRanger credentials are configured.")
 
 elif tool_choice == "📸 Image Management System":
     st.title("📸 Image Management System")
@@ -292,31 +277,19 @@ elif tool_choice == "📸 Image Management System":
         if image_path.exists():
             sys.path.insert(0, str(image_path))
             
-            # Load environment variables if available
-            try:
-                from dotenv import load_dotenv
-                load_dotenv()
-            except ImportError:
-                st.warning("⚠️ python-dotenv not installed. Environment variables from .env file won't be loaded.")
-                st.info("Install with: `pip install python-dotenv`")
+            # Load environment variables
+            from dotenv import load_dotenv
+            load_dotenv()
             
-            # Execute the image management app with proper encoding
-            app_file = image_path / "app.py"
-            if app_file.exists():
-                os.chdir(image_path)
-                with open("app.py", "r", encoding="utf-8") as f:
-                    exec(f.read())
-            else:
-                st.error("❌ Image Management app.py not found!")
+            # Execute the image management app
+            os.chdir(image_path)
+            exec(open("app.py").read())
         else:
             st.error("❌ Image Management System not found!")
             st.info("Please ensure the image_management/app.py file exists.")
     except Exception as e:
         st.error(f"❌ Error loading Image Management System: {e}")
-        if "dotenv" in str(e):
-            st.info("💡 **Solution**: Install python-dotenv with: `pip install python-dotenv`")
-        else:
-            st.info("Please check that Google Cloud credentials are properly configured.")
+        st.info("Please check that Google Cloud credentials are properly configured.")
 
 elif tool_choice == "🌍 EarthRanger Integration":
     st.title("🌍 EarthRanger Integration")
