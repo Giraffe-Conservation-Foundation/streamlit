@@ -1137,8 +1137,28 @@ def upload_to_gcs():
             
             for idx, img in enumerate(st.session_state.processed_images):
                 try:
-                    # Construct blob name
-                    blob_name = folder_path + img['new_filename']
+                    # Get the correct folder path for this image based on its month
+                    img_month = img.get('month_folder', 'unknown')
+                    
+                    # Determine the correct folder path based on mode and image's month
+                    survey_mode = st.session_state.get('survey_mode', False)
+                    survey_type = st.session_state.get('survey_type', 'survey_vehicle')
+                    camera_trap_mode = st.session_state.get('camera_trap_mode', False)
+                    camera_type = st.session_state.get('camera_type', 'camera_fence')
+                    
+                    if survey_mode:
+                        # Survey mode: bucket/survey/survey_[type]/yyyymm/
+                        img_folder_path = f"survey/{survey_type}/{img_month}/"
+                    elif camera_trap_mode:
+                        # Camera trap mode: bucket/camera_trap/camera_[type]/yyyymm/
+                        img_folder_path = f"camera_trap/{camera_type}/{img_month}/"
+                    else:
+                        # Legacy mode: bucket/COUNTRY_SITE_yyyymm/
+                        legacy_folder = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{img_month}"
+                        img_folder_path = f"{legacy_folder}/"
+                    
+                    # Construct blob name using the image-specific folder path
+                    blob_name = img_folder_path + img['new_filename']
                     
                     # Check if file exists (NO OVERWRITE ALLOWED)
                     blob = bucket.blob(blob_name)
@@ -1181,13 +1201,18 @@ def upload_to_gcs():
                         'filename': img['new_filename'],
                         'size_mb': img['size'] / (1024*1024),
                         'blob_path': blob_name,
+                        'folder_path': img_folder_path,
+                        'month_folder': img_month,
                         'upload_time': datetime.now().isoformat()
                     })
                     
                     uploaded_count += 1
                     progress = (uploaded_count + len(skipped_files)) / total_files
                     progress_bar.progress(progress)
-                    status_text.text(f"✅ Uploaded {img['new_filename']} ({uploaded_count}/{total_files})")
+                    year = img_month[:4]
+                    month = img_month[4:6]
+                    month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                    status_text.text(f"✅ Uploaded {img['new_filename']} → {img_month} ({month_name} {year}) ({uploaded_count}/{total_files})")
                     
                 except Exception as e:
                     error_msg = f"{img['new_filename']}: {str(e)}"
@@ -1228,7 +1253,40 @@ def upload_to_gcs():
             
             # Show completion summary
             if uploaded_count == total_files:
-                st.success(f"🎉 Successfully uploaded all {uploaded_count} images to gs://{bucket_name}/{folder_path}")
+                # Group uploads by folder to show accurate summary
+                folder_counts = {}
+                for detail in upload_details:
+                    folder = detail.get('month_folder', 'unknown')
+                    if folder not in folder_counts:
+                        folder_counts[folder] = 0
+                    folder_counts[folder] += 1
+                
+                if len(folder_counts) > 1:
+                    st.success(f"🎉 Successfully uploaded all {uploaded_count} images to {len(folder_counts)} different month folders in gs://{bucket_name}/")
+                    for folder, count in sorted(folder_counts.items()):
+                        year = folder[:4]
+                        month = folder[4:6]
+                        month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                        st.info(f"📁 **{folder}** ({month_name} {year}): {count} images")
+                else:
+                    folder = list(folder_counts.keys())[0]
+                    year = folder[:4]
+                    month = folder[4:6]
+                    month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                    # Determine mode for path display
+                    survey_mode = st.session_state.get('survey_mode', False)
+                    survey_type = st.session_state.get('survey_type', 'survey_vehicle')
+                    camera_trap_mode = st.session_state.get('camera_trap_mode', False)
+                    camera_type = st.session_state.get('camera_type', 'camera_fence')
+                    
+                    if survey_mode:
+                        path_display = f"survey/{survey_type}/{folder}/"
+                    elif camera_trap_mode:
+                        path_display = f"camera_trap/{camera_type}/{folder}/"
+                    else:
+                        path_display = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{folder}/"
+                    
+                    st.success(f"🎉 Successfully uploaded all {uploaded_count} images to gs://{bucket_name}/{path_display}")
             elif uploaded_count > 0:
                 st.warning(f"⚠️ Uploaded {uploaded_count} out of {total_files} images")
                 if skipped_files:
@@ -1251,11 +1309,33 @@ def upload_to_gcs():
                 with col4:
                     st.metric("Failed", len(failed_uploads))
                 
-                # Upload details
+                # Upload details grouped by month
                 if upload_details:
-                    st.write("**✅ Successfully Uploaded Files:**")
-                    details_df = pd.DataFrame(upload_details)
-                    st.dataframe(details_df, use_container_width=True)
+                    # Group uploads by month folder
+                    uploads_by_month = {}
+                    for detail in upload_details:
+                        month = detail.get('month_folder', 'unknown')
+                        if month not in uploads_by_month:
+                            uploads_by_month[month] = []
+                        uploads_by_month[month].append(detail)
+                    
+                    if len(uploads_by_month) > 1:
+                        st.write("**✅ Successfully Uploaded Files (by Month):**")
+                        for month_key in sorted(uploads_by_month.keys()):
+                            month_uploads = uploads_by_month[month_key]
+                            year = month_key[:4]
+                            month = month_key[4:6]
+                            month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                            
+                            with st.expander(f"📁 **{month_key}** ({month_name} {year}) - {len(month_uploads)} files", expanded=False):
+                                month_df = pd.DataFrame(month_uploads)
+                                st.dataframe(month_df, use_container_width=True)
+                                total_mb = sum(detail['size_mb'] for detail in month_uploads)
+                                st.caption(f"Total size: {total_mb:.2f} MB")
+                    else:
+                        st.write("**✅ Successfully Uploaded Files:**")
+                        details_df = pd.DataFrame(upload_details)
+                        st.dataframe(details_df, use_container_width=True)
                 
                 # Skipped files
                 if skipped_files:
@@ -1271,14 +1351,40 @@ def upload_to_gcs():
                 
                 # Final summary
                 st.write("**📊 Upload Summary:**")
+                
+                # Group summary by month
+                uploads_by_month = {}
+                for detail in upload_details:
+                    month = detail.get('month_folder', 'unknown')
+                    if month not in uploads_by_month:
+                        uploads_by_month[month] = []
+                    uploads_by_month[month].append(detail)
+                
                 summary_info = {
                     'Bucket': bucket_name,
-                    'Folder Path': folder_path,
                     'Site': st.session_state.metadata['site'],
-                    'Survey Period': f"{st.session_state.metadata['survey_year']}/{st.session_state.metadata['survey_month']:02d}",
                     'Upload Time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    'Total Data Uploaded': f"{sum(detail['size_mb'] for detail in upload_details):.2f} MB"
+                    'Total Data Uploaded': f"{sum(detail['size_mb'] for detail in upload_details):.2f} MB",
+                    'Folders Created': len(uploads_by_month)
                 }
+                
+                # Show folder details
+                if len(uploads_by_month) > 1:
+                    summary_info['Upload Structure'] = "Multiple month folders"
+                    folder_list = []
+                    for month_key in sorted(uploads_by_month.keys()):
+                        count = len(uploads_by_month[month_key])
+                        year = month_key[:4]
+                        month = month_key[4:6]
+                        month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                        folder_list.append(f"{month_key} ({month_name} {year}): {count} files")
+                    summary_info['Month Distribution'] = " | ".join(folder_list)
+                else:
+                    month_key = list(uploads_by_month.keys())[0]
+                    year = month_key[:4]
+                    month = month_key[4:6]
+                    month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                    summary_info['Upload Structure'] = f"Single folder: {month_key} ({month_name} {year})"
                 
                 for key, value in summary_info.items():
                     st.write(f"**{key}:** {value}")
