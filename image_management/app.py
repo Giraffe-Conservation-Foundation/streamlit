@@ -115,6 +115,10 @@ def init_session_state():
         st.session_state.folder_name = None
     if 'countries_sites' not in st.session_state:
         st.session_state.countries_sites = {}
+    if 'survey_mode' not in st.session_state:
+        st.session_state.survey_mode = False
+    if 'survey_type' not in st.session_state:
+        st.session_state.survey_type = None
     
     # Reset incompatible country/site combinations
     validate_country_site_compatibility()
@@ -477,16 +481,40 @@ def image_processing():
             st.info(f"Please compress your ZIP file or reduce the number of images. Current limit: {max_size_mb} MB")
             return False
         
-        # Extract folder name from ZIP file name, but rename it to country_site_yyyymm format
+        # Extract folder name from ZIP file name, but create appropriate folder structure based on mode
         original_folder_name = os.path.splitext(uploaded_files.name)[0]  # Remove .zip extension
         
-        # Create standardized folder name: country_site_yyyymm
-        folder_name = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{st.session_state.metadata['survey_year']}{st.session_state.metadata['survey_month']:02d}"
+        # Check if we're in survey mode (passed from twiga_tools.py)
+        survey_mode = globals().get('SURVEY_MODE', False)
+        survey_type = globals().get('SURVEY_TYPE', 'survey_vehicle')  # Default to vehicle
+        
+        if survey_mode:
+            # For survey mode: just use yyyymm as folder name
+            folder_name = f"{st.session_state.metadata['survey_year']}{st.session_state.metadata['survey_month']:02d}"
+            format_description = "YYYYMM (survey mode)"
+            
+            # Store survey info for later use in upload path
+            st.session_state.survey_mode = True
+            st.session_state.survey_type = survey_type
+            
+            st.info(f"🔍 **Survey Mode Detected:** {survey_type.replace('_', ' ').title()}")
+            st.info(f"📁 **Upload Structure:** `bucket/survey/{survey_type}/{folder_name}/`")
+        else:
+            # For camera trap mode: use country_site_yyyymm format
+            folder_name = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{st.session_state.metadata['survey_year']}{st.session_state.metadata['survey_month']:02d}"
+            format_description = "COUNTRY_SITE_YYYYMM (camera trap mode)"
+            
+            # Store camera trap info
+            st.session_state.survey_mode = False
+            st.session_state.survey_type = None
+            
+            st.info(f"📷 **Camera Trap Mode Detected**")
+            st.info(f"📁 **Upload Structure:** `bucket/{folder_name}/`")
         
         # Show folder name transformation
         if original_folder_name != folder_name:
             st.info(f"📂 **Folder renamed:** `{original_folder_name}` → `{folder_name}`")
-            st.caption("Using standardized format: COUNTRY_SITE_YYYYMM")
+            st.caption(f"Using standardized format: {format_description}")
         
         # Store folder name in session state
         st.session_state.folder_name = folder_name
@@ -763,15 +791,30 @@ def upload_to_gcs():
         
         st.caption("🎯 = Auto-matched bucket, ✅ = Currently selected")
     
-    # Folder path is standardized as country_site_yyyymm
+    # Folder path is standardized based on mode
     folder_name = st.session_state.folder_name
+    survey_mode = st.session_state.get('survey_mode', False)
+    survey_type = st.session_state.get('survey_type', 'survey_vehicle')
+    
     st.subheader("📁 Folder Configuration")
-    st.info(f"📂 Upload folder: `{folder_name}`")
-    st.caption("Standardized format: COUNTRY_SITE_YYYYMM (e.g., AGO_LLNP_202507)")
-    st.caption("Images will be uploaded to this folder in your selected bucket")
+    
+    if survey_mode:
+        # Survey mode: bucket/survey/survey_[type]/yyyymm/
+        survey_path = f"survey/{survey_type}/{folder_name}/"
+        st.info(f"� **Survey Mode:** {survey_type.replace('_', ' ').title()}")
+        st.info(f"�📂 Upload folder structure: `{survey_path}`")
+        st.caption(f"Final path: bucket/{survey_path}")
+    else:
+        # Camera trap mode: bucket/folder_name/
+        survey_path = f"{folder_name}/"
+        st.info(f"📷 **Camera Trap Mode**")
+        st.info(f"📂 Upload folder: `{folder_name}`")
+        st.caption("Format: COUNTRY_SITE_YYYYMM (e.g., AGO_LLNP_202507)")
+    
+    st.caption("Images will be uploaded to this folder structure in your selected bucket")
     
     # Display folder path that will be created
-    folder_path = f"{folder_name}/"
+    folder_path = survey_path
     
     # Additional upload options (removed overwrite option)
     st.subheader("Upload Options")
