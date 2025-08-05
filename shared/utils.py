@@ -83,10 +83,11 @@ def clean_site_name(site_name):
     clean_name = re.sub(r'[-\s]+', '_', clean_name).upper()
     return clean_name
 
-def generate_standardized_filename(original_filename, country, site, survey_date, index, photographer=None, image_metadata=None):
+def generate_standardized_filename(original_filename, country, site, survey_date, index, photographer=None, image_metadata=None, station=None, camera=None):
     """
     Generate standardized filename based on conservation naming convention
-    Format: COUNTRY_SITE_datetime_INITIALS_ORIGINALNAME
+    Survey Format: COUNTRY_SITE_datetime_INITIALS_ORIGINALNAME
+    Camera Trap Format: COUNTRY_SITE_STATION_CAMERA_datetime_ORIGINALNAME
     Uses EXIF DateTimeOriginal if available, otherwise falls back to survey_date
     
     Args:
@@ -95,8 +96,10 @@ def generate_standardized_filename(original_filename, country, site, survey_date
         site: Site code (e.g., 'LLNP', 'EHGR', 'MMNR')
         survey_date: Date of survey (fallback)
         index: Sequential index number (not used in new format)
-        photographer: Optional photographer initials
+        photographer: Optional photographer initials (for survey mode)
         image_metadata: Optional image metadata containing EXIF data
+        station: Optional station ID (for camera trap mode)
+        camera: Optional camera ID (for camera trap mode)
         
     Returns:
         str: Standardized filename
@@ -110,14 +113,19 @@ def generate_standardized_filename(original_filename, country, site, survey_date
     else:
         date_str = survey_date.strftime("%Y%m%d")
     
-    # Base filename format: COUNTRY_SITE_YYYYMMDD_INITIALS_ORIGINALNAME
-    parts = [country.upper(), site.upper(), date_str]
-    
-    # Add photographer initials if provided
-    if photographer:
-        clean_photographer = re.sub(r'[^\w]', '', photographer).upper()
-        if clean_photographer:
-            parts.append(clean_photographer)
+    # Determine if this is camera trap mode or survey mode
+    if station and camera:
+        # Camera trap format: COUNTRY_SITE_STATION_CAMERA_YYYYMMDD_ORIGINALNAME
+        parts = [country.upper(), site.upper(), station.upper(), camera.upper(), date_str]
+    else:
+        # Survey format: COUNTRY_SITE_YYYYMMDD_INITIALS_ORIGINALNAME
+        parts = [country.upper(), site.upper(), date_str]
+        
+        # Add photographer initials if provided
+        if photographer:
+            clean_photographer = re.sub(r'[^\w]', '', photographer).upper()
+            if clean_photographer:
+                parts.append(clean_photographer)
     
     # Add original filename (without extension)
     parts.append(name_without_ext)
@@ -239,7 +247,7 @@ def compress_image_if_needed(image_data, max_size_mb=10, quality=85):
         # If compression fails, return original
         return image_data
 
-def batch_rename_preview(files, country, site, survey_date, photographer=None):
+def batch_rename_preview(files, country, site, survey_date, photographer=None, station=None, camera=None):
     """
     Preview batch rename operation using EXIF DateTimeOriginal when available
     
@@ -248,7 +256,9 @@ def batch_rename_preview(files, country, site, survey_date, photographer=None):
         country: Country code
         site: Site code
         survey_date: Survey date (fallback)
-        photographer: Optional photographer initials
+        photographer: Optional photographer initials (for survey mode)
+        station: Optional station ID (for camera trap mode)
+        camera: Optional camera ID (for camera trap mode)
         
     Returns:
         list: List of dictionaries with rename preview
@@ -269,7 +279,7 @@ def batch_rename_preview(files, country, site, survey_date, photographer=None):
         
         # Generate new filename using EXIF date if available
         new_name = generate_standardized_filename(
-            file.name, country, site, survey_date, idx, photographer, img_metadata
+            file.name, country, site, survey_date, idx, photographer, img_metadata, station, camera
         )
         
         # Determine which date was used

@@ -370,66 +370,133 @@ def site_selection():
         else:
             st.warning(f"⚠️ **No exact bucket match found** for pattern `{expected_bucket}`")
         
-        # Additional metadata collection
-        col1, col2 = st.columns(2)
+        # Check if we're in camera trap mode (passed from twiga_tools.py)
+        camera_trap_mode = globals().get('CAMERA_TRAP_MODE', False)
         
-        with col1:
-            # Survey date as YYYY/MM
+        if camera_trap_mode:
+            # Camera trap mode: No additional metadata needed, just station and camera info
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                station = st.text_input(
+                    "Station ID", 
+                    max_chars=10,
+                    help="Enter station identifier (e.g., 'ST001', '01', 'FENCE_A')"
+                )
+            
+            with col2:
+                camera = st.text_input(
+                    "Camera ID", 
+                    max_chars=10,
+                    help="Enter camera identifier (e.g., 'CAM01', 'A', '01')"
+                )
+            
+            # For camera traps, use current date for folder organization
             current_year = datetime.now().year
             current_month = datetime.now().month
+            survey_date = datetime(current_year, current_month, 1).date()
             
-            survey_year = st.selectbox("Survey Year", 
-                                     options=list(range(current_year - 10, current_year + 2)),
-                                     index=10)  # Default to current year
+            # Store metadata in session state (simplified for camera traps)
+            st.session_state.metadata = {
+                'country': selected_country,
+                'site': selected_site,
+                'survey_date': survey_date,
+                'survey_year': current_year,
+                'survey_month': current_month,
+                'station': station.strip().upper(),
+                'camera': camera.strip().upper(),
+                'photographer': '',  # Not needed for camera traps
+                'initials': '',  # Not needed for camera traps
+                'camera_model': '',  # Keep for compatibility but empty
+                'notes': ''  # Keep for compatibility but empty
+            }
             
-            survey_month = st.selectbox("Survey Month",
-                                      options=list(range(1, 13)),
-                                      format_func=lambda x: f"{x:02d} - {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][x-1]}",
-                                      index=current_month-1)  # Default to current month
-        
-        with col2:
-            photographer = st.text_input(
-                "Photographer Initials", 
-                max_chars=2,
-                help="Enter exactly 2 characters (e.g., 'AB')"
-            )
-        
-        # Create survey date from year/month
-        survey_date = datetime(survey_year, survey_month, 1).date()
-        
-        # Store metadata in session state
-        st.session_state.metadata = {
-            'country': selected_country,
-            'site': selected_site,
-            'survey_date': survey_date,
-            'survey_year': survey_year,
-            'survey_month': survey_month,
-            'photographer': photographer,
-            'initials': photographer.strip().upper(),  # Add initials field for consistency
-            'camera_model': '',  # Keep for compatibility but empty
-            'notes': ''  # Keep for compatibility but empty
-        }
-        
-        # Only show review and continue if photographer initials are filled and exactly 2 characters
-        if photographer.strip() and len(photographer.strip()) == 2:  # Check if photographer initials are exactly 2 chars
-            # Show current selections
-            st.subheader("📋 Review Your Selections")
-            st.write(f"**Country:** {selected_country}")
-            st.write(f"**Site:** {selected_site}")
-            st.write(f"**Survey Period:** {survey_year}/{survey_month:02d}")
-            st.write(f"**Photographer:** {photographer}")
-            
-            # Manual continue button - only when user clicks
-            st.info("👆 Please review your selections above, then click the button below to continue.")
-            if st.button("✅ Continue to Image Upload", type="primary"):
-                st.session_state.site_selection_complete = True
-                st.rerun()
+            # Only show review and continue if station and camera are filled
+            if station.strip() and camera.strip():
+                # Show current selections
+                st.subheader("📋 Review Your Selections")
+                st.write(f"**Country:** {selected_country}")
+                st.write(f"**Site:** {selected_site}")
+                st.write(f"**Station:** {station.strip().upper()}")
+                st.write(f"**Camera:** {camera.strip().upper()}")
+                st.write(f"**Period:** {current_year}/{current_month:02d} (current month)")
+                
+                # Manual continue button - only when user clicks
+                st.info("👆 Please review your selections above, then click the button below to continue.")
+                if st.button("✅ Continue to Image Upload", type="primary"):
+                    st.session_state.site_selection_complete = True
+                    st.rerun()
+            else:
+                # Show a message asking for required fields
+                missing_fields = []
+                if not station.strip():
+                    missing_fields.append("Station ID")
+                if not camera.strip():
+                    missing_fields.append("Camera ID")
+                
+                if missing_fields:
+                    st.info(f"📝 **Please fill in:** {', '.join(missing_fields)} to continue to the next step.")
         else:
-            # Show a message asking for required fields
-            if not photographer.strip():
-                st.info("📝 **Please fill in the Photographer Initials** to continue to the next step.")
-            elif len(photographer.strip()) != 2:
-                st.warning("⚠️ **Photographer Initials must be exactly 2 characters** (e.g., 'AB')")
+            # Regular survey mode: Additional metadata collection
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Survey date as YYYY/MM
+                current_year = datetime.now().year
+                current_month = datetime.now().month
+                
+                survey_year = st.selectbox("Survey Year", 
+                                         options=list(range(current_year - 10, current_year + 2)),
+                                         index=10)  # Default to current year
+                
+                survey_month = st.selectbox("Survey Month",
+                                          options=list(range(1, 13)),
+                                          format_func=lambda x: f"{x:02d} - {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][x-1]}",
+                                          index=current_month-1)  # Default to current month
+            
+            with col2:
+                photographer = st.text_input(
+                    "Photographer Initials", 
+                    max_chars=2,
+                    help="Enter exactly 2 characters (e.g., 'AB')"
+                )
+            
+            # Create survey date from year/month
+            survey_date = datetime(survey_year, survey_month, 1).date()
+            
+            # Store metadata in session state
+            st.session_state.metadata = {
+                'country': selected_country,
+                'site': selected_site,
+                'survey_date': survey_date,
+                'survey_year': survey_year,
+                'survey_month': survey_month,
+                'photographer': photographer,
+                'initials': photographer.strip().upper(),  # Add initials field for consistency
+                'camera_model': '',  # Keep for compatibility but empty
+                'notes': ''  # Keep for compatibility but empty
+            }
+            
+            # Only show review and continue if photographer initials are filled and exactly 2 characters
+            if photographer.strip() and len(photographer.strip()) == 2:  # Check if photographer initials are exactly 2 chars
+                # Show current selections
+                st.subheader("📋 Review Your Selections")
+                st.write(f"**Country:** {selected_country}")
+                st.write(f"**Site:** {selected_site}")
+                st.write(f"**Survey Period:** {survey_year}/{survey_month:02d}")
+                st.write(f"**Photographer:** {photographer}")
+                
+                # Manual continue button - only when user clicks
+                st.info("👆 Please review your selections above, then click the button below to continue.")
+                if st.button("✅ Continue to Image Upload", type="primary"):
+                    st.session_state.site_selection_complete = True
+                    st.rerun()
+            else:
+                # Show a message asking for required fields
+                if not photographer.strip():
+                    st.info("📝 **Please fill in the Photographer Initials** to continue to the next step.")
+                elif len(photographer.strip()) != 2:
+                    st.warning("⚠️ **Photographer Initials must be exactly 2 characters** (e.g., 'AB')")
         
         # NEVER auto-progress - only return True if user has explicitly clicked continue
         return False
@@ -595,13 +662,20 @@ def image_processing():
         # Process images using utility functions
         processed_images = []
         
+        # Get camera trap info from metadata if available
+        station = st.session_state.metadata.get('station')
+        camera = st.session_state.metadata.get('camera')
+        photographer = st.session_state.metadata.get('photographer')
+        
         # Create preview using batch rename utility
         preview_data = batch_rename_preview(
             all_images,
             st.session_state.metadata['country'],
             st.session_state.metadata['site'],
             st.session_state.metadata['survey_date'],
-            st.session_state.metadata.get('photographer')
+            photographer,
+            station,
+            camera
         )
         
         # Process each image with size checking
