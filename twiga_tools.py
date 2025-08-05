@@ -337,7 +337,18 @@ elif tool_choice == "� Upload camera trap images":
     st.title("� Upload camera trap images")
     st.markdown("*Camera Trap Image Processing & Cloud Storage*")
     st.markdown("**Naming Format:** `country_site_station_camera_yyyymmdd_originalname`")
-    st.markdown("**Storage Path:** `site_country/camera_trap/camera_fence` OR `camera_grid/yyyymm/`")
+    st.markdown("**Storage Path:** `country_site/camera_trap/camera_[fence|grid|water]/yyyymm/`")
+    
+    # Camera trap type selector
+    st.subheader("📋 Camera Trap Configuration")
+    camera_type = st.selectbox(
+        "Select Camera Trap Type:",
+        ["camera_fence", "camera_grid", "camera_water"],
+        help="Choose the type of camera trap deployment"
+    )
+    
+    st.success(f"✅ Selected: **{camera_type.replace('_', ' ').title()}**")
+    st.info(f"Images will be uploaded to: `country_site/camera_trap/{camera_type}/yyyymm/`")
     
     try:
         # Import the image management system
@@ -376,8 +387,8 @@ elif tool_choice == "� Upload camera trap images":
                         flags=re.MULTILINE | re.DOTALL
                     )
                     
-                    # Add camera trap mode flag to the app
-                    camera_mode_code = "CAMERA_TRAP_MODE = True\n" + cleaned_code
+                    # Add camera trap mode flag and type to the app
+                    camera_mode_code = f"CAMERA_TRAP_MODE = True\nCAMERA_TYPE = '{camera_type}'\n" + cleaned_code
                     exec(camera_mode_code)
                 else:
                     st.error("❌ Upload camera trap images app.py not found!")

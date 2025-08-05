@@ -119,6 +119,10 @@ def init_session_state():
         st.session_state.survey_mode = False
     if 'survey_type' not in st.session_state:
         st.session_state.survey_type = None
+    if 'camera_trap_mode' not in st.session_state:
+        st.session_state.camera_trap_mode = False
+    if 'camera_type' not in st.session_state:
+        st.session_state.camera_type = None
     
     # Reset incompatible country/site combinations
     validate_country_site_compatibility()
@@ -484,9 +488,11 @@ def image_processing():
         # Extract folder name from ZIP file name, but create appropriate folder structure based on mode
         original_folder_name = os.path.splitext(uploaded_files.name)[0]  # Remove .zip extension
         
-        # Check if we're in survey mode (passed from twiga_tools.py)
+        # Check if we're in survey mode or camera trap mode (passed from twiga_tools.py)
         survey_mode = globals().get('SURVEY_MODE', False)
         survey_type = globals().get('SURVEY_TYPE', 'survey_vehicle')  # Default to vehicle
+        camera_trap_mode = globals().get('CAMERA_TRAP_MODE', False)
+        camera_type = globals().get('CAMERA_TYPE', 'camera_fence')  # Default to fence
         
         if survey_mode:
             # For survey mode: just use yyyymm as folder name
@@ -496,19 +502,38 @@ def image_processing():
             # Store survey info for later use in upload path
             st.session_state.survey_mode = True
             st.session_state.survey_type = survey_type
+            st.session_state.camera_trap_mode = False
+            st.session_state.camera_type = None
             
             st.info(f"🔍 **Survey Mode Detected:** {survey_type.replace('_', ' ').title()}")
             st.info(f"📁 **Upload Structure:** `bucket/survey/{survey_type}/{folder_name}/`")
-        else:
-            # For camera trap mode: use country_site_yyyymm format
-            folder_name = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{st.session_state.metadata['survey_year']}{st.session_state.metadata['survey_month']:02d}"
-            format_description = "COUNTRY_SITE_YYYYMM (camera trap mode)"
             
-            # Store camera trap info
+        elif camera_trap_mode:
+            # For camera trap mode: just use yyyymm as folder name
+            folder_name = f"{st.session_state.metadata['survey_year']}{st.session_state.metadata['survey_month']:02d}"
+            format_description = "YYYYMM (camera trap mode)"
+            
+            # Store camera trap info for later use in upload path
             st.session_state.survey_mode = False
             st.session_state.survey_type = None
+            st.session_state.camera_trap_mode = True
+            st.session_state.camera_type = camera_type
             
-            st.info(f"📷 **Camera Trap Mode Detected**")
+            st.info(f"📷 **Camera Trap Mode Detected:** {camera_type.replace('_', ' ').title()}")
+            st.info(f"📁 **Upload Structure:** `bucket/camera_trap/{camera_type}/{folder_name}/`")
+            
+        else:
+            # Legacy mode: use country_site_yyyymm format (fallback)
+            folder_name = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{st.session_state.metadata['survey_year']}{st.session_state.metadata['survey_month']:02d}"
+            format_description = "COUNTRY_SITE_YYYYMM (legacy mode)"
+            
+            # Store legacy info
+            st.session_state.survey_mode = False
+            st.session_state.survey_type = None
+            st.session_state.camera_trap_mode = False
+            st.session_state.camera_type = None
+            
+            st.info(f"� **Legacy Mode Detected**")
             st.info(f"📁 **Upload Structure:** `bucket/{folder_name}/`")
         
         # Show folder name transformation
@@ -805,11 +830,22 @@ def upload_to_gcs():
         st.info(f"�📂 Upload folder structure: `{survey_path}`")
         st.caption(f"Final path: bucket/{survey_path}")
     else:
-        # Camera trap mode: bucket/folder_name/
-        survey_path = f"{folder_name}/"
-        st.info(f"📷 **Camera Trap Mode**")
-        st.info(f"📂 Upload folder: `{folder_name}`")
-        st.caption("Format: COUNTRY_SITE_YYYYMM (e.g., AGO_LLNP_202507)")
+        # Check if we're in camera trap mode
+        camera_trap_mode = st.session_state.get('camera_trap_mode', False)
+        camera_type = st.session_state.get('camera_type', 'camera_fence')
+        
+        if camera_trap_mode:
+            # Camera trap mode: bucket/camera_trap/camera_[type]/yyyymm/
+            survey_path = f"camera_trap/{camera_type}/{folder_name}/"
+            st.info(f"📷 **Camera Trap Mode:** {camera_type.replace('_', ' ').title()}")
+            st.info(f"📂 Upload folder structure: `{survey_path}`")
+            st.caption(f"Final path: bucket/{survey_path}")
+        else:
+            # Legacy mode: bucket/folder_name/
+            survey_path = f"{folder_name}/"
+            st.info(f"🔧 **Legacy Mode**")
+            st.info(f"📂 Upload folder: `{folder_name}`")
+            st.caption("Format: COUNTRY_SITE_YYYYMM (e.g., AGO_LLNP_202507)")
     
     st.caption("Images will be uploaded to this folder structure in your selected bucket")
     
