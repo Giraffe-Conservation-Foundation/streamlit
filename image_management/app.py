@@ -50,12 +50,49 @@ st.markdown("""
 # Constants
 BUCKET_NAME = "giraffe-conservation-images"  # Replace with your actual bucket name
 
-# Country and site options
-COUNTRIES_SITES = {
-    "AGO": ["LLNP", "IONP"],
-    "NAM": ["EHGR", "UIIFA", "NANW"], 
-    "KEN": ["MMNR", "RUNP"]
-}
+# Country and site options - will be populated from available buckets
+COUNTRIES_SITES = {}
+
+def extract_countries_sites_from_buckets(bucket_names):
+    """Extract country and site combinations from bucket names following gcf_country_site pattern"""
+    global COUNTRIES_SITES
+    COUNTRIES_SITES = {}
+    
+    for bucket_name in bucket_names:
+        # Check if bucket follows the gcf_country_site pattern
+        if bucket_name.lower().startswith('gcf'):
+            parts = bucket_name.lower().split('_')
+            # Expected pattern: gcf_country_site or variations with separators
+            if len(parts) >= 3:
+                # Extract country and site from bucket name
+                country = parts[1].upper()  # Convert to uppercase for consistency
+                site = parts[2].upper()     # Convert to uppercase for consistency
+                
+                # Add to COUNTRIES_SITES dictionary
+                if country not in COUNTRIES_SITES:
+                    COUNTRIES_SITES[country] = []
+                
+                if site not in COUNTRIES_SITES[country]:
+                    COUNTRIES_SITES[country].append(site)
+            
+            # Also handle patterns with dashes (gcf-country-site)
+            elif '-' in bucket_name:
+                parts = bucket_name.lower().split('-')
+                if len(parts) >= 3:
+                    country = parts[1].upper()
+                    site = parts[2].upper()
+                    
+                    if country not in COUNTRIES_SITES:
+                        COUNTRIES_SITES[country] = []
+                    
+                    if site not in COUNTRIES_SITES[country]:
+                        COUNTRIES_SITES[country].append(site)
+    
+    # Sort countries and sites for consistent display
+    for country in COUNTRIES_SITES:
+        COUNTRIES_SITES[country].sort()
+    
+    return COUNTRIES_SITES
 
 def init_session_state():
     """Initialize session state variables"""
@@ -83,6 +120,7 @@ def init_session_state():
 
 def validate_country_site_compatibility():
     """Ensure selected country and site are compatible with current structure"""
+    global COUNTRIES_SITES
     current_country = st.session_state.get('selected_country')
     current_site = st.session_state.get('selected_site')
     
@@ -135,11 +173,68 @@ def authenticate_google_cloud():
                     bucket_names = [bucket.name for bucket in buckets]
                     st.session_state.available_buckets = bucket_names
                     st.info(f"Found {len(buckets)} bucket(s) in your project")
-                    st.write("Available buckets:", bucket_names)
+                    
+                    # Extract country/site combinations from bucket names
+                    countries_sites = extract_countries_sites_from_buckets(bucket_names)
+                    
+                    # Display extracted country/site information
+                    if countries_sites:
+                        st.success(f"🌍 **Detected {sum(len(sites) for sites in countries_sites.values())} location(s) from your buckets:**")
+                        
+                        # Show country/site combinations in a nice format
+                        col1, col2 = st.columns([1, 2])
+                        with col1:
+                            st.write("**Countries:**")
+                            for country in sorted(countries_sites.keys()):
+                                st.write(f"🏴 {country}")
+                        
+                        with col2:
+                            st.write("**Sites per country:**")
+                            for country in sorted(countries_sites.keys()):
+                                sites = ", ".join(countries_sites[country])
+                                st.write(f"**{country}:** {sites}")
+                        
+                        # Show bucket pattern info
+                        with st.expander("📋 View All Buckets & Pattern Matching", expanded=False):
+                            st.write("**All buckets detected:**")
+                            gcf_buckets = []
+                            other_buckets = []
+                            
+                            for bucket in bucket_names:
+                                if bucket.lower().startswith('gcf'):
+                                    gcf_buckets.append(bucket)
+                                else:
+                                    other_buckets.append(bucket)
+                            
+                            if gcf_buckets:
+                                st.write("**🎯 GCF Pattern Buckets (gcf_country_site):**")
+                                for bucket in gcf_buckets:
+                                    st.write(f"✅ `{bucket}`")
+                            
+                            if other_buckets:
+                                st.write("**🔧 Other Buckets:**")
+                                for bucket in other_buckets:
+                                    st.write(f"📦 `{bucket}`")
+                            
+                            st.caption("Only buckets following 'gcf_country_site' pattern are used for location extraction")
+                    
+                    else:
+                        st.warning("⚠️ **No GCF pattern buckets found!**")
+                        st.info("Looking for buckets with pattern: `gcf_country_site` (e.g., 'gcf_ago_llnp', 'gcf_nam_ehgr')")
+                        st.write("**Available buckets:**")
+                        for bucket in bucket_names:
+                            st.write(f"📦 `{bucket}`")
+                
+                else:
+                    st.warning("No buckets found in your project")
                 
                 # Add a button to proceed to next step
-                if st.button("✅ Continue to Site Selection", type="primary"):
-                    st.rerun()
+                if countries_sites:
+                    if st.button("✅ Continue to Site Selection", type="primary"):
+                        st.rerun()
+                else:
+                    st.error("❌ **Cannot proceed:** No valid location buckets detected")
+                    st.info("💡 **Solution:** Ensure your buckets follow the naming pattern `gcf_country_site`")
                 
             except Exception as e:
                 st.error(f"Authentication failed: {str(e)}")
@@ -154,8 +249,30 @@ def site_selection():
     """Handle site selection interface"""
     st.header("📍 Site Selection")
     
+    # Check if we have any countries/sites extracted from buckets
+    global COUNTRIES_SITES
+    if not COUNTRIES_SITES:
+        st.error("❌ **No countries/sites available**")
+        st.info("""
+        **Possible causes:**
+        - No buckets follow the `gcf_country_site` naming pattern
+        - Authentication needs to be refreshed
+        - Buckets are not accessible with current credentials
+        
+        **Expected bucket naming:** `gcf_ago_llnp`, `gcf_nam_ehgr`, etc.
+        """)
+        
+        if st.button("🔄 Refresh Authentication", type="secondary"):
+            st.session_state.authenticated = False
+            st.rerun()
+        return False
+    
     # Country selection dropdown with proper error handling
     available_countries = list(COUNTRIES_SITES.keys())
+    
+    if not available_countries:
+        st.error("❌ No countries available from your bucket access")
+        return False
     
     # Get the current country from session state, with fallback
     current_country = st.session_state.get('selected_country')
@@ -169,6 +286,10 @@ def site_selection():
     except ValueError:
         country_index = 0
         st.session_state.selected_country = available_countries[0]
+    
+    # Display available locations info
+    total_locations = sum(len(sites) for sites in COUNTRIES_SITES.values())
+    st.success(f"🌍 **{len(available_countries)} countries, {total_locations} locations available** (from your bucket access)")
     
     selected_country = st.selectbox(
         "Select the country:",
@@ -206,6 +327,16 @@ def site_selection():
     if selected_country and selected_site:
         st.session_state.selected_site = selected_site
         st.success(f"✅ Selected: {selected_country} - {selected_site}")
+        
+        # Show corresponding bucket that will be used
+        expected_bucket = f"gcf_{selected_country.lower()}_{selected_site.lower()}"
+        matching_buckets = [b for b in st.session_state.available_buckets 
+                          if b.lower().replace('-', '_').replace('.', '_') == expected_bucket]
+        
+        if matching_buckets:
+            st.info(f"📦 **Will use bucket:** `{matching_buckets[0]}`")
+        else:
+            st.warning(f"⚠️ **No exact bucket match found** for pattern `{expected_bucket}`")
         
         # Additional metadata collection
         col1, col2 = st.columns(2)

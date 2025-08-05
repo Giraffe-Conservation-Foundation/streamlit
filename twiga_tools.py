@@ -64,12 +64,7 @@ tool_choice = st.sidebar.selectbox(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📋 Tool Status")
-st.sidebar.markdown("✅ **Create an ID book** - active")
-st.sidebar.markdown("✅ **NANW Dashboard** - active") 
-st.sidebar.markdown("✅ **Upload camera trap images** - active")
-st.sidebar.markdown("✅ **Upload survey images** - active")
-st.sidebar.markdown("🚧 **EarthRanger** - in development")
+
 
 # Main content area
 if tool_choice == "🏠 Home":
@@ -211,7 +206,7 @@ if tool_choice == "🏠 Home":
         
         ### Need Help?
         - Check individual tool documentation
-        - Contact the GCF technology team
+        - Contact Courtney
         - Report issues via the GitHub repository
         """)
     
@@ -544,11 +539,11 @@ elif tool_choice == "🌍 EarthRanger Integration":
     st.markdown("For questions about EarthRanger integration or to express interest in beta testing, please contact the GCF development team.")
 
 # Footer
+#st.sidebar.markdown("---")
+#st.sidebar.markdown("### 📊 System Info")
+#st.sidebar.success("🟢 All systems operational")
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📊 System Info")
-st.sidebar.success("🟢 All systems operational")
 st.sidebar.info("🔄 Last updated: August 2025")
-st.sidebar.markdown("---")
-st.sidebar.markdown("** (c) Giraffe Conservation Foundation**")
+st.sidebar.markdown("Giraffe Conservation Foundation")
 # st.sidebar.markdown("*Twiga Tools tech platform*")
 st.sidebar.markdown("[GitHub Repository](https://github.com/Giraffe-Conservation-Foundation/streamlit)")
