@@ -12,7 +12,7 @@ sys.path.append(str(current_dir / "shared"))
 
 st.set_page_config(
     page_title="Twiga Tools - GCF Conservation Platform",
-    page_icon="🦒",
+   # page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -47,15 +47,15 @@ st.markdown("""
 
 # Sidebar for tool selection
 st.sidebar.image(str(current_dir / "shared" / "logo.png") if (current_dir / "shared" / "logo.png").exists() else None, width=200)
-st.sidebar.markdown("# 🦒 Twiga Tools")
+st.sidebar.markdown("# Twiga Tools")
 st.sidebar.markdown("*Conservation Technology Platform*")
 st.sidebar.markdown("---")
 
 tool_choice = st.sidebar.selectbox(
     "🛠️ Select a Tool:",
     [
-        "🏠 Dashboard Home",
-        "🆔 Wildbook ID Generator", 
+        "🏠 Home",
+        "🆔 Create an ID book", 
         "📊 NANW Event Dashboard",
         "📸 Image Management System",
         "🌍 EarthRanger Integration"
@@ -70,21 +70,21 @@ st.sidebar.markdown("✅ **Image Management** - Active")
 st.sidebar.markdown("🚧 **EarthRanger** - In Development")
 
 # Main content area
-if tool_choice == "🏠 Dashboard Home":
+if tool_choice == "🏠 Home":
     # Header with logo and title
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown('<h1 class="main-header">🦒 Twiga Tools</h1>', unsafe_allow_html=True)
+        st.markdown('<h1 class="main-header">Twiga Tools</h1>', unsafe_allow_html=True)
         st.markdown('<p style="text-align: center; font-size: 1.2rem; color: #666;">Giraffe Conservation Foundation Technology Platform</p>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # Welcome message
     st.markdown("""
-    ## Welcome to Twiga Tools! 🌍
+    ## Welcome to Twiga Tools
     
     This integrated platform provides essential tools for giraffe conservation research and data management. 
-    Select a tool from the sidebar to get started with your conservation work.
+    Select a tool from the sidebar to get started.
     """)
     
     # Tool overview cards
@@ -246,21 +246,14 @@ elif tool_choice == "🆔 Wildbook ID Generator":
                         app_code = f.read()
                         
                     # Remove any remaining set_page_config calls from the code
-                    lines = app_code.split('\n')
-                    filtered_lines = []
-                    skip_config = False
-                    
-                    for line in lines:
-                        if 'st.set_page_config(' in line:
-                            skip_config = True
-                            continue
-                        elif skip_config and ')' in line and not line.strip().startswith('#'):
-                            skip_config = False
-                            continue
-                        elif not skip_config:
-                            filtered_lines.append(line)
-                    
-                    cleaned_code = '\n'.join(filtered_lines)
+                    import re
+                    # Use regex to remove set_page_config blocks more reliably
+                    cleaned_code = re.sub(
+                        r'st\.set_page_config\s*\([^)]*\)',
+                        '',
+                        app_code,
+                        flags=re.MULTILINE | re.DOTALL
+                    )
                     exec(cleaned_code)
                 else:
                     st.error("❌ Wildbook app.py not found!")
@@ -306,21 +299,14 @@ elif tool_choice == "📊 NANW Event Dashboard":
                         app_code = f.read()
                         
                     # Remove any set_page_config calls
-                    lines = app_code.split('\n')
-                    filtered_lines = []
-                    skip_config = False
-                    
-                    for line in lines:
-                        if 'st.set_page_config(' in line:
-                            skip_config = True
-                            continue
-                        elif skip_config and ')' in line and not line.strip().startswith('#'):
-                            skip_config = False
-                            continue
-                        elif not skip_config:
-                            filtered_lines.append(line)
-                    
-                    cleaned_code = '\n'.join(filtered_lines)
+                    import re
+                    # Use regex to remove set_page_config blocks more reliably
+                    cleaned_code = re.sub(
+                        r'st\.set_page_config\s*\([^)]*\)',
+                        '',
+                        app_code,
+                        flags=re.MULTILINE | re.DOTALL
+                    )
                     exec(cleaned_code)
                 else:
                     st.error("❌ NANW app.py not found!")
@@ -369,21 +355,14 @@ elif tool_choice == "📸 Image Management System":
                         app_code = f.read()
                         
                     # Remove any set_page_config calls
-                    lines = app_code.split('\n')
-                    filtered_lines = []
-                    skip_config = False
-                    
-                    for line in lines:
-                        if 'st.set_page_config(' in line:
-                            skip_config = True
-                            continue
-                        elif skip_config and ')' in line and not line.strip().startswith('#'):
-                            skip_config = False
-                            continue
-                        elif not skip_config:
-                            filtered_lines.append(line)
-                    
-                    cleaned_code = '\n'.join(filtered_lines)
+                    import re
+                    # Use regex to remove set_page_config blocks more reliably
+                    cleaned_code = re.sub(
+                        r'st\.set_page_config\s*\([^)]*\)',
+                        '',
+                        app_code,
+                        flags=re.MULTILINE | re.DOTALL
+                    )
                     exec(cleaned_code)
                 else:
                     st.error("❌ Image Management app.py not found!")
@@ -465,6 +444,6 @@ st.sidebar.markdown("### 📊 System Info")
 st.sidebar.success("🟢 All systems operational")
 st.sidebar.info("🔄 Last updated: August 2025")
 st.sidebar.markdown("---")
-st.sidebar.markdown("**🦒 Giraffe Conservation Foundation**")
-st.sidebar.markdown("*Twiga Tools Platform*")
+st.sidebar.markdown("** (c) Giraffe Conservation Foundation**")
+# st.sidebar.markdown("*Twiga Tools tech platform*")
 st.sidebar.markdown("[GitHub Repository](https://github.com/Giraffe-Conservation-Foundation/streamlit)")
