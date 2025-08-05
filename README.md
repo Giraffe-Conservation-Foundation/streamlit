@@ -40,12 +40,14 @@ This repository contains multiple Streamlit applications developed for the Giraf
 
 ## 🚀 Quick Start
 
+### Local Development
+
 Each project is self-contained with its own:
 - `README.md` - Project-specific documentation
 - `requirements.txt` - Python dependencies
 - `app.py` - Main Streamlit application
 
-### Running a Project
+**Running a Project Locally:**
 
 1. Navigate to the project directory:
    ```bash
@@ -61,6 +63,23 @@ Each project is self-contained with its own:
    ```bash
    streamlit run app.py
    ```
+
+### Cloud Deployment
+
+**🌟 Recommended: Multi-Page Dashboard**
+
+Deploy all applications as a single multi-page app:
+
+1. **Streamlit Cloud Setup:**
+   - Repository: `https://github.com/Giraffe-Conservation-Foundation/streamlit`
+   - Main file: `main_app.py`
+   - All apps accessible from one URL
+
+2. **Individual App Deployment:**
+   - Use entry point files: `wildbook_app.py`, `nanw_app.py`, `image_app.py`
+   - Each gets its own deployment URL
+
+📖 **See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions**
 
 ## 🛠️ Development Setup
 
