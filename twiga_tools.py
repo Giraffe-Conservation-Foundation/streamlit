@@ -254,7 +254,7 @@ elif tool_choice == "📖 Create an ID book":
                 app_file = wildbook_path / "app.py"
                 if app_file.exists():
                     # Read and execute the app code
-                    with open("app.py", "r", encoding="utf-8") as f:
+                    with open(app_file, "r", encoding="utf-8") as f:
                         app_code = f.read()
                         
                     # Remove any remaining set_page_config calls from the code
@@ -307,7 +307,7 @@ elif tool_choice == "📊 NANW Event Dashboard":
                 # Execute the NANW dashboard app with proper encoding
                 app_file = nanw_path / "app.py"
                 if app_file.exists():
-                    with open("app.py", "r", encoding="utf-8") as f:
+                    with open(app_file, "r", encoding="utf-8") as f:
                         app_code = f.read()
                         
                     # Remove any set_page_config calls
@@ -393,7 +393,7 @@ elif tool_choice == "� Upload camera trap images":
                 # Execute the image management app with proper encoding
                 app_file = image_path / "app.py"
                 if app_file.exists():
-                    with open("app.py", "r", encoding="utf-8") as f:
+                    with open(app_file, "r", encoding="utf-8") as f:
                         app_code = f.read()
                         
                     # Remove any set_page_config calls
@@ -460,7 +460,7 @@ elif tool_choice == "🔍 Upload survey images":
                 # Execute the image management app with proper encoding
                 app_file = image_path / "app.py"
                 if app_file.exists():
-                    with open("app.py", "r", encoding="utf-8") as f:
+                    with open(app_file, "r", encoding="utf-8") as f:
                         app_code = f.read()
                         
                     # Remove any set_page_config calls
