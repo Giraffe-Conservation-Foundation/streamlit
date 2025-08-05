@@ -363,20 +363,15 @@ def create_summary_page(grouped_annotations, location_id="Unknown Location"):
     # Try to load and use background image
     background_image_path = None
     
-    # First, try the specific user-provided background image
-    user_background_path = r"G:\My Drive\Data management\GCF_background_logo.png"
-    if os.path.exists(user_background_path):
-        background_image_path = user_background_path
-    else:
-        # Fall back to looking for common background image file names in the current directory
-        for ext in ['png', 'jpg', 'jpeg']:
-            for name in ['background', 'cover', 'title_background', 'logo']:
-                test_path = f"{name}.{ext}"
-                if os.path.exists(test_path):
-                    background_image_path = test_path
-                    break
-            if background_image_path:
+    # Look for background image files in the current directory (works for both local and deployed)
+    for ext in ['png', 'jpg', 'jpeg']:
+        for name in ['GCF_background_logo', 'logo', 'background', 'cover', 'title_background']:
+            test_path = f"{name}.{ext}"
+            if os.path.exists(test_path):
+                background_image_path = test_path
                 break
+        if background_image_path:
+            break
     
     # Apply background image if found
     if background_image_path:
