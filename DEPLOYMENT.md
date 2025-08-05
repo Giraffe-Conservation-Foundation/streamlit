@@ -1,72 +1,53 @@
-# 🚀 Deployment Guide
+# 🚀 Twiga Tools Deployment Guide
 
-This guide explains how to deploy your GCF Streamlit applications with the organized repository structure.
+This guide explains how to deploy the **Twiga Tools** unified conservation platform.
 
-## 📋 Deployment Options
+## 🌟 Recommended Deployment: Unified Platform
 
-### Option 1: Multi-Page Dashboard (Recommended)
-Deploy a single app that combines all your projects:
+Deploy **Twiga Tools** as a single application that provides access to all conservation tools:
 
-**Streamlit Cloud Configuration:**
-- Repository: `https://github.com/Giraffe-Conservation-Foundation/streamlit`
-- Branch: `main` 
-- Main file path: `main_app.py`
-- App URL: `https://gcf-streamlit-apps.streamlit.app`
+### Streamlit Cloud Configuration
+- **Repository:** `https://github.com/Giraffe-Conservation-Foundation/streamlit`
+- **Branch:** `main` 
+- **Main file path:** `twiga_tools.py`
+- **App URL:** `https://twiga-tools-gcf.streamlit.app`
 
-### Option 2: Individual App Deployments
-Deploy each application separately:
-
-#### Wildbook ID Generator
-- Repository: `https://github.com/Giraffe-Conservation-Foundation/streamlit`
-- Branch: `main`
-- Main file path: `wildbook_app.py`
-- App URL: `https://wildbook-gcf.streamlit.app`
-
-#### NANW Dashboard  
-- Repository: `https://github.com/Giraffe-Conservation-Foundation/streamlit`
-- Branch: `main`
-- Main file path: `nanw_app.py`
-- App URL: `https://nanw-gcf.streamlit.app`
-
-#### Image Management System
-- Repository: `https://github.com/Giraffe-Conservation-Foundation/streamlit`
-- Branch: `main`
-- Main file path: `image_app.py`
-- App URL: `https://image-management-gcf.streamlit.app`
+### Local Development
+```bash
+git clone https://github.com/Giraffe-Conservation-Foundation/streamlit.git
+cd streamlit
+pip install -r requirements.txt
+streamlit run twiga_tools.py
+```
 
 ## 🔧 Setup Instructions
 
-### Step 1: Choose Your Deployment Method
-1. **Multi-Page App**: Single deployment, users choose app from sidebar
-2. **Individual Apps**: Multiple deployments, one per application
-
-### Step 2: Configure Streamlit Cloud
+### Step 1: Deploy on Streamlit Cloud
 
 1. Go to [share.streamlit.io](https://share.streamlit.io)
 2. Connect your GitHub account
 3. Select repository: `Giraffe-Conservation-Foundation/streamlit`
-4. Choose the appropriate main file:
-   - Multi-page: `main_app.py`
-   - Individual: `wildbook_app.py`, `nanw_app.py`, or `image_app.py`
+4. Set main file: `twiga_tools.py`
+5. Choose a memorable app name: `twiga-tools-gcf`
 
-### Step 3: Environment Variables
+### Step 2: Configure Environment Variables
 
-For apps requiring credentials, add these in Streamlit Cloud:
+Add these environment variables in Streamlit Cloud settings:
 
-#### Image Management System
+#### For Image Management System
 ```
 GCP_PROJECT_ID=your-project-id
 GCS_BUCKET_NAME=your-bucket-name
 ```
 
-#### NANW Dashboard
+#### For NANW Dashboard
 ```
 EARTHRANGER_SERVER=https://your-server.pamdas.org
 EARTHRANGER_USERNAME=your-username  
 EARTHRANGER_PASSWORD=your-password
 ```
 
-#### Wildbook ID Generator
+#### For Wildbook ID Generator
 ```
 WILDBOOK_API_URL=https://your-wildbook.org
 WILDBOOK_API_KEY=your-api-key

@@ -1,83 +1,66 @@
-# Giraffe Conservation Foundation - Streamlit Applications
+# 🦒 Twiga Tools - GCF Conservation Platform
 
-This repository contains multiple Streamlit applications developed for the Giraffe Conservation Foundation's data management and visualization needs.
+**Twiga Tools** is an integrated Streamlit platform developed by the Giraffe Conservation Foundation for conservation research, data management, and wildlife monitoring.
 
-## 📁 Project Structure
+## 🌟 About Twiga Tools
 
-### 🆔 [wildbook_id_generator/](./wildbook_id_generator/)
-**Wildbook ID Generator**
-- Generates unique IDs for giraffe individuals in Wildbook database
+"Twiga" means "giraffe" in Swahili, and this platform brings together essential conservation tools in one unified interface. Select from multiple specialized applications designed to support giraffe conservation efforts across Africa.
+
+## 🛠️ Integrated Tools
+
+### 🆔 Wildbook ID Generator
+**Status: ✅ Production Ready**
+- Generate unique IDs for giraffe individuals in Wildbook database
 - Features: ID validation, batch generation, export functionality
-- Status: ✅ Active
+- Perfect for research teams managing individual animal records
 
-### 📊 [nanw_dashboard/](./nanw_dashboard/)
-**NANW (Northern Africa/Namibia West) Dashboard**
+### 📊 NANW Event Dashboard  
+**Status: ✅ Production Ready**
 - Event tracking and subject history visualization
-- Features: Event analysis, subject monitoring, data export
-- Status: ✅ Active
+- Northern Africa/Namibia West conservation monitoring
+- Features: Real-time tracking, data export, interactive visualizations
 
-### 🌍 [earthranger_dashboard/](./earthranger_dashboard/)
-**EarthRanger Integration Dashboard**
-- Integration with EarthRanger conservation platform
-- Features: Wildlife tracking, conservation area monitoring
-- Status: 🚧 In Development
-
-### 📸 [image_management/](./image_management/)
-**Giraffe Conservation Image Management System**
+### 📸 Image Management System
+**Status: ✅ Production Ready**
 - Complete workflow for managing giraffe conservation images
-- Features: Google Cloud Storage integration, image processing, standardized renaming
-- Status: ✅ Active
+Features: Google Cloud Storage integration, automated processing, standardized naming
+- Handles bulk image uploads with metadata management
 
-### 📂 [shared/](./shared/)
-**Shared Resources**
-- Common utilities, configurations, and assets used across projects
-- Logos, common functions, shared constants
-
-### 📚 [docs/](./docs/)
-**Documentation & Setup Guides**
-- Logo setup instructions and troubleshooting
-- Development documentation and guides
+### 🌍 EarthRanger Integration
+**Status: 🚧 In Development**
+- Integration with EarthRanger conservation platform
+- Features: Wildlife tracking, conservation area monitoring, alert management
+- Expected release: Q4 2025
 
 ## 🚀 Quick Start
 
-### Local Development
+### 🌐 Using Twiga Tools (Recommended)
 
-Each project is self-contained with its own:
-- `README.md` - Project-specific documentation
-- `requirements.txt` - Python dependencies
-- `app.py` - Main Streamlit application
-
-**Running a Project Locally:**
-
-1. Navigate to the project directory:
-   ```bash
-   cd wildbook_id_generator
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Run the Streamlit app:
-   ```bash
-   streamlit run app.py
-   ```
-
-### Cloud Deployment
-
-**🌟 Recommended: Multi-Page Dashboard**
-
-Deploy all applications as a single multi-page app:
+**Deploy the unified platform:**
 
 1. **Streamlit Cloud Setup:**
    - Repository: `https://github.com/Giraffe-Conservation-Foundation/streamlit`
-   - Main file: `main_app.py`
-   - All apps accessible from one URL
+   - Main file: `twiga_tools.py`
+   - Single URL provides access to all conservation tools
 
-2. **Individual App Deployment:**
-   - Use entry point files: `wildbook_app.py`, `nanw_app.py`, `image_app.py`
-   - Each gets its own deployment URL
+2. **Local Development:**
+   ```bash
+   git clone https://github.com/Giraffe-Conservation-Foundation/streamlit.git
+   cd streamlit
+   pip install -r requirements.txt
+   streamlit run twiga_tools.py
+   ```
+
+### 🔧 Individual Tool Development
+
+Each tool is self-contained in its directory:
+
+```bash
+# Work on a specific tool
+cd wildbook_id_generator
+pip install -r requirements.txt  
+streamlit run app.py
+```
 
 📖 **See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions**
 
@@ -104,14 +87,29 @@ cd wildbook_id_generator
 pip install -r requirements.txt
 ```
 
-## 📋 Project Status
+## 📋 Platform Status
 
-| Project | Status | Last Updated | Maintainer |
-|---------|--------|--------------|------------|
-| wildbook_id_generator | ✅ Production | 2024-01 | GCF Team |
-| nanw_dashboard | ✅ Production | 2024-01 | GCF Team |
-| earthranger_dashboard | 🚧 Development | 2024-01 | GCF Team |
-| image_management | ✅ Production | 2024-01 | GCF Team |
+| Tool | Status | Last Updated | Purpose |
+|------|--------|--------------|---------|
+| Wildbook ID Generator | ✅ Production | Aug 2025 | Individual animal identification |
+| NANW Event Dashboard | ✅ Production | Aug 2025 | Conservation monitoring |
+| Image Management System | ✅ Production | Aug 2025 | Photo processing & storage |
+| EarthRanger Integration | 🚧 Development | Aug 2025 | Wildlife tracking platform |
+
+## 🏗️ Repository Structure
+
+```
+streamlit/
+├── 🎯 twiga_tools.py             # Main unified application
+├── 🆔 wildbook_id_generator/     # Wildbook ID generator tool
+├── 📊 nanw_dashboard/            # NANW event dashboard  
+├── 🌍 earthranger_dashboard/     # EarthRanger integration
+├── 📸 image_management/          # Image processing system
+├── 📂 shared/                    # Common utilities & assets
+├── 📚 docs/                      # Documentation & guides
+├── 📋 requirements.txt           # All dependencies
+└── 🚀 DEPLOYMENT.md              # Deployment instructions
+```
 
 ## 🤝 Contributing
 
