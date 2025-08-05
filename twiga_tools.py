@@ -145,12 +145,12 @@ if tool_choice == "🏠 Home":
             <div class="tool-card">
                 <h3>🔍 Upload survey images</h3>
                 <p><strong>Status:</strong> ✅ Production Ready</p>
-                <p>Upload survey images with standardized naming and organization. Images are renamed as country_site_initials_yyyymmdd_original. Upload folder named survey_yyyymm to bucket country_site/survey/.</p>
+                <p>Upload survey images with standardized naming and organization. Choose between vehicle or aerial surveys. Images renamed as country_site_initials_yyyymmdd_original and stored in country_site/survey/survey_[type]/yyyymm/.</p>
                 <ul>
+                    <li>Survey type selection (vehicle/aerial)</li>
                     <li>Survey specific naming</li>
                     <li>Researcher initial tracking</li>
                     <li>Monthly folder organization</li>
-                    <li>Cloud storage integration</li>
                 </ul>
             </div>
             """, unsafe_allow_html=True)
@@ -403,16 +403,31 @@ elif tool_choice == "🔍 Upload survey images":
     st.title("🔍 Upload survey images")
     st.markdown("*Survey Image Processing & Cloud Storage*")
     st.markdown("**Naming Format:** `country_site_initials_yyyymmdd_original`")
-    st.markdown("**Storage Path:** `country_site/survey/survey_yyyymm/`")
-    st.markdown("**Folder Structure:** Upload folder named `survey_yyyymm` → Bucket: `country_site` → Subfolder: `survey/`")
+    st.markdown("**Storage Path:** `country_site/survey/survey_[vehicle|aerial]/yyyymm/`")
+    st.markdown("**Folder Structure:** Upload folder named `survey_yyyymm` → Bucket: `country_site/survey/survey_[type]/yyyymm/`")
     
     st.info("""
     💡 **Upload Process:**
-    1. Create local folder named `survey_yyyymm` (e.g., `survey_202508`)
-    2. Images will be uploaded to cloud bucket `country_site` 
-    3. Final path: `country_site/survey/survey_yyyymm/`
+    1. Select survey type: **Vehicle** or **Aerial**
+    2. Create local folder named `survey_yyyymm` (e.g., `survey_202508`)
+    3. Images will be uploaded to: `country_site/survey/survey_[type]/yyyymm/`
     4. Images renamed: `country_site_initials_yyyymmdd_original`
+    
+    **Examples:**
+    - Vehicle survey: `namibia_etosha/survey/survey_vehicle/202402/`
+    - Aerial survey: `kenya_samburu/survey/survey_aerial/202408/`
     """)
+    
+    # Survey type selector
+    st.subheader("📋 Survey Configuration")
+    survey_type = st.selectbox(
+        "Select Survey Type:",
+        ["survey_vehicle", "survey_aerial"],
+        help="Choose whether this is a vehicle-based or aerial survey"
+    )
+    
+    st.success(f"✅ Selected: **{survey_type.replace('_', ' ').title()}**")
+    st.info(f"Images will be uploaded to: `country_site/survey/{survey_type}/yyyymm/`")
     
     try:
         # Import the image management system (same backend, different UI)
@@ -451,8 +466,8 @@ elif tool_choice == "🔍 Upload survey images":
                         flags=re.MULTILINE | re.DOTALL
                     )
                     
-                    # Add survey mode flag to the app
-                    survey_mode_code = "SURVEY_MODE = True\n" + cleaned_code
+                    # Add survey mode flag and type to the app
+                    survey_mode_code = f"SURVEY_MODE = True\nSURVEY_TYPE = '{survey_type}'\n" + cleaned_code
                     exec(survey_mode_code)
                 else:
                     st.error("❌ Upload survey images app.py not found!")
