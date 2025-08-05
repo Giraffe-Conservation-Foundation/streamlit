@@ -568,7 +568,6 @@ elif tool_choice == "🌍 EarthRanger Integration":
 #st.sidebar.markdown("### 📊 System Info")
 #st.sidebar.success("🟢 All systems operational")
 st.sidebar.markdown("---")
-st.sidebar.info("🔄 Last updated: August 2025")
 st.sidebar.markdown("Giraffe Conservation Foundation")
 # st.sidebar.markdown("*Twiga Tools tech platform*")
 st.sidebar.markdown("[GitHub Repository](https://github.com/Giraffe-Conservation-Foundation/streamlit)")

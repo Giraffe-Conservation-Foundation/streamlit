@@ -659,6 +659,75 @@ def image_processing():
         
         st.info(f"📊 Total images to process: {len(all_images)}")
         
+        # First, analyze all images to determine folder structure based on EXIF dates
+        st.info("📅 **Analyzing image dates to determine folder structure...**")
+        
+        image_months = {}  # Dictionary to group images by YYYYMM
+        images_without_exif = []
+        
+        # Analyze each image for EXIF date
+        for img_file in all_images:
+            try:
+                # Get image data
+                if hasattr(img_file, '_data'):
+                    image_data = img_file._data
+                else:
+                    image_data = img_file.getvalue()
+                
+                # Extract image metadata to get EXIF date
+                img_metadata = get_image_metadata(image_data)
+                
+                if 'datetime_original' in img_metadata:
+                    # Use EXIF date
+                    img_date = img_metadata['datetime_original']
+                    month_key = f"{img_date.year}{img_date.month:02d}"
+                else:
+                    # No EXIF date, will use fallback date
+                    images_without_exif.append(img_file.name)
+                    fallback_date = st.session_state.metadata['survey_date']
+                    month_key = f"{fallback_date.year}{fallback_date.month:02d}"
+                
+                # Group images by month
+                if month_key not in image_months:
+                    image_months[month_key] = []
+                image_months[month_key].append(img_file)
+                
+            except Exception as e:
+                st.warning(f"⚠️ Error analyzing {img_file.name}: {str(e)}")
+                # Add to fallback month
+                fallback_date = st.session_state.metadata['survey_date']
+                month_key = f"{fallback_date.year}{fallback_date.month:02d}"
+                if month_key not in image_months:
+                    image_months[month_key] = []
+                image_months[month_key].append(img_file)
+        
+        # Display analysis results
+        total_months = len(image_months)
+        if total_months > 1:
+            st.success(f"📅 **Multiple months detected!** Images will be organized into {total_months} folders:")
+            for month_key in sorted(image_months.keys()):
+                count = len(image_months[month_key])
+                year = month_key[:4]
+                month = month_key[4:6]
+                month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                st.info(f"📁 **{month_key}** ({month_name} {year}): {count} images")
+        else:
+            month_key = list(image_months.keys())[0]
+            year = month_key[:4]
+            month = month_key[4:6]
+            month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+            st.success(f"📅 **Single month detected:** {month_key} ({month_name} {year}) with {len(all_images)} images")
+        
+        # Show EXIF analysis summary
+        if images_without_exif:
+            st.warning(f"⚠️ **{len(images_without_exif)} images without EXIF dates** will use fallback date:")
+            with st.expander("View images without EXIF dates"):
+                for img_name in images_without_exif:
+                    st.write(f"• {img_name}")
+        
+        # Store the month groupings in session state for later processing
+        st.session_state.image_months = image_months
+        
         # Process images using utility functions
         processed_images = []
         
@@ -667,69 +736,88 @@ def image_processing():
         camera = st.session_state.metadata.get('camera')
         photographer = st.session_state.metadata.get('photographer')
         
-        # Create preview using batch rename utility
-        preview_data = batch_rename_preview(
-            all_images,
-            st.session_state.metadata['country'],
-            st.session_state.metadata['site'],
-            st.session_state.metadata['survey_date'],
-            photographer,
-            station,
-            camera
-        )
+        # Process images for each month group
+        st.subheader("📋 Processing Results by Month")
         
-        # Process each image with size checking
-        oversized_files = []
-        
-        for idx, (uploaded_file, preview) in enumerate(zip(all_images, preview_data)):
-            # Read image data - handle both regular uploaded files and extracted ZIP files
-            try:
-                if hasattr(uploaded_file, '_data'):
-                    # This is a MockUploadedFile from ZIP extraction
-                    image_data = uploaded_file._data
-                else:
-                    # This is a regular uploaded file
-                    image_data = uploaded_file.getvalue()
-            except Exception as e:
-                st.error(f"❌ Error reading {uploaded_file.name}: {str(e)}")
-                continue
+        for month_key in sorted(image_months.keys()):
+            st.write(f"### 📁 Processing folder: {month_key}")
+            month_images = image_months[month_key]
             
-            # Check individual file size (50MB limit)
-            file_size_mb = len(image_data) / (1024 * 1024)
-            if file_size_mb > 50:
-                oversized_files.append(f"{uploaded_file.name} ({file_size_mb:.2f} MB)")
-                continue
+            # Create preview using batch rename utility for this month's images
+            # Create preview using batch rename utility for this month's images
+            preview_data = batch_rename_preview(
+                month_images,
+                st.session_state.metadata['country'],
+                st.session_state.metadata['site'],
+                st.session_state.metadata['survey_date'],
+                photographer,
+                station,
+                camera
+            )
             
-            # Validate image
-            is_valid, error_msg = validate_image_file(image_data)
-            if not is_valid:
-                st.error(f"❌ {uploaded_file.name}: {error_msg}")
-                continue
+            # Process each image in this month with size checking
+            month_processed_images = []
+            oversized_files = []
             
-            # Get image metadata (including EXIF)
-            img_metadata = get_image_metadata(image_data)
+            for idx, (uploaded_file, preview) in enumerate(zip(month_images, preview_data)):
+                # Read image data - handle both regular uploaded files and extracted ZIP files
+                try:
+                    if hasattr(uploaded_file, '_data'):
+                        # This is a MockUploadedFile from ZIP extraction
+                        image_data = uploaded_file._data
+                    else:
+                        # This is a regular uploaded file
+                        image_data = uploaded_file.getvalue()
+                except Exception as e:
+                    st.error(f"❌ Error reading {uploaded_file.name}: {str(e)}")
+                    continue
+                
+                # Check individual file size (50MB limit)
+                file_size_mb = len(image_data) / (1024 * 1024)
+                if file_size_mb > 50:
+                    oversized_files.append(f"{uploaded_file.name} ({file_size_mb:.2f} MB)")
+                    continue
+                
+                # Validate image
+                is_valid, error_msg = validate_image_file(image_data)
+                if not is_valid:
+                    st.error(f"❌ {uploaded_file.name}: {error_msg}")
+                    continue
+                
+                # Get image metadata (including EXIF)
+                img_metadata = get_image_metadata(image_data)
+                
+                # Compress if needed
+                compressed_data = compress_image_if_needed(image_data)
+                
+                month_processed_images.append({
+                    'original_name': uploaded_file.name,
+                    'new_filename': preview['new_name'],
+                    'data': compressed_data,
+                    'size': len(compressed_data),
+                    'original_size': len(image_data),
+                    'metadata': img_metadata,
+                    'compressed': len(compressed_data) < len(image_data),
+                    'date_source': preview.get('date_source', 'Survey Date'),
+                    'date_used': preview.get('date_used', 'Unknown'),
+                    'datetime_original': preview.get('datetime_original'),
+                    'month_folder': month_key  # Add month folder identifier
+                })
             
-            # Compress if needed
-            compressed_data = compress_image_if_needed(image_data)
+            # Add month's processed images to main list
+            processed_images.extend(month_processed_images)
             
-            processed_images.append({
-                'original_name': uploaded_file.name,
-                'new_filename': preview['new_name'],
-                'data': compressed_data,
-                'size': len(compressed_data),
-                'original_size': len(image_data),
-                'metadata': img_metadata,
-                'compressed': len(compressed_data) < len(image_data),
-                'date_source': preview.get('date_source', 'Survey Date'),
-                'date_used': preview.get('date_used', 'Unknown'),
-                'datetime_original': preview.get('datetime_original')
-            })
-        
-        # Show oversized files warning
-        if oversized_files:
-            st.warning(f"⚠️ **{len(oversized_files)} files skipped** (exceed 50MB limit):")
-            for file in oversized_files:
-                st.write(f"• {file}")
+            # Show oversized files warning for this month
+            if oversized_files:
+                st.warning(f"⚠️ **{len(oversized_files)} files skipped in {month_key}** (exceed 50MB limit):")
+                for file in oversized_files:
+                    st.write(f"• {file}")
+            
+            # Show summary for this month
+            if month_processed_images:
+                st.success(f"✅ **{month_key}**: {len(month_processed_images)} images processed successfully")
+            else:
+                st.warning(f"⚠️ **{month_key}**: No valid images to process")
         
         st.session_state.processed_images = processed_images
         
@@ -738,43 +826,101 @@ def image_processing():
             return False
         
         # Display processing results
-        st.subheader("📋 Processing Results")
+        st.subheader("📋 Processing Results Summary")
         
-        # Create a comprehensive DataFrame for display
-        df_data = []
-        exif_count = 0
-        survey_count = 0
-        
+        # Group results by month folder for display
+        months_summary = {}
         for img in processed_images:
-            # Count date sources
-            if img.get('date_source') == 'EXIF':
-                exif_count += 1
-            else:
-                survey_count += 1
-                
-            # Format datetime for display
-            datetime_str = "Not available"
-            if img.get('datetime_original'):
-                datetime_str = img['datetime_original'].strftime('%Y-%m-%d %H:%M:%S')
+            month_key = img.get('month_folder', 'unknown')
+            if month_key not in months_summary:
+                months_summary[month_key] = []
+            months_summary[month_key].append(img)
+        
+        # Show summary for each month folder
+        if len(months_summary) > 1:
+            st.info(f"📁 **Multiple folders will be created:** {len(months_summary)} different months detected")
             
-            df_data.append({
-                'Original Name': img['original_name'],
-                'New Name': img['new_filename'],
-                'Date Source': img.get('date_source', 'Survey Date'),
-                'Date Used': img.get('date_used', 'Unknown'),
-                'EXIF DateTime': datetime_str,
-                'Original Size (MB)': f"{img['original_size'] / (1024*1024):.2f}",
-                'Final Size (MB)': f"{img['size'] / (1024*1024):.2f}",
-                'Compressed': '✅' if img['compressed'] else '➖',
-                'Format': img['metadata'].get('format', 'Unknown'),
-                'Dimensions': f"{img['metadata'].get('width', '?')}x{img['metadata'].get('height', '?')}"
-            })
-        
-        df = pd.DataFrame(df_data)
-        st.dataframe(df, use_container_width=True)
-        
-        # Show date source summary
-        st.info(f"📅 **Date Sources**: {exif_count} images used EXIF date, {survey_count} used survey date")
+            for month_key in sorted(months_summary.keys()):
+                month_images = months_summary[month_key]
+                year = month_key[:4]
+                month = month_key[4:6]
+                month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                
+                with st.expander(f"📁 **{month_key}** ({month_name} {year}) - {len(month_images)} images", expanded=True):
+                    # Create DataFrame for this month
+                    df_data = []
+                    exif_count = 0
+                    survey_count = 0
+                    
+                    for img in month_images:
+                        # Count date sources
+                        if img.get('date_source') == 'EXIF':
+                            exif_count += 1
+                        else:
+                            survey_count += 1
+                            
+                        # Format datetime for display
+                        datetime_str = "Not available"
+                        if img.get('datetime_original'):
+                            datetime_str = img['datetime_original'].strftime('%Y-%m-%d %H:%M:%S')
+                        
+                        df_data.append({
+                            'Original Name': img['original_name'],
+                            'New Name': img['new_filename'],
+                            'Date Source': img.get('date_source', 'Survey Date'),
+                            'EXIF DateTime': datetime_str,
+                            'Final Size (MB)': f"{img['size'] / (1024*1024):.2f}",
+                            'Compressed': '✅' if img['compressed'] else '➖',
+                        })
+                    
+                    df = pd.DataFrame(df_data)
+                    st.dataframe(df, use_container_width=True)
+                    
+                    # Show date source summary for this month
+                    st.caption(f"📅 Date sources: {exif_count} EXIF, {survey_count} fallback")
+        else:
+            # Single month - show regular view
+            month_key = list(months_summary.keys())[0]
+            year = month_key[:4]
+            month = month_key[4:6]
+            month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+            st.success(f"📁 **Single folder:** {month_key} ({month_name} {year})")
+            
+            # Create a comprehensive DataFrame for display
+            df_data = []
+            exif_count = 0
+            survey_count = 0
+            
+            for img in processed_images:
+                # Count date sources  
+                if img.get('date_source') == 'EXIF':
+                    exif_count += 1
+                else:
+                    survey_count += 1
+                    
+                # Format datetime for display
+                datetime_str = "Not available"
+                if img.get('datetime_original'):
+                    datetime_str = img['datetime_original'].strftime('%Y-%m-%d %H:%M:%S')
+                
+                df_data.append({
+                    'Original Name': img['original_name'],
+                    'New Name': img['new_filename'],
+                    'Date Source': img.get('date_source', 'Survey Date'),
+                    'Date Used': img.get('date_used', 'Unknown'),
+                    'EXIF DateTime': datetime_str,
+                    'Original Size (MB)': f"{img['original_size'] / (1024*1024):.2f}",
+                    'Final Size (MB)': f"{img['size'] / (1024*1024):.2f}",
+                    'Compressed': '✅' if img['compressed'] else '➖',
+                    'Format': img['metadata'].get('format', 'Unknown'),
+                    'Dimensions': f"{img['metadata'].get('width', '?')}x{img['metadata'].get('height', '?')}"
+                })
+            
+            df = pd.DataFrame(df_data)
+            st.dataframe(df, use_container_width=True)
+            
+            # Show date source summary
+            st.info(f"📅 **Date Sources**: {exif_count} images used EXIF date, {survey_count} used survey date")
         
         # Show compression summary
         total_original = sum(img['original_size'] for img in processed_images)
@@ -792,7 +938,8 @@ def image_processing():
             with cols[idx]:
                 try:
                     pil_image = Image.open(io.BytesIO(img['data']))
-                    st.image(pil_image, caption=img['new_filename'], use_column_width=True)
+                    month_info = img.get('month_folder', 'unknown')
+                    st.image(pil_image, caption=f"{img['new_filename']} (→{month_info})", use_column_width=True)
                     
                     # Show image details
                     st.caption(f"📐 {img['metadata'].get('width')}x{img['metadata'].get('height')} px")
@@ -808,10 +955,11 @@ def image_processing():
         with col2:
             st.metric("Total Size", f"{total_final / (1024*1024):.2f} MB")
         with col3:
-            st.metric("Folder Name", folder_name)
+            folders_count = len(months_summary)
+            st.metric("Folders to Create", folders_count)
         
         # Add continue button
-        if folder_name and st.button("✅ Continue to Upload", type="primary"):
+        if len(months_summary) > 0 and st.button("✅ Continue to Upload", type="primary"):
             st.rerun()
         
         return True
