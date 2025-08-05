@@ -105,28 +105,10 @@ pip install -r requirements.txt
 
 ## 🔒 Security & Configuration
 
-### 🛡️ Security Best Practices
-
-**This is a PUBLIC repository** - please follow these security guidelines:
-
-- ✅ **Never commit credentials**: Service account keys, passwords, API tokens
-- ✅ **Use environment variables**: Store sensitive data in `.env` files (excluded by `.gitignore`)
-- ✅ **Template configuration**: Use placeholder values in config files
-- ✅ **Local secrets only**: Keep actual credentials on your local machine only
-
-### 🔧 Configuration Management
-
 - Each project may require different environment variables
+- Service account keys and sensitive data should never be committed
 - Use `.env` files for local development (already in `.gitignore`)
-- Replace placeholder values in `shared/config.py` with your actual settings locally
 - See individual project READMEs for specific security requirements
-
-### 📋 Before Going Live Checklist
-
-- [ ] All placeholder values replaced with environment variables
-- [ ] No hardcoded credentials in source code
-- [ ] Service account JSON files stored locally only
-- [ ] Production credentials stored in secure deployment environment
 
 ## 📞 Support
 

@@ -5,12 +5,20 @@ from datetime import datetime
 from ecoscope.io.earthranger import EarthRangerIO
 from pandas import json_normalize, to_datetime
 import requests
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Configuration - can be overridden by environment variables
+EARTHRANGER_SERVER = os.getenv('EARTHRANGER_SERVER', 'https://twiga.pamdas.org')
 
 #### ER AUTHENTICATION ###############################################
 def er_login(username, password):
     try:
         er = EarthRangerIO(
-            server="https://twiga.pamdas.org",
+            server=EARTHRANGER_SERVER,
             username=username,
             password=password
         )
