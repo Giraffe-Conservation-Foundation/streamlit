@@ -48,7 +48,7 @@ if not st.session_state["authenticated"]:
             st.session_state["username"] = username
             st.session_state["password"] = password
             st.success("Login successful!")
-            st.experimental_rerun()  # <--- Force rerun here!
+            st.rerun()  # Updated from deprecated st.experimental_rerun()
         else:
             st.error("Invalid credentials. Please try again.")
     st.stop()
