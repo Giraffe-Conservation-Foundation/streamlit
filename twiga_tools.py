@@ -71,7 +71,6 @@ st.sidebar.markdown("🚧 **EarthRanger** - In Development")
 
 # Main content area
 if tool_choice == "🏠 Dashboard Home":
-if tool_choice == "🏠 Dashboard Home":
     # Header with logo and title
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -215,7 +214,6 @@ if tool_choice == "🏠 Dashboard Home":
         - Keep your access tokens secure
         """)
 
-elif tool_choice == "🆔 Wildbook ID Generator":
 elif tool_choice == "🆔 Wildbook ID Generator":
     st.title("🆔 Wildbook ID Generator")
     st.markdown("*Individual Giraffe Identification System*")
