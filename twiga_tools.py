@@ -64,10 +64,10 @@ tool_choice = st.sidebar.selectbox(
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📋 Tool Status")
-st.sidebar.markdown("✅ **Create an ID book** - Active")
-st.sidebar.markdown("✅ **NANW Dashboard** - Active") 
-st.sidebar.markdown("✅ **Image Management** - Active")
-st.sidebar.markdown("🚧 **EarthRanger** - In Development")
+st.sidebar.markdown("✅ **Create an ID book** - active")
+st.sidebar.markdown("✅ **NANW Dashboard** - active") 
+st.sidebar.markdown("✅ **Image Management** - active")
+st.sidebar.markdown("🚧 **Giraffe life history** - in development")
 
 # Main content area
 if tool_choice == "🏠 Home":

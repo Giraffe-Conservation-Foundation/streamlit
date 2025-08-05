@@ -364,12 +364,21 @@ def create_summary_page(grouped_annotations, location_id="Unknown Location"):
     # Try to load and use background image
     background_image_path = None
     
-    # Look for background image files in the current directory (works for both local and deployed)
-    for ext in ['png', 'jpg', 'jpeg']:
-        for name in ['GCF_background_logo', 'logo', 'background', 'cover', 'title_background']:
-            test_path = f"{name}.{ext}"
-            if os.path.exists(test_path):
-                background_image_path = test_path
+    # Look for background image files in multiple locations
+    search_paths = [
+        ".",  # Current directory (wildbook_id_generator)
+        "..",  # Parent directory (main folder)
+        os.path.join("..", "shared"),  # Shared folder
+    ]
+    
+    for search_dir in search_paths:
+        for ext in ['png', 'jpg', 'jpeg']:
+            for name in ['GCF_background_logo', 'logo', 'background', 'cover', 'title_background']:
+                test_path = os.path.join(search_dir, f"{name}.{ext}")
+                if os.path.exists(test_path):
+                    background_image_path = test_path
+                    break
+            if background_image_path:
                 break
         if background_image_path:
             break
@@ -433,8 +442,8 @@ st.markdown("Generate photo identification books from Wildbook annotation export
 st.markdown("""
 ### How to use:
 
-1. **Export from Wildbook**: 
-   - Go to Wildbook → Search → Encounter Search
+1. **Export data from Wildbook**: 
+   - Go to GiraffeSpotter → Search → Encounter Search
    - Set your filters and search
    - Go to Export tab → Click "Encounter Annotation Export"
 
