@@ -145,11 +145,11 @@ if tool_choice == "🏠 Home":
             <div class="tool-card">
                 <h3>🔍 Upload survey images</h3>
                 <p><strong>Status:</strong> ✅ Production Ready</p>
-                <p>Upload survey images with standardized naming and organization. Images are renamed as country_site_initials_yyyymmdd_original and organized by survey date.</p>
+                <p>Upload survey images with standardized naming and organization. Images are renamed as country_site_initials_yyyymmdd_original. Upload folder named survey_yyyymm to bucket country_site/survey/.</p>
                 <ul>
                     <li>Survey specific naming</li>
                     <li>Researcher initial tracking</li>
-                    <li>Monthly organization</li>
+                    <li>Monthly folder organization</li>
                     <li>Cloud storage integration</li>
                 </ul>
             </div>
@@ -404,6 +404,15 @@ elif tool_choice == "🔍 Upload survey images":
     st.markdown("*Survey Image Processing & Cloud Storage*")
     st.markdown("**Naming Format:** `country_site_initials_yyyymmdd_original`")
     st.markdown("**Storage Path:** `country_site/survey/survey_yyyymm/`")
+    st.markdown("**Folder Structure:** Upload folder named `survey_yyyymm` → Bucket: `country_site` → Subfolder: `survey/`")
+    
+    st.info("""
+    💡 **Upload Process:**
+    1. Create local folder named `survey_yyyymm` (e.g., `survey_202508`)
+    2. Images will be uploaded to cloud bucket `country_site` 
+    3. Final path: `country_site/survey/survey_yyyymm/`
+    4. Images renamed: `country_site_initials_yyyymmdd_original`
+    """)
     
     try:
         # Import the image management system (same backend, different UI)
