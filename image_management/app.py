@@ -419,7 +419,6 @@ def site_selection():
                 st.write(f"**Site:** {selected_site}")
                 st.write(f"**Station:** {station.strip().upper()}")
                 st.write(f"**Camera:** {camera.strip().upper()}")
-                st.write(f"**Period:** {current_year}/{current_month:02d} (current month)")
                 
                 # Manual continue button - only when user clicks
                 st.info("👆 Please review your selections above, then click the button below to continue.")
@@ -1057,8 +1056,10 @@ def upload_to_gcs():
         camera_type = st.session_state.get('camera_type', 'camera_fence')
         
         if camera_trap_mode:
-            # Camera trap mode: bucket/camera_trap/camera_[type]/yyyymm/
-            survey_path = f"camera_trap/{camera_type}/{folder_name}/"
+            # Camera trap mode with station subfolders: bucket/camera_trap/camera_[type]/yyyymm/station/camera/
+            station = st.session_state.metadata.get('station', 'UNKNOWN').upper()
+            camera = st.session_state.metadata.get('camera', 'UNKNOWN').upper()
+            survey_path = f"camera_trap/{camera_type}/{folder_name}/{station}/{camera}/"
             st.info(f"📷 **Camera Trap Mode:** {camera_type.replace('_', ' ').title()}")
             st.info(f"📂 Upload folder structure: `{survey_path}`")
             st.caption(f"Final path: bucket/{survey_path}")
@@ -1150,8 +1151,10 @@ def upload_to_gcs():
                         # Survey mode: bucket/survey/survey_[type]/yyyymm/
                         img_folder_path = f"survey/{survey_type}/{img_month}/"
                     elif camera_trap_mode:
-                        # Camera trap mode: bucket/camera_trap/camera_[type]/yyyymm/
-                        img_folder_path = f"camera_trap/{camera_type}/{img_month}/"
+                        # Camera trap mode with station subfolders: bucket/camera_trap/camera_[type]/yyyymm/station/camera/
+                        station = st.session_state.metadata.get('station', 'UNKNOWN').upper()
+                        camera = st.session_state.metadata.get('camera', 'UNKNOWN').upper()
+                        img_folder_path = f"camera_trap/{camera_type}/{img_month}/{station}/{camera}/"
                     else:
                         # Legacy mode: bucket/COUNTRY_SITE_yyyymm/
                         legacy_folder = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{img_month}"

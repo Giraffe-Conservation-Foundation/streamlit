@@ -109,12 +109,13 @@ if tool_choice == "🏠 Home":
             <div class="tool-card">
                 <h3>� Upload camera trap images</h3>
                 <p><strong>Status:</strong> ✅ Production Ready</p>
-                <p>Upload camera trap images with automated naming and organization. Images are renamed as country_site_station_camera_yyyymmdd_originalname and organized by camera type and date.</p>
+                <p>Upload camera trap images with automated naming and organization. Images are renamed as country_site_station_camera_yyyymmdd_originalname and organized by camera type, date, station, and camera subfolders.</p>
                 <ul>
                     <li>Camera trap specific naming</li>
                     <li>Station and camera metadata</li>
                     <li>Fence/grid/water organization</li>
-                    <li>Date-based folder structure</li>
+                    <li>Station/camera subfolder structure</li>
+                    <li>Date-based folder organization</li>
                     <li>No year/month/initials selection needed</li>
                 </ul>
             </div>
@@ -338,7 +339,7 @@ elif tool_choice == "� Upload camera trap images":
     st.title("� Upload camera trap images")
     st.markdown("*Camera Trap Image Processing & Cloud Storage*")
     st.markdown("**Naming Format:** `country_site_station_camera_yyyymmdd_originalname`")
-    st.markdown("**Storage Path:** `country_site/camera_trap/camera_[fence|grid|water]/yyyymm/`")
+    st.markdown("**Storage Path:** `country_site/camera_trap/camera_[fence|grid|water]/yyyymm/station/camera/`")
     
     # Camera trap type selector
     st.subheader("📋 Camera Trap Configuration")
@@ -349,19 +350,23 @@ elif tool_choice == "� Upload camera trap images":
     )
     
     st.success(f"✅ Selected: **{camera_type.replace('_', ' ').title()}**")
-    st.info(f"Images will be uploaded to: `country_site/camera_trap/{camera_type}/yyyymm/`")
+    st.info(f"Images will be uploaded to: `country_site/camera_trap/{camera_type}/yyyymm/station/camera/`")
     
     st.info("""
     💡 **Camera Trap Process:**
     1. Select camera trap type: **Fence**, **Grid**, or **Water**
     2. Select country and site from your bucket access
     3. Enter **Station ID** and **Camera ID** (no year/month/initials needed)
-    4. Images automatically use current month for folder organization
+    4. Images automatically organized by station and camera subfolders
     5. Images renamed: `country_site_station_camera_yyyymmdd_original`
     
-    **Examples:**
-    - Fence camera: `namibia_etosha_ST01_CAM02_20250805_IMG001.jpg`
-    - Water camera: `kenya_samburu_W03_A_20250805_DSC123.jpg`
+    **Folder Structure Examples:**
+    - Fence camera: `namibia_etosha/camera_trap/camera_fence/202508/ST01/CAM02/`
+    - Water camera: `kenya_samburu/camera_trap/camera_water/202508/W03/A/`
+    
+    **File Examples:**
+    - `namibia_etosha_ST01_CAM02_20250805_IMG001.jpg`
+    - `kenya_samburu_W03_A_20250805_DSC123.jpg`
     """)
     
     try:
