@@ -9,11 +9,12 @@ from datetime import datetime
 import tempfile
 import shutil
 
-st.set_page_config(
-    page_title="GiraffeSpotter ID book generator",
-#    page_icon="📚",
-    layout="wide"
-)
+# Note: set_page_config is handled by the main Twiga Tools app
+# st.set_page_config(
+#     page_title="GiraffeSpotter ID book generator",
+#     page_icon="📚",
+#     layout="wide"
+# )
 
 # --- CONSTANTS ---
 VIEWPOINT_PREFERENCE = ['left', 'right']  # Only left and right

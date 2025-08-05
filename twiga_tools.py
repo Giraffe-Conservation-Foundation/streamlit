@@ -222,23 +222,51 @@ elif tool_choice == "🆔 Wildbook ID Generator":
         # Import and run the wildbook app
         wildbook_path = current_dir / "wildbook_id_generator"
         if wildbook_path.exists():
-            sys.path.insert(0, str(wildbook_path))
+            # Store original working directory
+            original_dir = os.getcwd()
             
-            # Load environment variables if available
             try:
-                from dotenv import load_dotenv
-                load_dotenv()
-            except ImportError:
-                pass  # dotenv not required for this tool
-            
-            # Execute the wildbook app with proper encoding
-            app_file = wildbook_path / "app.py"
-            if app_file.exists():
+                sys.path.insert(0, str(wildbook_path))
+                
+                # Load environment variables if available
+                try:
+                    from dotenv import load_dotenv
+                    load_dotenv()
+                except ImportError:
+                    pass  # dotenv not required for this tool
+                
+                # Change to the app directory
                 os.chdir(wildbook_path)
-                with open("app.py", "r", encoding="utf-8") as f:
-                    exec(f.read())
-            else:
-                st.error("❌ Wildbook app.py not found!")
+                
+                # Execute the wildbook app with proper encoding
+                app_file = wildbook_path / "app.py"
+                if app_file.exists():
+                    # Read and execute the app code
+                    with open("app.py", "r", encoding="utf-8") as f:
+                        app_code = f.read()
+                        
+                    # Remove any remaining set_page_config calls from the code
+                    lines = app_code.split('\n')
+                    filtered_lines = []
+                    skip_config = False
+                    
+                    for line in lines:
+                        if 'st.set_page_config(' in line:
+                            skip_config = True
+                            continue
+                        elif skip_config and ')' in line and not line.strip().startswith('#'):
+                            skip_config = False
+                            continue
+                        elif not skip_config:
+                            filtered_lines.append(line)
+                    
+                    cleaned_code = '\n'.join(filtered_lines)
+                    exec(cleaned_code)
+                else:
+                    st.error("❌ Wildbook app.py not found!")
+            finally:
+                # Always restore original directory
+                os.chdir(original_dir)
         else:
             st.error("❌ Wildbook ID Generator not found!")
             st.info("Please ensure the wildbook_id_generator/app.py file exists.")
@@ -254,24 +282,51 @@ elif tool_choice == "📊 NANW Event Dashboard":
         # Import the NANW dashboard
         nanw_path = current_dir / "nanw_dashboard"
         if nanw_path.exists():
-            sys.path.insert(0, str(nanw_path))
+            # Store original working directory
+            original_dir = os.getcwd()
             
-            # Load environment variables if available
             try:
-                from dotenv import load_dotenv
-                load_dotenv()
-            except ImportError:
-                st.warning("⚠️ python-dotenv not installed. Environment variables from .env file won't be loaded.")
-                st.info("Install with: `pip install python-dotenv`")
-            
-            # Execute the NANW dashboard app with proper encoding
-            app_file = nanw_path / "app.py"
-            if app_file.exists():
+                sys.path.insert(0, str(nanw_path))
+                
+                # Load environment variables if available
+                try:
+                    from dotenv import load_dotenv
+                    load_dotenv()
+                except ImportError:
+                    st.warning("⚠️ python-dotenv not installed. Environment variables from .env file won't be loaded.")
+                    st.info("Install with: `pip install python-dotenv`")
+                
+                # Change to the app directory  
                 os.chdir(nanw_path)
-                with open("app.py", "r", encoding="utf-8") as f:
-                    exec(f.read())
-            else:
-                st.error("❌ NANW app.py not found!")
+                
+                # Execute the NANW dashboard app with proper encoding
+                app_file = nanw_path / "app.py"
+                if app_file.exists():
+                    with open("app.py", "r", encoding="utf-8") as f:
+                        app_code = f.read()
+                        
+                    # Remove any set_page_config calls
+                    lines = app_code.split('\n')
+                    filtered_lines = []
+                    skip_config = False
+                    
+                    for line in lines:
+                        if 'st.set_page_config(' in line:
+                            skip_config = True
+                            continue
+                        elif skip_config and ')' in line and not line.strip().startswith('#'):
+                            skip_config = False
+                            continue
+                        elif not skip_config:
+                            filtered_lines.append(line)
+                    
+                    cleaned_code = '\n'.join(filtered_lines)
+                    exec(cleaned_code)
+                else:
+                    st.error("❌ NANW app.py not found!")
+            finally:
+                # Always restore original directory
+                os.chdir(original_dir)
         else:
             st.error("❌ NANW Dashboard not found!")
             st.info("Please ensure the nanw_dashboard/app.py file exists.")
@@ -290,24 +345,51 @@ elif tool_choice == "📸 Image Management System":
         # Import the image management system
         image_path = current_dir / "image_management"
         if image_path.exists():
-            sys.path.insert(0, str(image_path))
+            # Store original working directory
+            original_dir = os.getcwd()
             
-            # Load environment variables if available
             try:
-                from dotenv import load_dotenv
-                load_dotenv()
-            except ImportError:
-                st.warning("⚠️ python-dotenv not installed. Environment variables from .env file won't be loaded.")
-                st.info("Install with: `pip install python-dotenv`")
-            
-            # Execute the image management app with proper encoding
-            app_file = image_path / "app.py"
-            if app_file.exists():
+                sys.path.insert(0, str(image_path))
+                
+                # Load environment variables if available
+                try:
+                    from dotenv import load_dotenv
+                    load_dotenv()
+                except ImportError:
+                    st.warning("⚠️ python-dotenv not installed. Environment variables from .env file won't be loaded.")
+                    st.info("Install with: `pip install python-dotenv`")
+                
+                # Change to the app directory
                 os.chdir(image_path)
-                with open("app.py", "r", encoding="utf-8") as f:
-                    exec(f.read())
-            else:
-                st.error("❌ Image Management app.py not found!")
+                
+                # Execute the image management app with proper encoding
+                app_file = image_path / "app.py"
+                if app_file.exists():
+                    with open("app.py", "r", encoding="utf-8") as f:
+                        app_code = f.read()
+                        
+                    # Remove any set_page_config calls
+                    lines = app_code.split('\n')
+                    filtered_lines = []
+                    skip_config = False
+                    
+                    for line in lines:
+                        if 'st.set_page_config(' in line:
+                            skip_config = True
+                            continue
+                        elif skip_config and ')' in line and not line.strip().startswith('#'):
+                            skip_config = False
+                            continue
+                        elif not skip_config:
+                            filtered_lines.append(line)
+                    
+                    cleaned_code = '\n'.join(filtered_lines)
+                    exec(cleaned_code)
+                else:
+                    st.error("❌ Image Management app.py not found!")
+            finally:
+                # Always restore original directory
+                os.chdir(original_dir)
         else:
             st.error("❌ Image Management System not found!")
             st.info("Please ensure the image_management/app.py file exists.")

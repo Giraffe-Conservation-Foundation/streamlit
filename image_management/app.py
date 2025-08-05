@@ -20,13 +20,13 @@ from utils import (
     batch_rename_preview
 )
 
-# Page configuration
-st.set_page_config(
-    page_title="Giraffe Image Management System",
-    page_icon="🦒",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Page configuration - handled by main Twiga Tools app
+# st.set_page_config(
+#     page_title="Giraffe Image Management System",
+#     page_icon="🦒",
+#     layout="wide",
+#     initial_sidebar_state="expanded"
+# )
 
 # Custom CSS for better styling (minimal - no forced backgrounds)
 st.markdown("""
