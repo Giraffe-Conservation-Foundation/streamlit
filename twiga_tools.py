@@ -426,22 +426,7 @@ elif tool_choice == "� Upload camera trap images":
 
 elif tool_choice == "🔍 Upload survey images":
     st.title("🔍 Upload survey images")
-    st.markdown("*Survey Image Processing & Cloud Storage*")
-    st.markdown("**Naming Format:** `country_site_initials_yyyymmdd_original`")
-    st.markdown("**Storage Path:** `country_site/survey/survey_[vehicle|aerial]/yyyymm/`")
-    st.markdown("**Folder Structure:** Upload folder named `survey_yyyymm` → Bucket: `country_site/survey/survey_[type]/yyyymm/`")
-    
-    st.info("""
-    💡 **Upload Process:**
-    1. Select survey type: **Vehicle** or **Aerial**
-    2. Create local folder named `survey_yyyymm` (e.g., `survey_202508`)
-    3. Images will be uploaded to: `country_site/survey/survey_[type]/yyyymm/`
-    4. Images renamed: `country_site_initials_yyyymmdd_original`
-    
-    **Examples:**
-    - Vehicle survey: `namibia_etosha/survey/survey_vehicle/202402/`
-    - Aerial survey: `kenya_samburu/survey/survey_aerial/202408/`
-    """)
+    st.markdown("*Process and upload giraffe survey images to Google Cloud storage*")
     
     # Survey type selector
     st.subheader("📋 Survey Configuration")
@@ -450,9 +435,6 @@ elif tool_choice == "🔍 Upload survey images":
         ["survey_vehicle", "survey_aerial"],
         help="Choose whether this is a vehicle-based or aerial survey"
     )
-    
-    st.success(f"✅ Selected: **{survey_type.replace('_', ' ').title()}**")
-    st.info(f"Images will be uploaded to: `country_site/survey/{survey_type}/yyyymm/`")
     
     try:
         # Import the image management system (same backend, different UI)
@@ -511,7 +493,7 @@ elif tool_choice == "🔍 Upload survey images":
 
 elif tool_choice == "🌍 EarthRanger Integration":
     st.title("🌍 EarthRanger Integration")
-    st.markdown("*Wildlife Tracking & Conservation Platform Integration*")
+    #st.markdown("*Wildlife Tracking & Conservation Platform Integration*")
     
     st.info("🚧 This tool is currently in development.")
     
@@ -521,48 +503,20 @@ elif tool_choice == "🌍 EarthRanger Integration":
         st.markdown("""
         ### 🎯 Planned Features
         
-        **Wildlife Tracking**
-        - Real-time animal location monitoring
-        - Movement pattern analysis
-        - Migration route tracking
-        - Habitat usage visualization
+        **Giraffe life history**
+        - all events (sightings, snares, immobilisations)
+        - home range calculation
+        - habitat use visualization
         
-        **Conservation Area Monitoring**
-        - Patrol route optimization
-        - Ranger activity tracking
-        - Conservation area coverage analysis
-        - Incident reporting and mapping
+        **survey monitoring**
+        - patrol route visualization
         
-        **Alert Management**
-        - Security alert notifications
-        - Wildlife emergency responses
-        - Automated threat detection
-        - Multi-channel alert distribution
-        
-        **Data Integration**
-        - EarthRanger API connectivity
-        - Real-time data synchronization
-        - Historical data analysis
-        - Cross-platform data sharing
+        **Source (unit) checks**
+        - performance before deployment
+                    
         """)
     
-    with col2:
-        st.info("""
-        **🔔 Development Status**
-        
-        ✅ API research completed
-        ⏳ Authentication system
-        ⏳ Data visualization
-        ⏳ Alert management
-        ⏳ User interface design
-        ⏳ Testing & validation
-        
-        **📅 Expected Release**
-        Q4 2025
-        
-        **🤝 Get Updates**
-        Contact the GCF tech team for progress updates and beta testing opportunities.
-        """)
+   
     
     st.markdown("---")
     st.markdown("### 📞 Contact Information")

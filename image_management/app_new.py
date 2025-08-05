@@ -93,12 +93,10 @@ def authenticate_google_cloud():
                 st.session_state.authenticated = True
                 st.session_state.storage_client = storage_client
                 
-                # Display available buckets
+                # Store available buckets
                 if buckets:
                     bucket_names = [bucket.name for bucket in buckets]
                     st.session_state.available_buckets = bucket_names
-                    st.info(f"Found {len(buckets)} bucket(s) in your project")
-                    st.write("Available buckets:", bucket_names)
                 
                 # Add a button to proceed to next step
                 if st.button("✅ Continue to Site Selection", type="primary"):
@@ -132,7 +130,6 @@ def site_selection():
     
     if selected_site and selected_site != "Custom Site":
         st.session_state.selected_site = selected_site
-        st.success(f"✅ Selected site: {selected_site}")
         
         # Additional metadata collection
         col1, col2 = st.columns(2)
@@ -233,10 +230,6 @@ def image_processing():
         st.session_state.folder_name = folder_name
         st.session_state.uploaded_files = uploaded_files
         
-        # Display upload summary
-        st.success(f"📁 **{len(uploaded_files)} files uploaded** from folder: `{folder_name}`")
-        st.info(f"📊 Total size: {total_size_mb:.2f} MB")
-        
         # Process images using utility functions
         processed_images = []
         
@@ -314,40 +307,6 @@ def image_processing():
         df = pd.DataFrame(df_data)
         st.dataframe(df, use_container_width=True)
         
-        # Show compression summary
-        total_original = sum(img['original_size'] for img in processed_images)
-        total_final = sum(img['size'] for img in processed_images)
-        compression_saved = total_original - total_final
-        
-        if compression_saved > 0:
-            st.success(f"💾 Space saved through compression: {compression_saved / (1024*1024):.2f} MB")
-        
-        # Preview some images
-        st.subheader("🖼️ Image Preview")
-        cols = st.columns(min(3, len(processed_images)))
-        
-        for idx, img in enumerate(processed_images[:3]):  # Show first 3 images
-            with cols[idx]:
-                try:
-                    pil_image = Image.open(io.BytesIO(img['data']))
-                    st.image(pil_image, caption=img['new_filename'], use_column_width=True)
-                    
-                    # Show image details
-                    st.caption(f"📐 {img['metadata'].get('width')}x{img['metadata'].get('height')} px")
-                    st.caption(f"📄 {img['metadata'].get('format')} format")
-                    
-                except Exception as e:
-                    st.error(f"Error displaying {img['original_name']}: {str(e)}")
-        
-        # Show total statistics
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Processed Images", len(processed_images))
-        with col2:
-            st.metric("Total Size", f"{total_final / (1024*1024):.2f} MB")
-        with col3:
-            st.metric("Folder Name", folder_name)
-        
         # Add continue button
         if folder_name and st.button("✅ Continue to Upload", type="primary"):
             st.rerun()
@@ -369,7 +328,6 @@ def upload_to_gcs():
         return
     
     # Bucket selection dropdown from authenticated buckets
-    st.subheader("🪣 Bucket Selection")
     bucket_name = st.selectbox(
         "Select Google Cloud Storage Bucket:",
         options=st.session_state.available_buckets,
@@ -378,15 +336,11 @@ def upload_to_gcs():
     
     # Folder path is same as uploaded folder name
     folder_name = st.session_state.folder_name
-    st.subheader("📁 Folder Configuration")
-    st.info(f"📂 Upload folder: `{folder_name}`")
-    st.caption("Images will be uploaded to this folder in your selected bucket")
     
     # Display folder path that will be created
     folder_path = f"{folder_name}/"
     
     # Additional upload options (removed overwrite option)
-    st.subheader("Upload Options")
     col1, col2 = st.columns(2)
     
     with col1:
@@ -404,17 +358,28 @@ def upload_to_gcs():
         st.info(f"📂 Final upload path: `{folder_path}`")
     
     # Display upload summary
-    st.subheader("📊 Upload Summary")
     total_files = len(st.session_state.processed_images)
     total_size = sum(img['size'] for img in st.session_state.processed_images)
     
-    col1, col2, col3 = st.columns(3)
+    # Review Section
+    st.subheader("📋 Review Configuration")
+    
+    # Display configuration in organized columns
+    col1, col2 = st.columns(2)
+    
     with col1:
-        st.metric("Files to Upload", total_files)
+        st.write("**Site & Survey Details:**")
+        st.write(f"• Site: {st.session_state.metadata['site']}")
+        st.write(f"• Survey Period: {st.session_state.metadata['survey_year']}/{st.session_state.metadata['survey_month']:02d}")
+        if st.session_state.metadata.get('photographer'):
+            st.write(f"• Photographer: {st.session_state.metadata['photographer']}")
+    
     with col2:
-        st.metric("Total Size", f"{total_size / (1024*1024):.2f} MB")
-    with col3:
-        st.metric("Target Bucket", bucket_name)
+        st.write("**Upload Details:**")
+        st.write(f"• Bucket: {bucket_name}")
+        st.write(f"• Folder: {folder_path}")
+        st.write(f"• Files: {total_files} images")
+        st.write(f"• Total Size: {total_size / (1024*1024):.2f} MB")
     
     # Show warning about no overwrite
     st.warning("⚠️ **No Overwrite Policy**: Files will be skipped if they already exist in the bucket")

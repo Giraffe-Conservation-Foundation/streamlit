@@ -181,58 +181,17 @@ def authenticate_google_cloud():
                 if buckets:
                     bucket_names = [bucket.name for bucket in buckets]
                     st.session_state.available_buckets = bucket_names
-                    st.info(f"Found {len(buckets)} bucket(s) in your project")
                     
                     # Extract country/site combinations from bucket names
                     countries_sites = extract_countries_sites_from_buckets(bucket_names)
                     
                     # Display extracted country/site information
                     if countries_sites:
-                        st.success(f"🌍 **Detected {sum(len(sites) for sites in countries_sites.values())} location(s) from your buckets:**")
+                        pass  # Countries/sites extracted successfully
                         
-                        # Show country/site combinations in a nice format
-                        col1, col2 = st.columns([1, 2])
-                        with col1:
-                            st.write("**Countries:**")
-                            for country in sorted(countries_sites.keys()):
-                                st.write(f"🏴 {country}")
-                        
-                        with col2:
-                            st.write("**Sites per country:**")
-                            for country in sorted(countries_sites.keys()):
-                                sites = ", ".join(countries_sites[country])
-                                st.write(f"**{country}:** {sites}")
-                        
-                        # Show bucket pattern info
-                        with st.expander("📋 View All Buckets & Pattern Matching", expanded=False):
-                            st.write("**All buckets detected:**")
-                            gcf_buckets = []
-                            other_buckets = []
-                            
-                            for bucket in bucket_names:
-                                if bucket.lower().startswith('gcf'):
-                                    gcf_buckets.append(bucket)
-                                else:
-                                    other_buckets.append(bucket)
-                            
-                            if gcf_buckets:
-                                st.write("**🎯 GCF Pattern Buckets (gcf_country_site):**")
-                                for bucket in gcf_buckets:
-                                    st.write(f"✅ `{bucket}`")
-                            
-                            if other_buckets:
-                                st.write("**🔧 Other Buckets:**")
-                                for bucket in other_buckets:
-                                    st.write(f"📦 `{bucket}`")
-                            
-                            st.caption("Only buckets following 'gcf_country_site' pattern are used for location extraction")
-                    
                     else:
                         st.warning("⚠️ **No GCF pattern buckets found!**")
                         st.info("Looking for buckets with pattern: `gcf_country_site` (e.g., 'gcf_ago_llnp', 'gcf_nam_ehgr')")
-                        st.write("**Available buckets:**")
-                        for bucket in bucket_names:
-                            st.write(f"📦 `{bucket}`")
                 
                 else:
                     st.warning("No buckets found in your project")
@@ -319,10 +278,6 @@ def site_selection():
         country_index = 0
         st.session_state.selected_country = available_countries[0]
     
-    # Display available locations info
-    total_locations = sum(len(sites) for sites in countries_sites.values())
-    st.success(f"🌍 **{len(available_countries)} countries, {total_locations} locations available** (from your bucket access)")
-    
     selected_country = st.selectbox(
         "Select the country:",
         options=available_countries,
@@ -358,16 +313,13 @@ def site_selection():
     
     if selected_country and selected_site:
         st.session_state.selected_site = selected_site
-        st.success(f"✅ Selected: {selected_country} - {selected_site}")
         
         # Show corresponding bucket that will be used
         expected_bucket = f"gcf_{selected_country.lower()}_{selected_site.lower()}"
         matching_buckets = [b for b in st.session_state.available_buckets 
                           if b.lower().replace('-', '_').replace('.', '_') == expected_bucket]
         
-        if matching_buckets:
-            st.info(f"📦 **Will use bucket:** `{matching_buckets[0]}`")
-        else:
+        if not matching_buckets:
             st.warning(f"⚠️ **No exact bucket match found** for pattern `{expected_bucket}`")
         
         # Check if we're in camera trap mode (passed from twiga_tools.py)
@@ -510,22 +462,6 @@ def image_processing():
         st.warning("Please select a site first!")
         return False
     
-    # Explanation of folder upload process
-    st.info("📁 **How to upload a folder of images:**")
-    st.write("""
-    **ZIP your image folder:**
-    1. Create a ZIP file containing all your images
-    2. Click "Browse files" below
-    3. Select your ZIP file
-    4. Click "Open"
-    
-    We'll automatically extract all images from the ZIP file.
-    """)
-    
-    st.info("📅 **Date Handling**: Images will be renamed using their EXIF DateTimeOriginal when available, otherwise the survey date will be used.")
-    
-    st.info("📂 **Folder Naming**: Upload folders will be automatically renamed to `COUNTRY_SITE_YYYYMM` format (e.g., `AGO_LLNP_202507`)")
-    
     # File upload for ZIP files only
     uploaded_files = st.file_uploader(
         "Upload ZIP file containing images",
@@ -571,9 +507,6 @@ def image_processing():
             st.session_state.camera_trap_mode = False
             st.session_state.camera_type = None
             
-            st.info(f"🔍 **Survey Mode Detected:** {survey_type.replace('_', ' ').title()}")
-            st.info(f"📁 **Upload Structure:** `bucket/survey/{survey_type}/{folder_name}/`")
-            
         elif camera_trap_mode:
             # For camera trap mode: just use yyyymm as folder name
             folder_name = f"{st.session_state.metadata['survey_year']}{st.session_state.metadata['survey_month']:02d}"
@@ -584,9 +517,6 @@ def image_processing():
             st.session_state.survey_type = None
             st.session_state.camera_trap_mode = True
             st.session_state.camera_type = camera_type
-            
-            st.info(f"📷 **Camera Trap Mode Detected:** {camera_type.replace('_', ' ').title()}")
-            st.info(f"📁 **Upload Structure:** `bucket/camera_trap/{camera_type}/{folder_name}/`")
             
         else:
             # Legacy mode: use country_site_yyyymm format (fallback)
@@ -600,7 +530,7 @@ def image_processing():
             st.session_state.camera_type = None
             
             st.info(f"� **Legacy Mode Detected**")
-            st.info(f"📁 **Upload Structure:** `bucket/{folder_name}/`")
+
         
         # Show folder name transformation
         if original_folder_name != folder_name:
@@ -612,9 +542,9 @@ def image_processing():
         st.session_state.uploaded_files = uploaded_files_list
         
         # Display upload summary
-        st.success(f"📁 **ZIP file uploaded:** `{uploaded_files.name}`")
-        st.success(f"📂 **Standardized folder name:** `{folder_name}`")
-        st.info(f"📊 File size: {total_size_mb:.2f} MB")
+
+
+
         
         # Extract images from ZIP file
         all_images = []
@@ -646,17 +576,13 @@ def image_processing():
                             except Exception as e:
                                 st.warning(f"⚠️ Could not extract {file_name} from ZIP: {str(e)}")
             
-            if zip_extracted:
-                st.success(f"📦 Extracted {len(all_images)} images from ZIP file")
-            else:
+            if not zip_extracted:
                 st.error("❌ No valid image files found in ZIP!")
                 return False
                 
         except Exception as e:
             st.error(f"❌ Error processing ZIP file {uploaded_files.name}: {str(e)}")
             return False
-        
-        st.info(f"📊 Total images to process: {len(all_images)}")
         
         # First, analyze all images to determine folder structure based on EXIF dates
         st.info("📅 **Analyzing image dates to determine folder structure...**")
@@ -1437,9 +1363,7 @@ def main():
                         # Display logo with transparency preserved
                         st.image(img, width=120)
                     with col2:
-                        st.markdown("""
-                        ### Image Management System
-                        """)
+                        pass  # Logo column, no additional content needed
                     
                     logo_displayed = True
                     
@@ -1448,9 +1372,7 @@ def main():
         
         # Fallback header without logo
         if not logo_displayed:
-            st.markdown("""
-            # 🦒 Image Management System
-            """)
+            pass  # No header needed when called from Twiga Tools
     
     
     # Sidebar navigation
