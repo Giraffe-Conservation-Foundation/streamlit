@@ -216,7 +216,6 @@ if tool_choice == "🏠 Home":
 
 elif tool_choice == "📖 Create an ID book":
     st.title("📖 Create an ID book")
-    st.markdown("*Individual Giraffe Identification System*")
     
     try:
         # Import and run the wildbook app

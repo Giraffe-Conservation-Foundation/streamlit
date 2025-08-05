@@ -426,8 +426,22 @@ def create_summary_page(grouped_annotations, location_id="Unknown Location"):
 
 # --- STREAMLIT APP ---
 
-st.title("GiraffeSpotter ID book generator")
+#st.title("GiraffeSpotter ID book generator")
 st.markdown("Generate photo identification books from Wildbook annotation exports")
+
+# How to use instructions - moved to top
+st.markdown("""
+### How to use:
+
+1. **Export from Wildbook**: 
+   - Go to Wildbook → Search → Encounter Search
+   - Set your filters and search
+   - Go to Export tab → Click "Encounter Annotation Export"
+
+2. **Upload the file**: Use the file uploader below
+
+3. **Generate**: Click "Generate ID Book" to create your photo identification book
+""")
 
 # Sidebar configuration
 st.sidebar.header("Configuration")
@@ -590,16 +604,3 @@ if uploaded_file:
 
 else:
     st.info("Please upload a Wildbook annotation export file to get started.")
-    
-    st.markdown("""
-    ### How to use:
-    
-    1. **Export from Wildbook**: 
-       - Go to Wildbook → Search → Encounter Search
-       - Set your filters and search
-       - Go to Export tab → Click "Encounter Annotation Export"
-    
-    2. **Upload the file**: Use the file uploader above
-    
-    3. **Generate**: Click "Generate ID Book" to create your photo identification book
-    """)
