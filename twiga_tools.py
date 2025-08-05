@@ -57,7 +57,7 @@ tool_choice = st.sidebar.selectbox(
         "🏠 Home",
         "📖 Create an ID book", 
         "📊 NANW Event Dashboard",
-        "📸 Image Management System",
+        "📸 Upload camera trap images to cloud",
         "🌍 EarthRanger Integration"
     ]
 )
@@ -66,7 +66,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### 📋 Tool Status")
 st.sidebar.markdown("✅ **Create an ID book** - active")
 st.sidebar.markdown("✅ **NANW Dashboard** - active") 
-st.sidebar.markdown("✅ **Image Management** - active")
+st.sidebar.markdown("✅ **Upload camera trap images** - active")
 st.sidebar.markdown("🚧 **Giraffe life history** - in development")
 
 # Main content area
@@ -75,7 +75,6 @@ if tool_choice == "🏠 Home":
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown('<h1 class="main-header">Twiga Tools</h1>', unsafe_allow_html=True)
-        st.markdown('<p style="text-align: center; font-size: 1.2rem; color: #666;">Giraffe Conservation Foundation Technology Platform</p>', unsafe_allow_html=True)
     
     st.markdown("---")
     
@@ -111,7 +110,7 @@ if tool_choice == "🏠 Home":
         with st.container():
             st.markdown("""
             <div class="tool-card">
-                <h3>📸 Image Management System</h3>
+                <h3>📸 Upload camera trap images to cloud</h3>
                 <p><strong>Status:</strong> ✅ Production Ready</p>
                 <p>Complete workflow for managing giraffe conservation images with Google Cloud Storage integration, automated processing, and standardized naming.</p>
                 <ul>
@@ -322,8 +321,8 @@ elif tool_choice == "📊 NANW Event Dashboard":
         else:
             st.info("Please check that all required dependencies are installed and EarthRanger credentials are configured.")
 
-elif tool_choice == "📸 Image Management System":
-    st.title("📸 Image Management System")
+elif tool_choice == "📸 Upload camera trap images to cloud":
+    st.title("📸 Upload camera trap images to cloud")
     st.markdown("*Giraffe Conservation Image Processing & Cloud Storage*")
     
     try:
@@ -369,10 +368,10 @@ elif tool_choice == "📸 Image Management System":
                 # Always restore original directory
                 os.chdir(original_dir)
         else:
-            st.error("❌ Image Management System not found!")
+            st.error("❌ Upload camera trap images to cloud not found!")
             st.info("Please ensure the image_management/app.py file exists.")
     except Exception as e:
-        st.error(f"❌ Error loading Image Management System: {e}")
+        st.error(f"❌ Error loading Upload camera trap images to cloud: {e}")
         if "dotenv" in str(e):
             st.info("💡 **Solution**: Install python-dotenv with: `pip install python-dotenv`")
         else:
