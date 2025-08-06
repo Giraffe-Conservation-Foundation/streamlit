@@ -17,28 +17,19 @@ sys.path.insert(0, str(shared_dir))
 
 st.title("📷 Camera Trap Upload")
 st.markdown("*Camera trap image processing and cloud storage*")
-#st.markdown("**Naming Format:** `country_site_station_camera_yyyymmdd_originalname`")
-#st.markdown("**Storage Path:** `country_site/camera_trap/camera_[fence|grid|water]/yyyymm/station/camera/`")
 
-st.markdown("""
+# Only show the process overview if user hasn't authenticated yet
+# This ensures it's only visible on the landing page (Step 1)
+if 'authenticated' not in st.session_state or not st.session_state.authenticated:
+    st.markdown("""
 💡 **Camera Trap Process:**
-1. Select camera trap type: **Fence**, **Grid**, or **Water**
-2. Select country and site from your Google Cloud bucket access
-3. Enter **Station ID** and **Camera ID** (one folder upload per camera)
-4. Images are auto renamed: `country_site_station_camera_yyyymmdd_original`
-5. Images are auto sorted into correct Google Cloud bucket
+1. Authenticate your Google Cloud access
+2. Select camera trap type: **Fence**, **Grid**, or **Water**
+3. Select country and site from your Google Cloud bucket access
+4. Enter **Station ID** and **Camera ID** (one folder upload per camera)
+5. Images are auto renamed: `country_site_station_camera_yyyymmdd_original`
+6. Images are auto sorted into correct Google Cloud bucket
 """)
-
-# Camera trap type selector
-st.subheader("📋 Camera Trap Configuration")
-camera_type = st.selectbox(
-    "Select camera trap type:",
-    ["camera_fence", "camera_grid", "camera_water"],
-    help="Choose the type of camera trap deployment"
-)
-
-#st.success(f"✅ Selected: **{camera_type.replace('_', ' ').title()}**")
-#st.info(f"Images will be uploaded to: `country_site/camera_trap/{camera_type}/yyyymm/station/camera/`")
 
 if image_dir.exists() and (image_dir / "app.py").exists():
     # Store original working directory
@@ -68,8 +59,8 @@ if image_dir.exists() and (image_dir / "app.py").exists():
             flags=re.MULTILINE | re.DOTALL
         )
         
-        # Add camera trap mode flag and type to the app
-        camera_mode_code = f"CAMERA_TRAP_MODE = True\nCAMERA_TYPE = '{camera_type}'\n" + cleaned_code
+        # Add camera trap mode flag to the app (type will be selected within the app)
+        camera_mode_code = f"CAMERA_TRAP_MODE = True\n" + cleaned_code
         exec(camera_mode_code)
         
     finally:
