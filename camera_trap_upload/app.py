@@ -217,18 +217,6 @@ def site_selection():
     """Handle site selection interface"""
     st.header("📍 Site Selection")
     
-    # Camera trap type selection
-    st.subheader("📋 Camera Trap Configuration")
-    camera_type = st.selectbox(
-        "Select camera trap type:",
-        ["camera_fence", "camera_grid", "camera_water"],
-        help="Choose the type of camera trap deployment"
-    )
-    
-    # Store camera type in session state
-    st.session_state.camera_type = camera_type
-    st.success(f"✅ Selected: **{camera_type.replace('_', ' ').title()}**")
-    
     # Get countries/sites from session state instead of global variable
     countries_sites = st.session_state.get('countries_sites', {})
     
@@ -1379,8 +1367,33 @@ def main():
             pass  # No header needed when called from Twiga Tools
     
     
+    # Landing page with camera trap configuration (only shown if not configured yet)
+    if 'camera_type' not in st.session_state or st.session_state.camera_type is None:
+        st.header("📷 Camera Trap Upload Tool")
+        st.write("Welcome to the camera trap image upload system. Please configure your camera trap type before proceeding.")
+        
+        # Camera trap type selection on landing page
+        st.subheader("📋 Camera Trap Configuration")
+        camera_type = st.selectbox(
+            "Select camera trap type:",
+            ["camera_fence", "camera_grid", "camera_water"],
+            help="Choose the type of camera trap deployment"
+        )
+        
+        # Store camera type in session state
+        if st.button("✅ Continue with Selected Configuration", type="primary"):
+            st.session_state.camera_type = camera_type
+            st.success(f"✅ Selected: **{camera_type.replace('_', ' ').title()}**")
+            st.rerun()
+        
+        return  # Don't show the rest of the app until camera type is selected
+    
     # Sidebar navigation
     st.sidebar.title("Navigation")
+    
+    # Show selected camera trap type in sidebar
+    st.sidebar.markdown(f"**🎯 Camera Type:** {st.session_state.camera_type.replace('_', ' ').title()}")
+    st.sidebar.markdown("---")
     
     # Step 1: Authentication
     if not st.session_state.authenticated:
