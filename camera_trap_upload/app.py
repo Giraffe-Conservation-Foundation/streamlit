@@ -215,7 +215,23 @@ def authenticate_google_cloud():
 
 def site_selection():
     """Handle site selection interface"""
-    st.header("📍 Site Selection")
+    st.header("📍 Step 2: Configuration & Site Selection")
+    
+    # Camera trap type selection (moved from landing page to Step 2)
+    st.subheader("📋 Camera Trap Configuration")
+    camera_type = st.selectbox(
+        "Select camera trap type:",
+        ["camera_fence", "camera_grid", "camera_water"],
+        index=0 if 'camera_type' not in st.session_state else 
+        ["camera_fence", "camera_grid", "camera_water"].index(st.session_state.get('camera_type', 'camera_fence')),
+        help="Choose the type of camera trap deployment"
+    )
+    
+    # Store camera type in session state
+    st.session_state.camera_type = camera_type
+    
+    # Country and Site Selection
+    st.subheader("🌍 Location Selection")
     
     # Get countries/sites from session state instead of global variable
     countries_sites = st.session_state.get('countries_sites', {})
@@ -1367,41 +1383,31 @@ def main():
             pass  # No header needed when called from Twiga Tools
     
     
-    # Landing page with camera trap configuration (only shown if not configured yet)
-    if 'camera_type' not in st.session_state or st.session_state.camera_type is None:
+    # Landing page (only shown if not authenticated yet)
+    if not st.session_state.authenticated:
         st.header("📷 Camera Trap Upload Tool")
-        st.write("Welcome to the camera trap image upload system. Please configure your camera trap type before proceeding.")
+        st.write("Welcome to the camera trap image upload system.")
         
-        # Camera trap type selection on landing page
-        st.subheader("📋 Camera Trap Configuration")
-        camera_type = st.selectbox(
-            "Select camera trap type:",
-            ["camera_fence", "camera_grid", "camera_water"],
-            help="Choose the type of camera trap deployment"
-        )
+        # Show process steps 1-6 on landing page
+        st.subheader("📋 Upload Process Overview")
+        st.info("""
+        **Step 1:** Authenticate with Google Cloud
+        **Step 2:** Configure camera trap type and select location  
+        **Step 3:** Upload ZIP file with images
+        **Step 4:** Review processed images
+        **Step 5:** Confirm upload settings
+        **Step 6:** Upload to cloud storage
+        """)
         
-        # Store camera type in session state
-        if st.button("✅ Continue with Selected Configuration", type="primary"):
-            st.session_state.camera_type = camera_type
-            st.success(f"✅ Selected: **{camera_type.replace('_', ' ').title()}**")
-            st.rerun()
-        
-        return  # Don't show the rest of the app until camera type is selected
+        # Show authentication directly on landing page
+        authenticate_google_cloud()
+        return  # Don't show the rest of the app until authenticated
     
     # Sidebar navigation
     st.sidebar.title("Navigation")
     
-    # Show selected camera trap type in sidebar
-    st.sidebar.markdown(f"**🎯 Camera Type:** {st.session_state.camera_type.replace('_', ' ').title()}")
-    st.sidebar.markdown("---")
-    
-    # Step 1: Authentication
-    if not st.session_state.authenticated:
-        st.sidebar.markdown("### Step 1: Authentication ❌")
-        authenticate_google_cloud()
-        return
-    else:
-        st.sidebar.markdown("### Step 1: Authentication ✅")
+    # Step 1: Authentication (completed)
+    st.sidebar.markdown("### Step 1: Authentication ✅")
     
     # Step 2: Site Selection
     if not st.session_state.site_selection_complete:
@@ -1412,6 +1418,8 @@ def main():
         st.sidebar.markdown("### Step 2: Site Selection ✅")
         st.sidebar.write(f"**Country:** {st.session_state.get('selected_country', 'N/A')}")
         st.sidebar.write(f"**Site:** {st.session_state.selected_site}")
+        if st.session_state.get('camera_type'):
+            st.sidebar.write(f"**Camera Type:** {st.session_state.camera_type.replace('_', ' ').title()}")
     
     # Step 3: Image Processing
     if not st.session_state.processed_images:
