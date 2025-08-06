@@ -215,7 +215,35 @@ def authenticate_google_cloud():
 
 def site_selection():
     """Handle site selection interface"""
-    st.header("📍 Site Selection")
+    st.header("📍 Step 2: Configuration & Site Selection")
+    
+    # Survey type selection (moved from mode detection to Step 2)
+    st.subheader("📋 Survey Configuration")
+    
+    # Get current survey type from session state, with safe fallback
+    current_survey_type = st.session_state.get('survey_type', 'survey_vehicle')
+    survey_options = ["survey_vehicle", "survey_ground", "survey_aerial"]
+    
+    # Find the index safely
+    try:
+        survey_index = survey_options.index(current_survey_type)
+    except ValueError:
+        survey_index = 0  # Default to first option if current value not found
+        current_survey_type = survey_options[0]
+    
+    survey_type = st.selectbox(
+        "Select survey type:",
+        survey_options,
+        index=survey_index,
+        format_func=lambda x: x.replace('survey_', '').replace('_', ' ').title() + " Survey",
+        help="Choose the type of survey conducted"
+    )
+    
+    # Store survey type in session state
+    st.session_state.survey_type = survey_type
+    
+    # Country and Site Selection
+    st.subheader("🌍 Location Selection")
     
     # Get countries/sites from session state instead of global variable
     countries_sites = st.session_state.get('countries_sites', {})
@@ -322,132 +350,71 @@ def site_selection():
         if not matching_buckets:
             st.warning(f"⚠️ **No exact bucket match found** for pattern `{expected_bucket}`")
         
-        # Check if we're in camera trap mode (passed from twiga_tools.py)
-        camera_trap_mode = globals().get('CAMERA_TRAP_MODE', False)
+        # Survey mode: Additional metadata collection
+        col1, col2 = st.columns(2)
         
-        if camera_trap_mode:
-            # Camera trap mode: No additional metadata needed, just station and camera info
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                station = st.text_input(
-                    "Station ID", 
-                    max_chars=10,
-                    help="Enter station identifier (e.g., 'ST001', '01', 'FENCE_A')"
-                )
-            
-            with col2:
-                camera = st.text_input(
-                    "Camera ID", 
-                    max_chars=10,
-                    help="Enter camera identifier (e.g., 'CAM01', 'A', '01')"
-                )
-            
-            # For camera traps, use current date for folder organization
+        with col1:
+            # Survey date as YYYY/MM
             current_year = datetime.now().year
             current_month = datetime.now().month
-            survey_date = datetime(current_year, current_month, 1).date()
             
-            # Store metadata in session state (simplified for camera traps)
-            st.session_state.metadata = {
-                'country': selected_country,
-                'site': selected_site,
-                'survey_date': survey_date,
-                'survey_year': current_year,
-                'survey_month': current_month,
-                'station': station.strip().upper(),
-                'camera': camera.strip().upper(),
-                'photographer': '',  # Not needed for camera traps
-                'initials': '',  # Not needed for camera traps
-                'camera_model': '',  # Keep for compatibility but empty
-                'notes': ''  # Keep for compatibility but empty
-            }
+            survey_year = st.selectbox("Survey Year", 
+                                     options=list(range(current_year - 10, current_year + 2)),
+                                     index=10)  # Default to current year
             
-            # Only show review and continue if station and camera are filled
-            if station.strip() and camera.strip():
-                # Show current selections
-                st.subheader("📋 Review Your Selections")
-                st.write(f"**Country:** {selected_country}")
-                st.write(f"**Site:** {selected_site}")
-                st.write(f"**Station:** {station.strip().upper()}")
-                st.write(f"**Camera:** {camera.strip().upper()}")
-                
-                # Manual continue button - only when user clicks
-                st.info("👆 Please review your selections above, then click the button below to continue.")
-                if st.button("✅ Continue to Image Upload", type="primary"):
-                    st.session_state.site_selection_complete = True
-                    st.rerun()
-            else:
-                # Show a message asking for required fields
-                missing_fields = []
-                if not station.strip():
-                    missing_fields.append("Station ID")
-                if not camera.strip():
-                    missing_fields.append("Camera ID")
-                
-                if missing_fields:
-                    st.info(f"📝 **Please fill in:** {', '.join(missing_fields)} to continue to the next step.")
+            survey_month = st.selectbox("Survey Month",
+                                      options=list(range(1, 13)),
+                                      format_func=lambda x: f"{x:02d} - {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][x-1]}",
+                                      index=current_month-1)  # Default to current month
+        
+        with col2:
+            photographer = st.text_input(
+                "Photographer Initials", 
+                max_chars=2,
+                help="Enter exactly 2 characters (e.g., 'AB')"
+            )
+        
+        # Create survey date from year/month
+        survey_date = datetime(survey_year, survey_month, 1).date()
+        
+        # Store metadata in session state (including survey type and mode info)
+        st.session_state.metadata = {
+            'country': selected_country,
+            'site': selected_site,
+            'survey_date': survey_date,
+            'survey_year': survey_year,
+            'survey_month': survey_month,
+            'photographer': photographer,
+            'initials': photographer.strip().upper(),
+            'camera_model': '',
+            'notes': ''
+        }
+        
+        # Store survey mode info for upload path generation
+        st.session_state.survey_mode = True
+        st.session_state.camera_trap_mode = False
+        
+        # Only show review and continue if photographer initials are filled and exactly 2 characters
+        if photographer.strip() and len(photographer.strip()) == 2:
+            # Show current selections
+            st.subheader("📋 Review Your Selections")
+            st.write(f"**Country:** {selected_country}")
+            st.write(f"**Site:** {selected_site}")
+            st.write(f"**Survey Type:** {survey_type.replace('survey_', '').replace('_', ' ').title()}")
+            st.write(f"**Survey Period:** {survey_year}/{survey_month:02d}")
+            st.write(f"**Photographer:** {photographer}")
+            
+            # Manual continue button - only when user clicks
+            st.info("👆 Please review your selections above, then click the button below to continue.")
+            if st.button("✅ Continue to Image Upload", type="primary"):
+                st.session_state.site_selection_complete = True
+                st.rerun()
         else:
-            # Regular survey mode: Additional metadata collection
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Survey date as YYYY/MM
-                current_year = datetime.now().year
-                current_month = datetime.now().month
-                
-                survey_year = st.selectbox("Survey Year", 
-                                         options=list(range(current_year - 10, current_year + 2)),
-                                         index=10)  # Default to current year
-                
-                survey_month = st.selectbox("Survey Month",
-                                          options=list(range(1, 13)),
-                                          format_func=lambda x: f"{x:02d} - {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][x-1]}",
-                                          index=current_month-1)  # Default to current month
-            
-            with col2:
-                photographer = st.text_input(
-                    "Photographer Initials", 
-                    max_chars=2,
-                    help="Enter exactly 2 characters (e.g., 'AB')"
-                )
-            
-            # Create survey date from year/month
-            survey_date = datetime(survey_year, survey_month, 1).date()
-            
-            # Store metadata in session state
-            st.session_state.metadata = {
-                'country': selected_country,
-                'site': selected_site,
-                'survey_date': survey_date,
-                'survey_year': survey_year,
-                'survey_month': survey_month,
-                'photographer': photographer,
-                'initials': photographer.strip().upper(),  # Add initials field for consistency
-                'camera_model': '',  # Keep for compatibility but empty
-                'notes': ''  # Keep for compatibility but empty
-            }
-            
-            # Only show review and continue if photographer initials are filled and exactly 2 characters
-            if photographer.strip() and len(photographer.strip()) == 2:  # Check if photographer initials are exactly 2 chars
-                # Show current selections
-                st.subheader("📋 Review Your Selections")
-                st.write(f"**Country:** {selected_country}")
-                st.write(f"**Site:** {selected_site}")
-                st.write(f"**Survey Period:** {survey_year}/{survey_month:02d}")
-                st.write(f"**Photographer:** {photographer}")
-                
-                # Manual continue button - only when user clicks
-                st.info("👆 Please review your selections above, then click the button below to continue.")
-                if st.button("✅ Continue to Image Upload", type="primary"):
-                    st.session_state.site_selection_complete = True
-                    st.rerun()
-            else:
-                # Show a message asking for required fields
-                if not photographer.strip():
-                    st.info("📝 **Please fill in the Photographer Initials** to continue to the next step.")
-                elif len(photographer.strip()) != 2:
-                    st.warning("⚠️ **Photographer Initials must be exactly 2 characters** (e.g., 'AB')")
+            # Show a message asking for required fields
+            if not photographer.strip():
+                st.info("📝 **Please fill in the Photographer Initials** to continue to the next step.")
+            elif len(photographer.strip()) != 2:
+                st.warning("⚠️ **Photographer Initials must be exactly 2 characters** (e.g., 'AB')")
         
         # NEVER auto-progress - only return True if user has explicitly clicked continue
         return False
@@ -490,47 +457,9 @@ def image_processing():
         # Extract folder name from ZIP file name, but create appropriate folder structure based on mode
         original_folder_name = os.path.splitext(uploaded_files.name)[0]  # Remove .zip extension
         
-        # Check if we're in survey mode or camera trap mode (passed from twiga_tools.py)
-        survey_mode = globals().get('SURVEY_MODE', False)
-        survey_type = globals().get('SURVEY_TYPE', 'survey_vehicle')  # Default to vehicle
-        camera_trap_mode = globals().get('CAMERA_TRAP_MODE', False)
-        camera_type = globals().get('CAMERA_TYPE', 'camera_fence')  # Default to fence
-        
-        if survey_mode:
-            # For survey mode: just use yyyymm as folder name
-            folder_name = f"{st.session_state.metadata['survey_year']}{st.session_state.metadata['survey_month']:02d}"
-            format_description = "YYYYMM (survey mode)"
-            
-            # Store survey info for later use in upload path
-            st.session_state.survey_mode = True
-            st.session_state.survey_type = survey_type
-            st.session_state.camera_trap_mode = False
-            st.session_state.camera_type = None
-            
-        elif camera_trap_mode:
-            # For camera trap mode: just use yyyymm as folder name
-            folder_name = f"{st.session_state.metadata['survey_year']}{st.session_state.metadata['survey_month']:02d}"
-            format_description = "YYYYMM (camera trap mode)"
-            
-            # Store camera trap info for later use in upload path
-            st.session_state.survey_mode = False
-            st.session_state.survey_type = None
-            st.session_state.camera_trap_mode = True
-            st.session_state.camera_type = camera_type
-            
-        else:
-            # Legacy mode: use country_site_yyyymm format (fallback)
-            folder_name = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{st.session_state.metadata['survey_year']}{st.session_state.metadata['survey_month']:02d}"
-            format_description = "COUNTRY_SITE_YYYYMM (legacy mode)"
-            
-            # Store legacy info
-            st.session_state.survey_mode = False
-            st.session_state.survey_type = None
-            st.session_state.camera_trap_mode = False
-            st.session_state.camera_type = None
-            
-            st.info(f"� **Legacy Mode Detected**")
-
+        # For survey mode: just use yyyymm as folder name
+        folder_name = f"{st.session_state.metadata['survey_year']}{st.session_state.metadata['survey_month']:02d}"
+        format_description = "YYYYMM (survey mode)"
         
         # Show folder name transformation
         if original_folder_name != folder_name:
@@ -656,9 +585,7 @@ def image_processing():
         # Process images using utility functions
         processed_images = []
         
-        # Get camera trap info from metadata if available
-        station = st.session_state.metadata.get('station')
-        camera = st.session_state.metadata.get('camera')
+        # Get survey info from metadata
         photographer = st.session_state.metadata.get('photographer')
         
         # Process images for each month group
@@ -669,15 +596,14 @@ def image_processing():
             month_images = image_months[month_key]
             
             # Create preview using batch rename utility for this month's images
-            # Create preview using batch rename utility for this month's images
             preview_data = batch_rename_preview(
                 month_images,
                 st.session_state.metadata['country'],
                 st.session_state.metadata['site'],
                 st.session_state.metadata['survey_date'],
                 photographer,
-                station,
-                camera
+                None,  # station - not used for surveys
+                None   # camera - not used for surveys
             )
             
             # Process each image in this month with size checking
@@ -1001,31 +927,6 @@ def upload_to_gcs():
     # Display folder path that will be created
     folder_path = survey_path
     
-    # Additional upload options (removed overwrite option)
-    st.subheader("Upload Options")
-    
-    # Auto-compression explanation and option
-    st.info("🤖 **What is Auto-compress?**")
-    st.write("""
-    - **Reduces file size** of images larger than 10MB
-    - **Saves storage costs** on Google Cloud
-    - **Faster uploads** with smaller files
-    - **Maintains image quality** using smart compression
-    - **Original filename preserved** with quality intact
-    """)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        create_backup = st.checkbox("Create backup metadata file", value=True)
-        compress_large_images = st.checkbox("Auto-compress large images (recommended)", value=True)
-    
-    with col2:
-        notify_completion = st.checkbox("Show detailed completion report", value=True)
-    
-    # Use folder name as-is without timestamp option
-    st.info(f"📂 Upload path: `{folder_path}`")
-    
     # Display upload summary
     st.subheader("📊 Upload Summary")
     total_files = len(st.session_state.processed_images)
@@ -1041,52 +942,46 @@ def upload_to_gcs():
         bucket_status = "🎯 Auto-selected" if bucket_name == auto_selected_bucket else "✋ Manually selected"
         st.metric("Target Bucket", bucket_name, delta=bucket_status)
     
-    # Show warning about no overwrite
+    # Show warning about no overwrite - but proceed automatically
     st.warning("⚠️ **No Overwrite Policy**: Files will be skipped if they already exist in the bucket")
     
-    if st.button("🚀 Upload Images", type="primary"):
-        if not bucket_name:
-            st.error("Please select a bucket!")
-            return
+    # Auto-start upload (no button required)
+    st.info("🚀 **Starting upload with automatic settings:** Auto-compress enabled, backup metadata enabled, detailed report enabled")
+    
+    # Set all options to enabled automatically
+    create_backup = True
+    compress_large_images = True  
+    notify_completion = True
+    
+    # Start upload automatically
+    if not bucket_name:
+        st.error("Please select a bucket!")
+        return
+    
+    try:
+        # Get the bucket
+        bucket = st.session_state.storage_client.bucket(bucket_name)
         
-        try:
-            # Get the bucket
-            bucket = st.session_state.storage_client.bucket(bucket_name)
-            
-            # Create progress tracking
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            uploaded_count = 0
-            failed_uploads = []
-            skipped_files = []
-            upload_details = []
-            
-            for idx, img in enumerate(st.session_state.processed_images):
-                try:
-                    # Get the correct folder path for this image based on its month
-                    img_month = img.get('month_folder', 'unknown')
-                    
-                    # Determine the correct folder path based on mode and image's month
-                    survey_mode = st.session_state.get('survey_mode', False)
-                    survey_type = st.session_state.get('survey_type', 'survey_vehicle')
-                    camera_trap_mode = st.session_state.get('camera_trap_mode', False)
-                    camera_type = st.session_state.get('camera_type', 'camera_fence')
-                    
-                    if survey_mode:
-                        # Survey mode: bucket/survey/survey_[type]/yyyymm/
-                        img_folder_path = f"survey/{survey_type}/{img_month}/"
-                    elif camera_trap_mode:
-                        # Camera trap mode with station subfolders: bucket/camera_trap/camera_[type]/yyyymm/station/camera/
-                        station = st.session_state.metadata.get('station', 'UNKNOWN').upper()
-                        camera = st.session_state.metadata.get('camera', 'UNKNOWN').upper()
-                        img_folder_path = f"camera_trap/{camera_type}/{img_month}/{station}/{camera}/"
-                    else:
-                        # Legacy mode: bucket/COUNTRY_SITE_yyyymm/
-                        legacy_folder = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{img_month}"
-                        img_folder_path = f"{legacy_folder}/"
-                    
-                    # Construct blob name using the image-specific folder path
+        # Create progress tracking
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        uploaded_count = 0
+        failed_uploads = []
+        skipped_files = []
+        upload_details = []
+        
+        for idx, img in enumerate(st.session_state.processed_images):
+            try:
+                # Get the correct folder path for this image based on its month
+                img_month = img.get('month_folder', 'unknown')
+                
+                # Survey mode: bucket/survey/survey_[type]/yyyymm/
+                survey_mode = st.session_state.get('survey_mode', False)
+                survey_type = st.session_state.get('survey_type', 'survey_vehicle')
+                img_folder_path = f"survey/{survey_type}/{img_month}/"
+                
+                # Construct blob name using the image-specific folder path
                     blob_name = img_folder_path + img['new_filename']
                     
                     # Check if file exists (NO OVERWRITE ALLOWED)
@@ -1374,17 +1269,31 @@ def main():
         if not logo_displayed:
             pass  # No header needed when called from Twiga Tools
     
+    # Landing page (only shown if not authenticated yet)
+    if not st.session_state.authenticated:
+        st.header("🚗 Survey Upload Tool")
+        st.write("Welcome to the survey image upload system.")
+        
+        # Show process steps 1-6 on landing page
+        st.subheader("📋 Upload Process Overview")
+        st.info("""
+        **Step 1:** Authenticate with Google Cloud
+        **Step 2:** Configure survey type and select location  
+        **Step 3:** Upload ZIP file with images
+        **Step 4:** Review processed images
+        **Step 5:** Confirm upload settings
+        **Step 6:** Upload to cloud storage
+        """)
+        
+        # Show authentication directly on landing page
+        authenticate_google_cloud()
+        return  # Don't show the rest of the app until authenticated
     
     # Sidebar navigation
     st.sidebar.title("Navigation")
     
-    # Step 1: Authentication
-    if not st.session_state.authenticated:
-        st.sidebar.markdown("### Step 1: Authentication ❌")
-        authenticate_google_cloud()
-        return
-    else:
-        st.sidebar.markdown("### Step 1: Authentication ✅")
+    # Step 1: Authentication (completed)
+    st.sidebar.markdown("### Step 1: Authentication ✅")
     
     # Step 2: Site Selection
     if not st.session_state.site_selection_complete:
@@ -1395,6 +1304,8 @@ def main():
         st.sidebar.markdown("### Step 2: Site Selection ✅")
         st.sidebar.write(f"**Country:** {st.session_state.get('selected_country', 'N/A')}")
         st.sidebar.write(f"**Site:** {st.session_state.selected_site}")
+        if st.session_state.get('survey_type'):
+            st.sidebar.write(f"**Survey Type:** {st.session_state.survey_type.replace('_', ' ').title()}")
     
     # Step 3: Image Processing
     if not st.session_state.processed_images:
