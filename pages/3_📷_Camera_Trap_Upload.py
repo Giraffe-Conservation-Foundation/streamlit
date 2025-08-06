@@ -11,7 +11,9 @@ from pathlib import Path
 # Add the camera_trap_upload directory to Python path
 current_dir = Path(__file__).parent.parent
 image_dir = current_dir / "camera_trap_upload"
+shared_dir = current_dir / "shared"
 sys.path.insert(0, str(image_dir))
+sys.path.insert(0, str(shared_dir))
 
 st.title("📷 Camera Trap Upload")
 st.markdown("*Camera trap image processing and cloud storage*")

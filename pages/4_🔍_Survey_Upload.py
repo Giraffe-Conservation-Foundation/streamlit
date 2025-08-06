@@ -11,7 +11,9 @@ from pathlib import Path
 # Add the survey_upload directory to Python path
 current_dir = Path(__file__).parent.parent
 image_dir = current_dir / "survey_upload"
+shared_dir = current_dir / "shared"
 sys.path.insert(0, str(image_dir))
+sys.path.insert(0, str(shared_dir))
 
 st.title("🔍 Survey Upload")
 st.markdown("*Process and upload giraffe survey images to Google Cloud storage*")
