@@ -217,16 +217,20 @@ def site_selection():
     """Handle site selection interface"""
     st.header("📍 Site Selection")
     
+    # Camera trap type selection
+    st.subheader("📋 Camera Trap Configuration")
+    camera_type = st.selectbox(
+        "Select camera trap type:",
+        ["camera_fence", "camera_grid", "camera_water"],
+        help="Choose the type of camera trap deployment"
+    )
+    
+    # Store camera type in session state
+    st.session_state.camera_type = camera_type
+    st.success(f"✅ Selected: **{camera_type.replace('_', ' ').title()}**")
+    
     # Get countries/sites from session state instead of global variable
     countries_sites = st.session_state.get('countries_sites', {})
-    
-    # Debug information
-    with st.expander("🔧 Debug Information", expanded=False):
-        st.write("**Session State Keys:**", list(st.session_state.keys()))
-        st.write("**Countries/Sites in Session:**", countries_sites)
-        st.write("**Available Buckets:**", st.session_state.get('available_buckets', []))
-        if st.session_state.get('available_buckets'):
-            st.write("**GCF Pattern Buckets:**", [b for b in st.session_state.available_buckets if b.lower().startswith('gcf')])
     
     # Check if we have any countries/sites extracted from buckets
     if not countries_sites:
