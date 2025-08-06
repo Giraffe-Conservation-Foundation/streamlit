@@ -1,6 +1,6 @@
 """
 📊 NANW Event Dashboard
-Northern Africa/Namibia West Conservation Monitoring
+NW Namibia Conservation Monitoring
 """
 
 import streamlit as st
@@ -13,8 +13,8 @@ current_dir = Path(__file__).parent.parent
 nanw_dir = current_dir / "nanw_dashboard"
 sys.path.insert(0, str(nanw_dir))
 
-st.title("📊 NANW Event Dashboard")
-st.markdown("*Northern Africa/Namibia West Conservation Monitoring*")
+st.title("📊 NANW Dashboard")
+st.markdown("*NW Namibia giraffe monitoring*")
 
 if nanw_dir.exists() and (nanw_dir / "app.py").exists():
     # Store original working directory

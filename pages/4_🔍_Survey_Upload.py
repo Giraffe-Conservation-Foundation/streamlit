@@ -8,9 +8,9 @@ import sys
 import os
 from pathlib import Path
 
-# Add the image_management directory to Python path
+# Add the survey_upload directory to Python path
 current_dir = Path(__file__).parent.parent
-image_dir = current_dir / "image_management"
+image_dir = current_dir / "survey_upload"
 sys.path.insert(0, str(image_dir))
 
 st.title("🔍 Survey Upload")
@@ -81,4 +81,4 @@ if image_dir.exists() and (image_dir / "app.py").exists():
         os.chdir(original_dir)
 else:
     st.error("❌ Survey Upload tool not found!")
-    st.info("Please ensure the image_management/app.py file exists.")
+    st.info("Please ensure the survey_upload/app.py file exists.")
