@@ -373,7 +373,7 @@ def create_summary_page(grouped_annotations, location_id="Unknown Location"):
     
     for search_dir in search_paths:
         for ext in ['png', 'jpg', 'jpeg']:
-            for name in ['GCF_background_logo', 'logo', 'background', 'cover', 'title_background']:
+            for name in ['GCF_background_logo', 'background', 'cover', 'title_background', 'id_book_background']:
                 test_path = os.path.join(search_dir, f"{name}.{ext}")
                 if os.path.exists(test_path):
                     background_image_path = test_path
@@ -436,20 +436,20 @@ def create_summary_page(grouped_annotations, location_id="Unknown Location"):
 # --- STREAMLIT APP ---
 
 #st.title("GiraffeSpotter ID book generator")
-st.markdown("Generate photo identification books from Wildbook annotation exports")
+st.markdown("Generate a photo ID book from a GiraffeSpotter (Wildbook) annotation export")
 
 # How to use instructions - moved to top
 st.markdown("""
 ### How to use:
 
-1. **Export data from Wildbook**: 
+1. **Export data from GiraffeSpotter (Wildbook)**: 
    - Go to GiraffeSpotter → Search → Encounter Search
-   - Set your filters and search
+   - Set your filters (location) and search
    - Go to Export tab → Click "Encounter Annotation Export"
 
 2. **Upload the file**: Use the file uploader below
 
-3. **Generate**: Click "Generate ID Book" to create your photo identification book
+3. **Generate**: Click "Generate ID Book" to create and download your photo ID book
 """)
 
 # Sidebar configuration

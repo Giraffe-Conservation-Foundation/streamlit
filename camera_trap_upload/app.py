@@ -552,9 +552,9 @@ def image_processing():
 
         
         # Show folder name transformation
-        if original_folder_name != folder_name:
-            st.info(f"📂 **Folder renamed:** `{original_folder_name}` → `{folder_name}`")
-            st.caption(f"Using standardized format: {format_description}")
+        #if original_folder_name != folder_name:
+            #st.info(f"📂 **Folder renamed:** `{original_folder_name}` → `{folder_name}`")
+            #st.caption(f"Using standardized format: {format_description}")
         
         # Store folder name in session state
         st.session_state.folder_name = folder_name
@@ -604,7 +604,7 @@ def image_processing():
             return False
         
         # First, analyze all images to determine folder structure based on EXIF dates
-        st.info("📅 **Analyzing image dates to determine folder structure...**")
+        #st.info("📅 **Analyzing image dates to determine folder structure...**")
         
         image_months = {}  # Dictionary to group images by YYYYMM
         images_without_exif = []
@@ -992,8 +992,8 @@ def upload_to_gcs():
     if survey_mode:
         # Survey mode: bucket/survey/survey_[type]/yyyymm/
         survey_path = f"survey/{survey_type}/{folder_name}/"
-        st.info(f"� **Survey Mode:** {survey_type.replace('_', ' ').title()}")
-        st.info(f"�📂 Upload folder structure: `{survey_path}`")
+        st.info(f"🚗 **Survey Mode:** {survey_type.replace('_', ' ').title()}")
+        st.info(f"📂 Upload folder structure: `{survey_path}`")
         st.caption(f"Final path: bucket/{survey_path}")
     else:
         # Check if we're in camera trap mode
@@ -1020,31 +1020,6 @@ def upload_to_gcs():
     # Display folder path that will be created
     folder_path = survey_path
     
-    # Additional upload options (removed overwrite option)
-    st.subheader("Upload Options")
-    
-    # Auto-compression explanation and option
-    st.info("🤖 **What is Auto-compress?**")
-    st.write("""
-    - **Reduces file size** of images larger than 10MB
-    - **Saves storage costs** on Google Cloud
-    - **Faster uploads** with smaller files
-    - **Maintains image quality** using smart compression
-    - **Original filename preserved** with quality intact
-    """)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        create_backup = st.checkbox("Create backup metadata file", value=True)
-        compress_large_images = st.checkbox("Auto-compress large images (recommended)", value=True)
-    
-    with col2:
-        notify_completion = st.checkbox("Show detailed completion report", value=True)
-    
-    # Use folder name as-is without timestamp option
-    st.info(f"📂 Upload path: `{folder_path}`")
-    
     # Display upload summary
     st.subheader("📊 Upload Summary")
     total_files = len(st.session_state.processed_images)
@@ -1060,242 +1035,250 @@ def upload_to_gcs():
         bucket_status = "🎯 Auto-selected" if bucket_name == auto_selected_bucket else "✋ Manually selected"
         st.metric("Target Bucket", bucket_name, delta=bucket_status)
     
-    # Show warning about no overwrite
+    # Show warning about no overwrite - but proceed automatically
     st.warning("⚠️ **No Overwrite Policy**: Files will be skipped if they already exist in the bucket")
     
-    if st.button("🚀 Upload Images", type="primary"):
-        if not bucket_name:
-            st.error("Please select a bucket!")
-            return
+    # Auto-start upload (no button required)
+    st.info("🚀 **Starting upload with automatic settings:** Auto-compress enabled, backup metadata enabled, detailed report enabled")
+    
+    # Set all options to enabled automatically
+    create_backup = True
+    compress_large_images = True  
+    notify_completion = True
+    
+    # Start upload automatically
+    if not bucket_name:
+        st.error("Please select a bucket!")
+        return
+    
+    try:
+        # Get the bucket
+        bucket = st.session_state.storage_client.bucket(bucket_name)
         
-        try:
-            # Get the bucket
-            bucket = st.session_state.storage_client.bucket(bucket_name)
-            
-            # Create progress tracking
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            uploaded_count = 0
-            failed_uploads = []
-            skipped_files = []
-            upload_details = []
-            
-            for idx, img in enumerate(st.session_state.processed_images):
-                try:
-                    # Get the correct folder path for this image based on its month
-                    img_month = img.get('month_folder', 'unknown')
-                    
-                    # Determine the correct folder path based on mode and image's month
-                    survey_mode = st.session_state.get('survey_mode', False)
-                    survey_type = st.session_state.get('survey_type', 'survey_vehicle')
-                    camera_trap_mode = st.session_state.get('camera_trap_mode', False)
-                    camera_type = st.session_state.get('camera_type', 'camera_fence')
-                    
-                    if survey_mode:
-                        # Survey mode: bucket/survey/survey_[type]/yyyymm/
-                        img_folder_path = f"survey/{survey_type}/{img_month}/"
-                    elif camera_trap_mode:
-                        # Camera trap mode with station subfolders: bucket/camera_trap/camera_[type]/yyyymm/station/camera/
-                        station = st.session_state.metadata.get('station', 'UNKNOWN').upper()
-                        camera = st.session_state.metadata.get('camera', 'UNKNOWN').upper()
-                        img_folder_path = f"camera_trap/{camera_type}/{img_month}/{station}/{camera}/"
-                    else:
-                        # Legacy mode: bucket/COUNTRY_SITE_yyyymm/
-                        legacy_folder = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{img_month}"
-                        img_folder_path = f"{legacy_folder}/"
-                    
-                    # Construct blob name using the image-specific folder path
-                    blob_name = img_folder_path + img['new_filename']
-                    
-                    # Check if file exists (NO OVERWRITE ALLOWED)
-                    blob = bucket.blob(blob_name)
-                    if blob.exists():
-                        skipped_files.append(f"{img['new_filename']} (already exists)")
-                        continue
-                    
-                    # Upload image data
-                    blob.upload_from_string(img['data'])
-                    
-                    # Create comprehensive metadata using utility function
-                    metadata = create_metadata_dict(
-                        st.session_state.metadata['site'],
-                        st.session_state.metadata['survey_date'],
-                        st.session_state.metadata.get('photographer'),
-                        st.session_state.metadata.get('camera_model'),
-                        st.session_state.metadata.get('notes'),
-                        img['original_name']
-                    )
-                    
-                    # Add image-specific metadata
-                    metadata.update({
-                        'folder_name': folder_name,
-                        'country': st.session_state.metadata['country'],
-                        'file_size_bytes': str(img['size']),
-                        'original_size_bytes': str(img.get('original_size', img['size'])),
-                        'compressed': str(img.get('compressed', False)),
-                        'image_format': img['metadata'].get('format', 'Unknown'),
-                        'image_width': str(img['metadata'].get('width', 0)),
-                        'image_height': str(img['metadata'].get('height', 0)),
-                        'survey_year': str(st.session_state.metadata['survey_year']),
-                        'survey_month': str(st.session_state.metadata['survey_month'])
-                    })
-                    
-                    blob.metadata = metadata
-                    blob.patch()
-                    
-                    # Track upload details
-                    upload_details.append({
-                        'filename': img['new_filename'],
-                        'size_mb': img['size'] / (1024*1024),
-                        'blob_path': blob_name,
-                        'folder_path': img_folder_path,
-                        'month_folder': img_month,
-                        'upload_time': datetime.now().isoformat()
-                    })
-                    
-                    uploaded_count += 1
-                    progress = (uploaded_count + len(skipped_files)) / total_files
-                    progress_bar.progress(progress)
-                    year = img_month[:4]
-                    month = img_month[4:6]
-                    month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
-                    status_text.text(f"✅ Uploaded {img['new_filename']} → {img_month} ({month_name} {year}) ({uploaded_count}/{total_files})")
-                    
-                except Exception as e:
-                    error_msg = f"{img['new_filename']}: {str(e)}"
-                    failed_uploads.append(error_msg)
-                    st.error(f"❌ Error uploading {error_msg}")
-            
-            # Create backup metadata file if requested
-            if create_backup and uploaded_count > 0:
-                try:
-                    backup_metadata = {
-                        'upload_session': {
-                            'timestamp': datetime.now().isoformat(),
-                            'country': st.session_state.metadata['country'],
-                            'site': st.session_state.metadata['site'],
-                            'survey_year': st.session_state.metadata['survey_year'],
-                            'survey_month': st.session_state.metadata['survey_month'],
-                            'photographer': st.session_state.metadata.get('photographer'),
-                            'folder_name': folder_name,
-                            'folder_format': 'COUNTRY_SITE_YYYYMM',
-                            'bucket_name': bucket_name,
-                            'total_files': total_files,
-                            'successful_uploads': uploaded_count,
-                            'skipped_files': len(skipped_files),
-                            'failed_uploads': len(failed_uploads)
-                        },
-                        'files': upload_details,
-                        'skipped_files': skipped_files,
-                        'failed_files': failed_uploads
-                    }
-                    
-                    backup_blob_name = f"{folder_path}_upload_metadata_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                    backup_blob = bucket.blob(backup_blob_name)
-                    backup_blob.upload_from_string(json.dumps(backup_metadata, indent=2))
-                    st.info(f"📋 Metadata backup saved to: {backup_blob_name}")
-                    
-                except Exception as e:
-                    st.warning(f"⚠️ Could not create metadata backup: {str(e)}")
-            
-            # Show completion summary
-            if uploaded_count == total_files:
-                # Group uploads by folder to show accurate summary
-                folder_counts = {}
-                for detail in upload_details:
-                    folder = detail.get('month_folder', 'unknown')
-                    if folder not in folder_counts:
-                        folder_counts[folder] = 0
-                    folder_counts[folder] += 1
+        # Create progress tracking
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        uploaded_count = 0
+        failed_uploads = []
+        skipped_files = []
+        upload_details = []
+        
+        for idx, img in enumerate(st.session_state.processed_images):
+            try:
+                # Get the correct folder path for this image based on its month
+                img_month = img.get('month_folder', 'unknown')
                 
-                if len(folder_counts) > 1:
-                    st.success(f"🎉 Successfully uploaded all {uploaded_count} images to {len(folder_counts)} different month folders in gs://{bucket_name}/")
-                    for folder, count in sorted(folder_counts.items()):
-                        year = folder[:4]
-                        month = folder[4:6]
-                        month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
-                        st.info(f"📁 **{folder}** ({month_name} {year}): {count} images")
+                # Determine the correct folder path based on mode and image's month
+                survey_mode = st.session_state.get('survey_mode', False)
+                survey_type = st.session_state.get('survey_type', 'survey_vehicle')
+                camera_trap_mode = st.session_state.get('camera_trap_mode', False)
+                camera_type = st.session_state.get('camera_type', 'camera_fence')
+                
+                if survey_mode:
+                    # Survey mode: bucket/survey/survey_[type]/yyyymm/
+                    img_folder_path = f"survey/{survey_type}/{img_month}/"
+                elif camera_trap_mode:
+                    # Camera trap mode with station subfolders: bucket/camera_trap/camera_[type]/yyyymm/station/camera/
+                    station = st.session_state.metadata.get('station', 'UNKNOWN').upper()
+                    camera = st.session_state.metadata.get('camera', 'UNKNOWN').upper()
+                    img_folder_path = f"camera_trap/{camera_type}/{img_month}/{station}/{camera}/"
                 else:
-                    folder = list(folder_counts.keys())[0]
+                    # Legacy mode: bucket/COUNTRY_SITE_yyyymm/
+                    legacy_folder = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{img_month}"
+                    img_folder_path = f"{legacy_folder}/"
+                
+                # Construct blob name using the image-specific folder path
+                blob_name = img_folder_path + img['new_filename']
+                
+                # Check if file exists (NO OVERWRITE ALLOWED)
+                blob = bucket.blob(blob_name)
+                if blob.exists():
+                    skipped_files.append(f"{img['new_filename']} (already exists)")
+                    continue
+                
+                # Upload image data
+                blob.upload_from_string(img['data'])
+                
+                # Create comprehensive metadata using utility function
+                metadata = create_metadata_dict(
+                    st.session_state.metadata['site'],
+                    st.session_state.metadata['survey_date'],
+                    st.session_state.metadata.get('photographer'),
+                    st.session_state.metadata.get('camera_model'),
+                    st.session_state.metadata.get('notes'),
+                    img['original_name']
+                )
+                
+                # Add image-specific metadata
+                metadata.update({
+                    'folder_name': folder_name,
+                    'country': st.session_state.metadata['country'],
+                    'file_size_bytes': str(img['size']),
+                    'original_size_bytes': str(img.get('original_size', img['size'])),
+                    'compressed': str(img.get('compressed', False)),
+                    'image_format': img['metadata'].get('format', 'Unknown'),
+                    'image_width': str(img['metadata'].get('width', 0)),
+                    'image_height': str(img['metadata'].get('height', 0)),
+                    'survey_year': str(st.session_state.metadata['survey_year']),
+                    'survey_month': str(st.session_state.metadata['survey_month'])
+                })
+                
+                blob.metadata = metadata
+                blob.patch()
+                
+                # Track upload details
+                upload_details.append({
+                    'filename': img['new_filename'],
+                    'size_mb': img['size'] / (1024*1024),
+                    'blob_path': blob_name,
+                    'folder_path': img_folder_path,
+                    'month_folder': img_month,
+                    'upload_time': datetime.now().isoformat()
+                })
+                
+                uploaded_count += 1
+                progress = (uploaded_count + len(skipped_files)) / total_files
+                progress_bar.progress(progress)
+                year = img_month[:4]
+                month = img_month[4:6]
+                month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                status_text.text(f"✅ Uploaded {img['new_filename']} → {img_month} ({month_name} {year}) ({uploaded_count}/{total_files})")
+                
+            except Exception as e:
+                error_msg = f"{img['new_filename']}: {str(e)}"
+                failed_uploads.append(error_msg)
+                st.error(f"❌ Error uploading {error_msg}")
+        
+        # Create backup metadata file if requested
+        if create_backup and uploaded_count > 0:
+            try:
+                backup_metadata = {
+                    'upload_session': {
+                        'timestamp': datetime.now().isoformat(),
+                        'country': st.session_state.metadata['country'],
+                        'site': st.session_state.metadata['site'],
+                        'survey_year': st.session_state.metadata['survey_year'],
+                        'survey_month': st.session_state.metadata['survey_month'],
+                        'photographer': st.session_state.metadata.get('photographer'),
+                        'folder_name': folder_name,
+                        'folder_format': 'COUNTRY_SITE_YYYYMM',
+                        'bucket_name': bucket_name,
+                        'total_files': total_files,
+                        'successful_uploads': uploaded_count,
+                        'skipped_files': len(skipped_files),
+                        'failed_uploads': len(failed_uploads)
+                    },
+                    'files': upload_details,
+                    'skipped_files': skipped_files,
+                    'failed_files': failed_uploads
+                }
+                
+                backup_blob_name = f"{folder_path}_upload_metadata_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                backup_blob = bucket.blob(backup_blob_name)
+                backup_blob.upload_from_string(json.dumps(backup_metadata, indent=2))
+                st.info(f"📋 Metadata backup saved to: {backup_blob_name}")
+                
+            except Exception as e:
+                st.warning(f"⚠️ Could not create metadata backup: {str(e)}")
+        
+        # Show completion summary
+        if uploaded_count == total_files:
+            # Group uploads by folder to show accurate summary
+            folder_counts = {}
+            for detail in upload_details:
+                folder = detail.get('month_folder', 'unknown')
+                if folder not in folder_counts:
+                    folder_counts[folder] = 0
+                folder_counts[folder] += 1
+            
+            if len(folder_counts) > 1:
+                st.success(f"🎉 Successfully uploaded all {uploaded_count} images to {len(folder_counts)} different month folders in gs://{bucket_name}/")
+                for folder, count in sorted(folder_counts.items()):
                     year = folder[:4]
                     month = folder[4:6]
                     month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
-                    # Determine mode for path display
-                    survey_mode = st.session_state.get('survey_mode', False)
-                    survey_type = st.session_state.get('survey_type', 'survey_vehicle')
-                    camera_trap_mode = st.session_state.get('camera_trap_mode', False)
-                    camera_type = st.session_state.get('camera_type', 'camera_fence')
-                    
-                    if survey_mode:
-                        path_display = f"survey/{survey_type}/{folder}/"
-                    elif camera_trap_mode:
-                        path_display = f"camera_trap/{camera_type}/{folder}/"
-                    else:
-                        path_display = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{folder}/"
-                    
-                    st.success(f"🎉 Successfully uploaded all {uploaded_count} images to gs://{bucket_name}/{path_display}")
-            elif uploaded_count > 0:
-                st.warning(f"⚠️ Uploaded {uploaded_count} out of {total_files} images")
-                if skipped_files:
-                    st.info(f"📋 {len(skipped_files)} files were skipped (already exist)")
+                    st.info(f"📁 **{folder}** ({month_name} {year}): {count} images")
             else:
-                st.error("❌ No files were uploaded successfully")
+                folder = list(folder_counts.keys())[0]
+                year = folder[:4]
+                month = folder[4:6]
+                month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                # Determine mode for path display
+                survey_mode = st.session_state.get('survey_mode', False)
+                survey_type = st.session_state.get('survey_type', 'survey_vehicle')
+                camera_trap_mode = st.session_state.get('camera_trap_mode', False)
+                camera_type = st.session_state.get('camera_type', 'camera_fence')
+                
+                if survey_mode:
+                    path_display = f"survey/{survey_type}/{folder}/"
+                elif camera_trap_mode:
+                    path_display = f"camera_trap/{camera_type}/{folder}/"
+                else:
+                    path_display = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{folder}/"
+                
+                st.success(f"🎉 Successfully uploaded all {uploaded_count} images to gs://{bucket_name}/{path_display}")
+        elif uploaded_count > 0:
+            st.warning(f"⚠️ Uploaded {uploaded_count} out of {total_files} images")
+            if skipped_files:
+                st.info(f"📋 {len(skipped_files)} files were skipped (already exist)")
+        else:
+            st.error("❌ No files were uploaded successfully")
+        
+        # Detailed completion report
+        if notify_completion and (uploaded_count > 0 or skipped_files):
+            st.subheader("📈 Upload Completion Report")
             
-            # Detailed completion report
-            if notify_completion and (uploaded_count > 0 or skipped_files):
-                st.subheader("📈 Upload Completion Report")
+            # Summary metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Files", total_files)
+            with col2:
+                st.metric("Uploaded", uploaded_count)
+            with col3:
+                st.metric("Skipped", len(skipped_files))
+            with col4:
+                st.metric("Failed", len(failed_uploads))
+            
+            # Upload details grouped by month
+            if upload_details:
+                # Group uploads by month folder
+                uploads_by_month = {}
+                for detail in upload_details:
+                    month = detail.get('month_folder', 'unknown')
+                    if month not in uploads_by_month:
+                        uploads_by_month[month] = []
+                    uploads_by_month[month].append(detail)
                 
-                # Summary metrics
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Total Files", total_files)
-                with col2:
-                    st.metric("Uploaded", uploaded_count)
-                with col3:
-                    st.metric("Skipped", len(skipped_files))
-                with col4:
-                    st.metric("Failed", len(failed_uploads))
-                
-                # Upload details grouped by month
-                if upload_details:
-                    # Group uploads by month folder
-                    uploads_by_month = {}
-                    for detail in upload_details:
-                        month = detail.get('month_folder', 'unknown')
-                        if month not in uploads_by_month:
-                            uploads_by_month[month] = []
-                        uploads_by_month[month].append(detail)
-                    
-                    if len(uploads_by_month) > 1:
-                        st.write("**✅ Successfully Uploaded Files (by Month):**")
-                        for month_key in sorted(uploads_by_month.keys()):
-                            month_uploads = uploads_by_month[month_key]
-                            year = month_key[:4]
-                            month = month_key[4:6]
-                            month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
-                            
-                            with st.expander(f"📁 **{month_key}** ({month_name} {year}) - {len(month_uploads)} files", expanded=False):
-                                month_df = pd.DataFrame(month_uploads)
-                                st.dataframe(month_df, use_container_width=True)
-                                total_mb = sum(detail['size_mb'] for detail in month_uploads)
-                                st.caption(f"Total size: {total_mb:.2f} MB")
-                    else:
-                        st.write("**✅ Successfully Uploaded Files:**")
-                        details_df = pd.DataFrame(upload_details)
-                        st.dataframe(details_df, use_container_width=True)
-                
-                # Skipped files
-                if skipped_files:
-                    st.write("**⏭️ Skipped Files (Already Exist):**")
-                    for skip in skipped_files:
-                        st.write(f"• {skip}")
-                
-                # Failed uploads
-                if failed_uploads:
-                    st.write("**❌ Failed Uploads:**")
-                    for failure in failed_uploads:
-                        st.write(f"• {failure}")
+                if len(uploads_by_month) > 1:
+                    st.write("**✅ Successfully Uploaded Files (by Month):**")
+                    for month_key in sorted(uploads_by_month.keys()):
+                        month_uploads = uploads_by_month[month_key]
+                        year = month_key[:4]
+                        month = month_key[4:6]
+                        month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                        
+                        with st.expander(f"📁 **{month_key}** ({month_name} {year}) - {len(month_uploads)} files", expanded=False):
+                            month_df = pd.DataFrame(month_uploads)
+                            st.dataframe(month_df, use_container_width=True)
+                            total_mb = sum(detail['size_mb'] for detail in month_uploads)
+                            st.caption(f"Total size: {total_mb:.2f} MB")
+                else:
+                    st.write("**✅ Successfully Uploaded Files:**")
+                    details_df = pd.DataFrame(upload_details)
+                    st.dataframe(details_df, use_container_width=True)
+            
+            # Skipped files
+            if skipped_files:
+                st.write("**⏭️ Skipped Files (Already Exist):**")
+                for skip in skipped_files:
+                    st.write(f"• {skip}")
+            
+            # Failed uploads
+            if failed_uploads:
+                st.write("**❌ Failed Uploads:**")
+                for failure in failed_uploads:
+                    st.write(f"• {failure}")
                 
                 # Final summary
                 st.write("**📊 Upload Summary:**")
@@ -1336,10 +1319,10 @@ def upload_to_gcs():
                 
                 for key, value in summary_info.items():
                     st.write(f"**{key}:** {value}")
-                
-        except Exception as e:
-            st.error(f"Error accessing bucket '{bucket_name}': {str(e)}")
-            st.info("Please check your bucket permissions.")
+    
+    except Exception as e:
+        st.error(f"Error accessing bucket '{bucket_name}': {str(e)}")
+        st.info("Please check your bucket permissions.")
             
         # Reset button for new upload
         if st.button("🔄 Upload Another Folder", type="secondary"):

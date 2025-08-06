@@ -188,7 +188,9 @@ filtered_df = df[(df["evt_dttm"].dt.date >= date_range[0]) & (df["evt_dttm"].dt.
 
 
 #### DASHBOARD LAYOUT ###############################################
-st.title("🦒 GCF Namibia NW monitoring")
+#st.title("🦒 GCF Namibia NW monitoring")
+st.info("Please select a date range from the side bar filter")
+
 
 #### heading metrics
 st.sidebar.metric("Current population size", len(active_subjects)) # shown in side bar separately
@@ -204,12 +206,12 @@ with col3:
     st.metric("Average herd size", f"{avg_herd_size:.1f}" if not pd.isna(avg_herd_size) else "N/A")
 
 #### Sighting map
-st.subheader("📍 Sighting Map")
+st.subheader("📍 Sightings map")
 map_df = filtered_df.dropna(subset=["lat", "lon"])
 st.map(map_df[["lat", "lon"]])
 
 #### Sightings/month bar chart
-st.subheader("📅 Sightings per Month")
+st.subheader("📅 Sightings per month")
 monthly_counts = (
     filtered_df.groupby(filtered_df["evt_dttm"].dt.to_period("M"))
     .size()
@@ -220,7 +222,7 @@ fig1 = px.bar(monthly_counts, x="Month", y="Sightings", title="Monthly Sightings
 st.plotly_chart(fig1, use_container_width=True)
 
 #### Age/sex breakdown bar chart
-st.subheader("🧬 Age / Sex Breakdown")
+st.subheader("🧬 Age / sex breakdown")
 breakdown = (
     filtered_df.groupby(["evt_girSex", "evt_girAge"])
     .size()
