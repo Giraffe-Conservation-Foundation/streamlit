@@ -219,11 +219,22 @@ def site_selection():
     
     # Camera trap type selection (moved from landing page to Step 2)
     st.subheader("📋 Camera Trap Configuration")
+    
+    # Get current camera type from session state, with safe fallback
+    current_camera_type = st.session_state.get('camera_type', 'camera_fence')
+    camera_options = ["camera_fence", "camera_grid", "camera_water"]
+    
+    # Find the index safely
+    try:
+        camera_index = camera_options.index(current_camera_type)
+    except ValueError:
+        camera_index = 0  # Default to first option if current value not found
+        current_camera_type = camera_options[0]
+    
     camera_type = st.selectbox(
         "Select camera trap type:",
-        ["camera_fence", "camera_grid", "camera_water"],
-        index=0 if 'camera_type' not in st.session_state else 
-        ["camera_fence", "camera_grid", "camera_water"].index(st.session_state.get('camera_type', 'camera_fence')),
+        camera_options,
+        index=camera_index,
         help="Choose the type of camera trap deployment"
     )
     
