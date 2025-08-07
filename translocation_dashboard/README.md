@@ -30,7 +30,8 @@ The Translocation Dashboard provides comprehensive monitoring and analysis of gi
 ## Technical Details
 
 ### API Integration
-- **Event Category Filter**: `event_category == 'translocation'`
+- **Event Category Filter**: `event_category == 'veterinary'`
+- **Event Type Filter**: `event_type == 'giraffe_translocation'`
 - **Data Source**: EarthRanger via ecoscope package
 - **Caching**: 30-minute cache for performance optimization
 
@@ -75,7 +76,8 @@ pages/
 The dashboard processes events with the following key fields (via ecoscope):
 - `id`: Unique event identifier
 - `time`: Event timestamp
-- `event_category`: Must be "translocation"
+- `event_category`: Must be "veterinary"
+- `event_type`: Must be "giraffe_translocation"
 - `state`: Event status (new, active, resolved, etc.)
 - `priority`: Event priority level
 - `geometry`: Geographic coordinates (converted to latitude/longitude)

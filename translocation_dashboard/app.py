@@ -138,7 +138,8 @@ def get_translocation_events(start_date=None, end_date=None):
         
         # Build parameters for ecoscope get_events
         kwargs = {
-            'event_category': 'translocation',
+            'event_category': 'veterinary',
+            'event_type': ['giraffe_translocation'],  # ecoscope expects a list
             'include_details': True,
             'include_notes': True,
             'max_results': 1000,
@@ -271,11 +272,11 @@ def translocation_dashboard():
         st.warning("No translocation events found for the selected date range.")
         st.info("""
         **Possible reasons:**
-        - No translocation events occurred in the selected date range
+        - No giraffe translocation events occurred in the selected date range
         - Events may be categorized differently in EarthRanger
-        - Access permissions may not include translocation events
+        - Access permissions may not include veterinary events
         
-        **Event criteria:** event_category='translocation' (using ecoscope)
+        **Event criteria:** event_category='veterinary' AND event_type='giraffe_translocation'
         """)
         return
     
