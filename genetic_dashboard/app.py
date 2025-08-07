@@ -8,6 +8,11 @@ import json
 import os
 from pandas import json_normalize
 
+# Handle NumPy 2.x compatibility warnings
+import warnings
+warnings.filterwarnings("ignore", message=".*copy keyword.*")
+warnings.filterwarnings("ignore", message=".*np.array.*")
+
 # Ecoscope imports for EarthRanger integration
 try:
     from ecoscope.io.earthranger import EarthRangerIO
@@ -139,13 +144,26 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             kwargs['until'] = end_date.strftime('%Y-%m-%dT23:59:59Z')
         
         # Get events using ecoscope (all veterinary events)
-        gdf_events = er_io.get_events(**kwargs)
+        # Handle NumPy 2.x compatibility issue
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*copy keyword.*")
+            warnings.filterwarnings("ignore", message=".*np.array.*")
+            gdf_events = er_io.get_events(**kwargs)
         
         if gdf_events.empty:
             return pd.DataFrame()
         
         # Convert GeoDataFrame to regular DataFrame for easier handling in Streamlit
-        df = pd.DataFrame(gdf_events.drop(columns='geometry', errors='ignore'))
+        # Handle potential NumPy compatibility issues during conversion
+        try:
+            df = pd.DataFrame(gdf_events.drop(columns='geometry', errors='ignore'))
+        except Exception as conversion_error:
+            st.warning(f"Geometry conversion warning: {str(conversion_error)}")
+            # Fallback: convert without geometry handling
+            df = pd.DataFrame(gdf_events)
+            if 'geometry' in df.columns:
+                df = df.drop(columns='geometry', errors='ignore')
         
         # Filter by event_type after getting the data (avoiding UUID requirement)
         if 'event_type' in df.columns:
@@ -164,11 +182,16 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
         
         # Add location information if geometry was available
         if not gdf_events.empty and 'geometry' in gdf_events.columns:
-            # Extract coordinates from geometry
-            gdf_events['latitude'] = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
-            gdf_events['longitude'] = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
-            df['latitude'] = gdf_events['latitude']
-            df['longitude'] = gdf_events['longitude']
+            # Extract coordinates from geometry with error handling
+            try:
+                gdf_events['latitude'] = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
+                gdf_events['longitude'] = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
+                df['latitude'] = gdf_events['latitude']
+                df['longitude'] = gdf_events['longitude']
+            except Exception as geo_error:
+                st.warning(f"Geometry processing warning: {str(geo_error)}")
+                # Continue without geometry data
+                pass
         
         return df
         
