@@ -22,13 +22,14 @@ st.markdown("*Camera trap image processing and cloud storage*")
 # This ensures it's only visible on the landing page (Step 1)
 if 'authenticated' not in st.session_state or not st.session_state.authenticated:
     st.markdown("""
-💡 **Camera Trap Process:**
+#💡 **Process:**
 1. Authenticate your Google Cloud access
-2. Select camera trap type: **Fence**, **Grid**, or **Water**
+2. Select camera trap type: **fence**, **grid**, or **waterhole**
 3. Select country and site from your Google Cloud bucket access
-4. Enter **Station ID** and **Camera ID** (one folder upload per camera)
-5. Images are auto renamed: `country_site_station_camera_yyyymmdd_original`
-6. Images are auto sorted into correct Google Cloud bucket
+4. Enter **Station ID** and **Camera ID**
+5. upload a zipped folder (one folder per camera)
+6. Images are auto renamed: `country_site_station_camera_yyyymmdd_original`
+7. Images are auto sorted into correct Google Cloud bucket
 """)
 
 if image_dir.exists() and (image_dir / "app.py").exists():

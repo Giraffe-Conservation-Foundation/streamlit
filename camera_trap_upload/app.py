@@ -217,32 +217,8 @@ def site_selection():
     """Handle site selection interface"""
     st.header("📍 Step 2: Configuration & Site Selection")
     
-    # Camera trap type selection (moved from landing page to Step 2)
-    st.subheader("📋 Camera Trap Configuration")
-    
-    # Get current camera type from session state, with safe fallback
-    current_camera_type = st.session_state.get('camera_type', 'camera_fence')
-    camera_options = ["camera_fence", "camera_grid", "camera_water"]
-    
-    # Find the index safely
-    try:
-        camera_index = camera_options.index(current_camera_type)
-    except ValueError:
-        camera_index = 0  # Default to first option if current value not found
-        current_camera_type = camera_options[0]
-    
-    camera_type = st.selectbox(
-        "Select camera trap type:",
-        camera_options,
-        index=camera_index,
-        help="Choose the type of camera trap deployment"
-    )
-    
-    # Store camera type in session state
-    st.session_state.camera_type = camera_type
-    
     # Country and Site Selection
-    st.subheader("🌍 Location Selection")
+    #st.subheader("🌍 Location Selection")
     
     # Get countries/sites from session state instead of global variable
     countries_sites = st.session_state.get('countries_sites', {})
@@ -341,6 +317,30 @@ def site_selection():
         if not matching_buckets:
             st.warning(f"⚠️ **No exact bucket match found** for pattern `{expected_bucket}`")
         
+        # Camera trap type selection (moved here for better flow)
+        #st.subheader("📋 Camera Trap Configuration")
+        
+        # Get current camera type from session state, with safe fallback
+        current_camera_type = st.session_state.get('camera_type', 'camera_fence')
+        camera_options = ["camera_fence", "camera_grid", "camera_water"]
+        
+        # Find the index safely
+        try:
+            camera_index = camera_options.index(current_camera_type)
+        except ValueError:
+            camera_index = 0  # Default to first option if current value not found
+            current_camera_type = camera_options[0]
+        
+        camera_type = st.selectbox(
+            "Select camera trap type:",
+            camera_options,
+            index=camera_index,
+            help="Choose the type of camera trap deployment"
+        )
+        
+        # Store camera type in session state
+        st.session_state.camera_type = camera_type
+        
         # Check if we're in camera trap mode (passed from twiga_tools.py)
         camera_trap_mode = globals().get('CAMERA_TRAP_MODE', False)
         
@@ -388,6 +388,7 @@ def site_selection():
                 st.subheader("📋 Review Your Selections")
                 st.write(f"**Country:** {selected_country}")
                 st.write(f"**Site:** {selected_site}")
+                st.write(f"**Type:** {camera_type}")
                 st.write(f"**Station:** {station.strip().upper()}")
                 st.write(f"**Camera:** {camera.strip().upper()}")
                 
@@ -475,7 +476,7 @@ def site_selection():
 
 def image_processing():
     """Handle image folder upload, renaming, and processing"""
-    st.header("📸 Image Processing")
+    st.header("Image Processing")
     
     if not st.session_state.selected_site:
         st.warning("Please select a site first!")
@@ -559,8 +560,6 @@ def image_processing():
         # Store folder name in session state
         st.session_state.folder_name = folder_name
         st.session_state.uploaded_files = uploaded_files_list
-        
-        # Display upload summary
 
 
 
@@ -681,13 +680,9 @@ def image_processing():
         photographer = st.session_state.metadata.get('photographer')
         
         # Process images for each month group
-        st.subheader("📋 Processing Results by Month")
-        
         for month_key in sorted(image_months.keys()):
-            st.write(f"### 📁 Processing folder: {month_key}")
             month_images = image_months[month_key]
             
-            # Create preview using batch rename utility for this month's images
             # Create preview using batch rename utility for this month's images
             preview_data = batch_rename_preview(
                 month_images,
@@ -782,7 +777,7 @@ def image_processing():
         
         # Show summary for each month folder
         if len(months_summary) > 1:
-            st.info(f"📁 **Multiple folders will be created:** {len(months_summary)} different months detected")
+            #st.info(f"📁 **Multiple folders will be created:** {len(months_summary)} different months detected")
             
             for month_key in sorted(months_summary.keys()):
                 month_images = months_summary[month_key]
@@ -1379,19 +1374,19 @@ def main():
     
     # Landing page (only shown if not authenticated yet)
     if not st.session_state.authenticated:
-        st.header("📷 Camera Trap Upload Tool")
-        st.write("Welcome to the camera trap image upload system.")
+        #st.header("📷 Camera Trap Upload Tool")
+        #st.write("Welcome to the camera trap image upload system.")
         
         # Show process steps 1-6 on landing page
-        st.subheader("📋 Upload Process Overview")
-        st.info("""
-        **Step 1:** Authenticate with Google Cloud
-        **Step 2:** Configure camera trap type and select location  
-        **Step 3:** Upload ZIP file with images
-        **Step 4:** Review processed images
-        **Step 5:** Confirm upload settings
-        **Step 6:** Upload to cloud storage
-        """)
+        #st.subheader("📋 Upload Process Overview")
+        #st.info("""
+        #**Step 1:** Authenticate with Google Cloud
+        #**Step 2:** Configure camera trap type and select location  
+        #**Step 3:** Upload ZIP file with images
+        #**Step 4:** Review processed images
+        #**Step 5:** Confirm upload settings
+        #**Step 6:** Upload to cloud storage
+        #""")
         
         # Show authentication directly on landing page
         authenticate_google_cloud()

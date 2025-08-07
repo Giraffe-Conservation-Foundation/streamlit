@@ -97,6 +97,28 @@ aag_subjects = get_active_aag_subjects()
 aag_id_to_name = {s["id"]: s["name"] for s in aag_subjects if "id" in s and "name" in s}
 aag_ids = set(aag_id_to_name.keys())
 
+@st.cache_data(ttl=3600)
+def get_active_sources():
+    er = EarthRangerIO(
+        server="https://twiga.pamdas.org",
+        username=username,
+        password=password
+    )
+    sources_df = er.get_sources()
+    sources = sources_df.to_dict('records')
+    
+    # Filter for sources on NANW giraffes (exclude dummy sources)
+    nanw_subject_ids = {s["id"] for s in active_subjects}
+    active_sources = [
+        s for s in sources 
+        if s.get("subject_id") in nanw_subject_ids 
+        and s.get("provider") != "dummy"
+        and s.get("is_active") is True
+    ]
+    return active_sources
+
+active_sources = get_active_sources()
+
 
 
 @st.cache_data(ttl=3600)
@@ -195,13 +217,24 @@ st.info("Please select a date range from the side bar filter")
 #### heading metrics
 st.sidebar.metric("Current population size", len(active_subjects)) # shown in side bar separately
 
-col1, col2, col3 = st.columns(3)
+# Calculate percentage of population seen
+distinct_individuals_seen = filtered_df["evt_girID"].nunique()
+total_population = len(active_subjects)
+if total_population > 0:
+    percentage_seen = (distinct_individuals_seen / total_population) * 100
+else:
+    percentage_seen = 0
+
+col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("Distinct individuals seen", df["evt_girID"].nunique())
+    st.metric("Distinct individuals seen", distinct_individuals_seen)
 with col2:
+    import math
+    st.metric("% of population seen", f"{math.ceil(percentage_seen)}%")
+with col3:
     herd_count = filtered_df["evt_herdSize"].count()
     st.metric("Herds seen", herd_count)
-with col3:
+with col4:
     avg_herd_size = filtered_df["evt_herdSize"].mean()
     st.metric("Average herd size", f"{avg_herd_size:.1f}" if not pd.isna(avg_herd_size) else "N/A")
 
