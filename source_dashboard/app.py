@@ -7,6 +7,11 @@ import plotly.graph_objects as go
 import json
 import os
 
+# Make main available at module level for import
+def main():
+    """Main application entry point - delegates to _main_implementation"""
+    return _main_implementation()
+
 # Page configuration - handled by main Twiga Tools app
 # st.set_page_config(
 #     page_title="Source Dashboard",
@@ -844,7 +849,7 @@ def source_dashboard():
     else:
         st.write("Click the button above to start the inactive source analysis.")
 
-def main():
+def _main_implementation():
     """Main application logic"""
     init_session_state()
     
@@ -871,21 +876,21 @@ def main():
         # Fallback header without logo
         if not logo_displayed:
             st.title("🌍 Source Dashboard")
-            st.markdown("Source Tracking & Analytics")
+            st.markdown("Source (GPS unit) performance analytics and stock tracking")
     
     # Landing page (only shown if not authenticated yet)
     if not st.session_state.authenticated:
-        st.header("🌍 Source Dashboard")
-        st.write("Monitor and analyze EarthRanger tracking device sources.")
+        #st.header("🌍 Source Dashboard")
+        #st.write("Monitor and analyze EarthRanger tracking device sources.")
         
         # Show process overview on landing page
-        st.subheader("📋 Dashboard Features")
-        st.info("""
-        **🔐 Authentication:** Secure login with EarthRanger credentials
-        **📍 Location Tracking:** View latest positions of tracking devices
-        **📊 Activity Analysis:** 7-day location transmission charts
-        **⚠️ Inactive Monitoring:** Identify sources not reporting for >90 days
-        """)
+       # st.subheader("📋 Dashboard Features")
+       # st.info("""
+       # **🔐 Authentication:** Secure login with EarthRanger credentials
+       # **📍 Location Tracking:** View latest positions of tracking devices
+       # **📊 Activity Analysis:** 7-day location transmission charts
+       # **⚠️ Inactive Monitoring:** Identify sources not reporting for >90 days
+       # """)
         
         # Show authentication directly on landing page
         authenticate_earthranger()
@@ -920,5 +925,6 @@ def main():
                 del st.session_state[key]
         st.rerun()
 
+# Make main() available for import while still allowing direct execution
 if __name__ == "__main__":
     main()
