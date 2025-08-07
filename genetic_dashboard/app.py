@@ -7,6 +7,8 @@ import plotly.graph_objects as go
 import json
 import os
 from pandas import json_normalize
+import requests
+import time
 
 # Handle NumPy 2.x compatibility warnings
 import warnings
@@ -20,6 +22,61 @@ try:
 except ImportError:
     ECOSCOPE_AVAILABLE = False
     st.warning("⚠️ Ecoscope package not available. Please install ecoscope to use this dashboard.")
+
+# Reverse geocoding function using Nominatim (free service)
+@st.cache_data(ttl=86400)  # Cache for 24 hours
+def get_country_from_coordinates(lat, lon):
+    """Get country name from latitude and longitude using Nominatim reverse geocoding"""
+    if pd.isna(lat) or pd.isna(lon):
+        return "Unknown"
+    
+    try:
+        # Use Nominatim (OpenStreetMap) reverse geocoding service
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json&addressdetails=1"
+        headers = {'User-Agent': 'GCF-TwigaTools/1.0 (conservation research)'}
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if 'address' in data and 'country' in data['address']:
+                return data['address']['country']
+        
+        return "Unknown"
+    except Exception as e:
+        return "Unknown"
+
+def add_country_column(df):
+    """Add country column to dataframe based on coordinates"""
+    if df.empty or 'latitude' not in df.columns or 'longitude' not in df.columns:
+        df['country'] = "Unknown"
+        return df
+    
+    # Show progress for country lookup
+    countries = []
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for i, row in df.iterrows():
+        if pd.notna(row['latitude']) and pd.notna(row['longitude']):
+            country = get_country_from_coordinates(row['latitude'], row['longitude'])
+            countries.append(country)
+            
+            # Update progress
+            progress = (i + 1) / len(df)
+            progress_bar.progress(progress)
+            status_text.text(f"Looking up countries... {i+1}/{len(df)}")
+            
+            # Small delay to be respectful to the geocoding service
+            time.sleep(0.1)
+        else:
+            countries.append("Unknown")
+    
+    # Clear progress indicators
+    progress_bar.empty()
+    status_text.empty()
+    
+    df['country'] = countries
+    return df
 
 # Make main available at module level for import
 def main():
@@ -192,6 +249,13 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                 st.warning(f"Geometry processing warning: {str(geo_error)}")
                 # Continue without geometry data
                 pass
+        
+        # Add country information based on coordinates
+        if 'latitude' in df.columns and 'longitude' in df.columns:
+            with st.spinner("🌍 Looking up countries from coordinates..."):
+                df = add_country_column(df)
+        else:
+            df['country'] = "Unknown"
         
         return df
         
@@ -496,6 +560,46 @@ def display_events_map(df_events):
                 )
                 fig_pie.update_layout(height=300, showlegend=True)
                 st.plotly_chart(fig_pie, use_container_width=True)
+    
+    # Show country breakdown
+    if 'country' in df_map.columns:
+        st.subheader("🌍 Country Breakdown")
+        country_counts = df_map['country'].value_counts()
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.write("**Samples by Country:**")
+            for country, count in country_counts.items():
+                percentage = (count / len(df_map) * 100)
+                flag = "🏴" if country == "Unknown" else "🏃"
+                st.write(f"• {flag} {country}: {count} samples ({percentage:.1f}%)")
+        
+        with col2:
+            # Country bar chart
+            if len(country_counts) > 0:
+                fig_country_bar = px.bar(
+                    x=country_counts.values,
+                    y=country_counts.index,
+                    orientation='h',
+                    title="Samples by Country",
+                    labels={'x': 'Number of Samples', 'y': 'Country'},
+                    color=country_counts.values,
+                    color_continuous_scale='Viridis'
+                )
+                fig_country_bar.update_layout(height=300, showlegend=False)
+                st.plotly_chart(fig_country_bar, use_container_width=True)
+        
+        with col3:
+            # Country pie chart
+            if len(country_counts) > 0:
+                fig_country_pie = px.pie(
+                    values=country_counts.values,
+                    names=country_counts.index,
+                    title="Country Distribution"
+                )
+                fig_country_pie.update_layout(height=300, showlegend=True)
+                st.plotly_chart(fig_country_pie, use_container_width=True)
 
 def genetic_dashboard():
     """Main genetic dashboard interface"""
@@ -594,29 +698,54 @@ def genetic_dashboard():
                             st.write("**Sample events:**")
                             sample_cols = ['time', 'event_type', 'serial_number', 'state']
                             available_cols = [col for col in sample_cols if col in debug_df.columns]
-                            if available_cols:
-                                st.dataframe(debug_df[available_cols].head(10))
-                        else:
-                            st.write("No 'event_type' column found in veterinary events")
+                            st.dataframe(debug_df[available_cols].head())
                     else:
-                        st.write("No veterinary events found in the selected date range")
+                        st.write("No veterinary events found in the selected date range.")
                         
-                except Exception as e:
-                    st.error(f"Debug error: {str(e)}")
-        
-        st.info("""
-        **Possible reasons:**
-        - No biological sample events occurred in the selected date range
-        - Events may be categorized differently in EarthRanger
-        - Access permissions may not include veterinary events
-        - Event type might be named differently (use debug option above to check)
-        
-        **Event criteria:** event_category='veterinary' AND event_type='biological_sample'
-        """)
+                except Exception as debug_error:
+                    st.error(f"Debug error: {str(debug_error)}")
+        return
+    
+    # Country filter section
+    st.subheader("🌍 Country Filter")
+    
+    # Get unique countries
+    countries_in_data = sorted([c for c in df_events['country'].unique() if c != "Unknown"])
+    if "Unknown" in df_events['country'].values:
+        countries_in_data.append("Unknown")
+    
+    # Country selection
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        country_filter = st.selectbox(
+            "Select Country",
+            options=["All Countries"] + countries_in_data,
+            index=0,
+            help="Filter data by country (based on event coordinates)"
+        )
+    
+    with col2:
+        st.metric(
+            "Total Countries", 
+            len([c for c in countries_in_data if c != "Unknown"]),
+            help="Number of countries with events"
+        )
+    
+    # Apply country filter
+    if country_filter != "All Countries":
+        df_filtered = df_events[df_events['country'] == country_filter].copy()
+        st.info(f"📊 Showing data for: **{country_filter}** ({len(df_filtered)} events)")
+    else:
+        df_filtered = df_events.copy()
+        st.info(f"📊 Showing data for: **All Countries** ({len(df_filtered)} events)")
+    
+    # Update the rest of the function to use df_filtered instead of df_events
+    if df_filtered.empty:
+        st.warning(f"No biological sample events found for {country_filter} in the selected date range.")
         return
     
     # Display the events table and get exploded data
-    df_exploded = display_event_details_table(df_events)
+    df_exploded = display_event_details_table(df_filtered)
     
     # Add some spacing
     st.markdown("---")
