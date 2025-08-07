@@ -45,6 +45,7 @@ Navigate using the sidebar to access:
 - **Survey Upload** - process and upload survey images to Google Cloud
 - **Source Dashboard** - monitor tracking device sources and location data
 - **Tagging Dashboard** - monitor newly tagged giraffes by month and country
+- **Translocation Dashboard** - monitor and analyze giraffe translocation events
 
 ### 🚧 Coming soon
             
