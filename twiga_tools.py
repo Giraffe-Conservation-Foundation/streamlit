@@ -23,6 +23,13 @@ st.sidebar.markdown("**Giraffe Conservation Foundation**")
 st.sidebar.markdown("[GitHub Repository](https://github.com/Giraffe-Conservation-Foundation/streamlit)")
 st.sidebar.markdown("---")
 
+# Quick access to dashboards
+st.sidebar.markdown("### 🚀 Quick Access")
+st.sidebar.markdown("- [🧬 Genetic Dashboard](8_🧬_Genetic_Dashboard)")
+st.sidebar.markdown("- [🚁 Translocation Dashboard](7_🚁_Translocation_Dashboard)")
+st.sidebar.markdown("- [📊 NANW Dashboard](2_📊_NANW_Dashboard)")
+st.sidebar.markdown("---")
+
 # Main content with logo at top
 if (current_dir / "shared" / "logo.png").exists():
     st.image(str(current_dir / "shared" / "logo.png"), width=300)
@@ -46,6 +53,7 @@ Navigate using the sidebar to access:
 - **Source Dashboard** - monitor tracking device sources and location data
 - **Tagging Dashboard** - monitor newly tagged giraffes by month and country
 - **Translocation Dashboard** - monitor and analyze giraffe translocation events
+- **Genetic Dashboard** - monitor and analyze biological sample events
 
 ### 🚧 Coming soon
             
