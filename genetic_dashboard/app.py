@@ -7,9 +7,6 @@ import plotly.graph_objects as go
 import json
 import os
 from pandas import json_normalize
-import requests
-import time
-from shapely.geometry import Point
 
 # Handle NumPy 2.x compatibility warnings
 import warnings
@@ -23,179 +20,6 @@ try:
 except ImportError:
     ECOSCOPE_AVAILABLE = False
     st.warning("⚠️ Ecoscope package not available. Please install ecoscope to use this dashboard.")
-
-# Global variable to store country boundaries
-WORLD_BOUNDARIES = None
-
-# Simple fallback country lookup for major African countries (giraffe habitat)
-AFRICA_COUNTRY_BOUNDS = {
-    'Kenya': {'lat_min': -4.7, 'lat_max': 5.5, 'lon_min': 33.9, 'lon_max': 41.9},
-    'Tanzania': {'lat_min': -11.7, 'lat_max': -0.9, 'lon_min': 29.3, 'lon_max': 40.4},
-    'Namibia': {'lat_min': -29.0, 'lat_max': -16.9, 'lon_min': 11.7, 'lon_max': 25.3},
-    'Botswana': {'lat_min': -26.9, 'lat_max': -17.8, 'lon_min': 19.9, 'lon_max': 29.4},
-    'South Africa': {'lat_min': -34.8, 'lat_max': -22.1, 'lon_min': 16.3, 'lon_max': 32.9},
-    'Zimbabwe': {'lat_min': -22.4, 'lat_max': -15.6, 'lon_min': 25.2, 'lon_max': 33.1},
-    'Zambia': {'lat_min': -18.1, 'lat_max': -8.2, 'lon_min': 21.9, 'lon_max': 33.7},
-    'Chad': {'lat_min': 7.4, 'lat_max': 23.5, 'lon_min': 13.5, 'lon_max': 24.0},
-    'Niger': {'lat_min': 11.7, 'lat_max': 23.5, 'lon_min': 0.2, 'lon_max': 16.0},
-    'Cameroon': {'lat_min': 1.7, 'lat_max': 13.1, 'lon_min': 8.5, 'lon_max': 16.2},
-    'Central African Republic': {'lat_min': 2.2, 'lat_max': 11.0, 'lon_min': 14.4, 'lon_max': 27.5},
-    'Sudan': {'lat_min': 8.7, 'lat_max': 22.0, 'lon_min': 21.8, 'lon_max': 38.6},
-    'South Sudan': {'lat_min': 3.5, 'lat_max': 12.2, 'lon_min': 24.1, 'lon_max': 35.9},
-    'Uganda': {'lat_min': -1.5, 'lat_max': 4.2, 'lon_min': 29.6, 'lon_max': 35.0},
-    'Ethiopia': {'lat_min': 3.4, 'lat_max': 15.0, 'lon_min': 32.9, 'lon_max': 48.0},
-    'Somalia': {'lat_min': -1.7, 'lat_max': 12.0, 'lon_min': 40.9, 'lon_max': 51.4},
-    'Angola': {'lat_min': -18.0, 'lat_max': -4.4, 'lon_min': 11.7, 'lon_max': 24.1}
-}
-
-def get_country_simple_bounds(lat, lon):
-    """Simple country lookup using bounding boxes for major African countries"""
-    if pd.isna(lat) or pd.isna(lon):
-        return "Unknown"
-    
-    try:
-        lat_float = float(lat)
-        lon_float = float(lon)
-        
-        for country, bounds in AFRICA_COUNTRY_BOUNDS.items():
-            if (bounds['lat_min'] <= lat_float <= bounds['lat_max'] and 
-                bounds['lon_min'] <= lon_float <= bounds['lon_max']):
-                return country
-        
-        return "Other"  # Outside known African giraffe range
-    except:
-        return "Unknown"
-
-@st.cache_data(ttl=86400)  # Cache for 24 hours
-def load_world_boundaries():
-    """Load world country boundaries using alternative methods"""
-    global WORLD_BOUNDARIES
-    if WORLD_BOUNDARIES is not None:
-        return WORLD_BOUNDARIES
-    
-    try:
-        # Method 1: Try to load from Natural Earth directly via URL
-        url = "https://www.naturalearthdata.com/http//www.naturalearthdata.com/download/110m/cultural/ne_110m_admin_0_countries.zip"
-        world = gpd.read_file(url)
-        WORLD_BOUNDARIES = world
-        st.success("✅ Country boundaries loaded from Natural Earth")
-        return world
-    except Exception as e1:
-        try:
-            # Method 2: Try the alternative geopandas approach
-            import geopandas.datasets
-            world = gpd.read_file(geopandas.datasets.get_path('naturalearth_lowres'))
-            WORLD_BOUNDARIES = world
-            st.success("✅ Country boundaries loaded from geopandas datasets")
-            return world
-        except Exception as e2:
-            try:
-                # Method 3: Try using a simple country dataset from a reliable source
-                # This is a backup dataset hosted on GitHub
-                backup_url = "https://raw.githubusercontent.com/holtzy/The-Python-Graph-Gallery/master/static/data/world-110m2.json"
-                world = gpd.read_file(backup_url)
-                WORLD_BOUNDARIES = world
-                st.success("✅ Country boundaries loaded from backup source")
-                return world
-            except Exception as e3:
-                st.warning(f"Could not load detailed country boundaries. Using simple lookup for African countries.")
-                st.info("Note: Country identification will be approximate for major African countries only.")
-                return None
-
-def get_country_from_coordinates_offline(lat, lon):
-    """Get country name from latitude and longitude using offline country boundaries"""
-    if pd.isna(lat) or pd.isna(lon):
-        return "Unknown"
-    
-    try:
-        # Load country boundaries if not already loaded
-        world = load_world_boundaries()
-        
-        # If detailed boundaries are available, use them
-        if world is not None:
-            # Convert coordinates to float
-            lat_float = float(lat)
-            lon_float = float(lon)
-            
-            # Basic validation of coordinate ranges
-            if not (-90 <= lat_float <= 90 and -180 <= lon_float <= 180):
-                return "Unknown"
-            
-            # Create a point from coordinates
-            point = Point(lon_float, lat_float)  # Note: Point takes (lon, lat)
-            
-            # Find which country contains this point
-            for idx, country in world.iterrows():
-                if country.geometry.contains(point):
-                    # Try different possible column names for country name
-                    for col in ['name', 'NAME', 'NAME_LONG', 'ADMIN', 'NAME_EN']:
-                        if col in country and pd.notna(country[col]):
-                            return str(country[col])
-                    # Fallback to index if no name column found
-                    return f"Country_{idx}"
-            
-            return "Unknown"
-        else:
-            # Fallback to simple bounds-based lookup for African countries
-            return get_country_simple_bounds(lat, lon)
-            
-    except Exception as e:
-        # Final fallback to simple bounds lookup
-        return get_country_simple_bounds(lat, lon)
-
-def add_country_column(df):
-    """Add country column to dataframe based on coordinates using offline boundaries"""
-    if df.empty or 'latitude' not in df.columns or 'longitude' not in df.columns:
-        df['country'] = "Unknown"
-        return df
-    
-    # Load country boundaries first
-    world = load_world_boundaries()
-    if world is None:
-        st.warning("Country boundaries not available. Setting all countries to 'Unknown'.")
-        df['country'] = "Unknown"
-        return df
-    
-    # Show progress for country lookup
-    countries = []
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    # Use df.index to ensure we iterate through all rows properly
-    for idx, (row_idx, row) in enumerate(df.iterrows()):
-        try:
-            lat = row['latitude']
-            lon = row['longitude']
-            
-            # Check if coordinates are valid
-            if pd.notna(lat) and pd.notna(lon) and lat != '' and lon != '':
-                country = get_country_from_coordinates_offline(lat, lon)
-                countries.append(country)
-            else:
-                countries.append("Unknown")
-            
-            # Update progress
-            progress = (idx + 1) / len(df)
-            progress_bar.progress(progress)
-            status_text.text(f"Looking up countries... {idx+1}/{len(df)}")
-            
-        except (ValueError, TypeError) as e:
-            # Handle conversion errors
-            countries.append("Unknown")
-            continue
-    
-    # Clear progress indicators
-    progress_bar.empty()
-    status_text.empty()
-    
-    # Ensure the countries list has exactly the same length as the DataFrame
-    if len(countries) != len(df):
-        st.warning(f"Country lookup mismatch: {len(countries)} countries for {len(df)} events. Using 'Unknown' for all.")
-        df['country'] = "Unknown"
-    else:
-        df['country'] = countries
-    
-    return df
 
 # Make main available at module level for import
 def main():
@@ -368,23 +192,6 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                 st.warning(f"Geometry processing warning: {str(geo_error)}")
                 # Continue without geometry data
                 pass
-        
-        # Add country information based on coordinates
-        if 'latitude' in df.columns and 'longitude' in df.columns:
-            try:
-                # Add option to skip country lookup for debugging
-                if st.session_state.get('skip_country_lookup', False):
-                    df['country'] = "Unknown"
-                    st.info("🌍 Country lookup skipped (debug mode)")
-                else:
-                    with st.spinner("🌍 Looking up countries using offline boundaries..."):
-                        df = add_country_column(df)
-            except Exception as country_error:
-                st.warning(f"Could not determine countries from coordinates: {str(country_error)}")
-                st.info("Setting all events to 'Unknown' country and continuing...")
-                df['country'] = "Unknown"
-        else:
-            df['country'] = "Unknown"
         
         return df
         
@@ -689,46 +496,6 @@ def display_events_map(df_events):
                 )
                 fig_pie.update_layout(height=300, showlegend=True)
                 st.plotly_chart(fig_pie, use_container_width=True)
-    
-    # Show country breakdown
-    if 'country' in df_map.columns:
-        st.subheader("🌍 Country Breakdown")
-        country_counts = df_map['country'].value_counts()
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.write("**Samples by Country:**")
-            for country, count in country_counts.items():
-                percentage = (count / len(df_map) * 100)
-                flag = "🏴" if country == "Unknown" else "🏃"
-                st.write(f"• {flag} {country}: {count} samples ({percentage:.1f}%)")
-        
-        with col2:
-            # Country bar chart
-            if len(country_counts) > 0:
-                fig_country_bar = px.bar(
-                    x=country_counts.values,
-                    y=country_counts.index,
-                    orientation='h',
-                    title="Samples by Country",
-                    labels={'x': 'Number of Samples', 'y': 'Country'},
-                    color=country_counts.values,
-                    color_continuous_scale='Viridis'
-                )
-                fig_country_bar.update_layout(height=300, showlegend=False)
-                st.plotly_chart(fig_country_bar, use_container_width=True)
-        
-        with col3:
-            # Country pie chart
-            if len(country_counts) > 0:
-                fig_country_pie = px.pie(
-                    values=country_counts.values,
-                    names=country_counts.index,
-                    title="Country Distribution"
-                )
-                fig_country_pie.update_layout(height=300, showlegend=True)
-                st.plotly_chart(fig_country_pie, use_container_width=True)
 
 def genetic_dashboard():
     """Main genetic dashboard interface"""
@@ -742,16 +509,7 @@ def genetic_dashboard():
         st.subheader("📅 Date Filters")
     
     with col2:
-        # Debug option to skip country lookup
-        skip_country = st.checkbox(
-            "Skip Country Lookup",
-            value=False,
-            help="Skip offline country boundaries lookup for faster loading (sets all countries to 'Unknown')"
-        )
-        if skip_country:
-            st.session_state['skip_country_lookup'] = True
-        else:
-            st.session_state['skip_country_lookup'] = False
+        st.write("")  # Spacer
     
     with col3:
         # Add max results control
@@ -844,46 +602,8 @@ def genetic_dashboard():
                     st.error(f"Debug error: {str(debug_error)}")
         return
     
-    # Country filter section
-    st.subheader("🌍 Country Filter")
-    
-    # Get unique countries
-    countries_in_data = sorted([c for c in df_events['country'].unique() if c != "Unknown"])
-    if "Unknown" in df_events['country'].values:
-        countries_in_data.append("Unknown")
-    
-    # Country selection
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        country_filter = st.selectbox(
-            "Select Country",
-            options=["All Countries"] + countries_in_data,
-            index=0,
-            help="Filter data by country (based on event coordinates)"
-        )
-    
-    with col2:
-        st.metric(
-            "Total Countries", 
-            len([c for c in countries_in_data if c != "Unknown"]),
-            help="Number of countries with events"
-        )
-    
-    # Apply country filter
-    if country_filter != "All Countries":
-        df_filtered = df_events[df_events['country'] == country_filter].copy()
-        st.info(f"📊 Showing data for: **{country_filter}** ({len(df_filtered)} events)")
-    else:
-        df_filtered = df_events.copy()
-        st.info(f"📊 Showing data for: **All Countries** ({len(df_filtered)} events)")
-    
-    # Update the rest of the function to use df_filtered instead of df_events
-    if df_filtered.empty:
-        st.warning(f"No biological sample events found for {country_filter} in the selected date range.")
-        return
-    
     # Display the events table and get exploded data
-    df_exploded = display_event_details_table(df_filtered)
+    df_exploded = display_event_details_table(df_events)
     
     # Add some spacing
     st.markdown("---")

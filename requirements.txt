@@ -23,8 +23,6 @@ Pillow>=10.0.0
 
 # EarthRanger Integration (for NANW Dashboard)
 ecoscope
-geopandas>=0.13.0
-shapely>=2.0.0
 
 # Environment Variables
 python-dotenv>=1.0.0
