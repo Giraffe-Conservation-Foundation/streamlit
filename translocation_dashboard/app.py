@@ -137,9 +137,10 @@ def get_translocation_events(start_date=None, end_date=None):
         )
         
         # Build parameters for ecoscope get_events
+        # Note: Don't pass event_type to get_events as it expects UUIDs, 
+        # we'll filter by event_type string after getting the data
         kwargs = {
             'event_category': 'veterinary',
-            'event_type': ['giraffe_translocation'],  # ecoscope expects a list
             'include_details': True,
             'include_notes': True,
             'max_results': 1000,
@@ -152,7 +153,7 @@ def get_translocation_events(start_date=None, end_date=None):
         if end_date:
             kwargs['until'] = end_date.strftime('%Y-%m-%dT23:59:59Z')
         
-        # Get events using ecoscope
+        # Get events using ecoscope (all veterinary events)
         gdf_events = er_io.get_events(**kwargs)
         
         if gdf_events.empty:
@@ -160,6 +161,13 @@ def get_translocation_events(start_date=None, end_date=None):
         
         # Convert GeoDataFrame to regular DataFrame for easier handling in Streamlit
         df = pd.DataFrame(gdf_events.drop(columns='geometry', errors='ignore'))
+        
+        # Filter by event_type after getting the data (avoiding UUID requirement)
+        if 'event_type' in df.columns:
+            df = df[df['event_type'] == 'giraffe_translocation']
+        
+        if df.empty:
+            return pd.DataFrame()
         
         # Process the data
         if 'time' in df.columns:
@@ -270,11 +278,57 @@ def translocation_dashboard():
     
     if df_events.empty:
         st.warning("No translocation events found for the selected date range.")
+        
+        # Add debugging information to help understand available event types
+        if st.checkbox("🔍 Debug: Show available veterinary event types", value=False):
+            with st.spinner("Fetching all veterinary events for debugging..."):
+                try:
+                    er_io = EarthRangerIO(
+                        server=st.session_state.server_url,
+                        username=st.session_state.username,
+                        password=st.session_state.password
+                    )
+                    
+                    # Get all veterinary events to see what event types are available
+                    debug_kwargs = {
+                        'event_category': 'veterinary',
+                        'max_results': 100,  # Limit for debugging
+                        'drop_null_geometry': False
+                    }
+                    
+                    if start_date:
+                        debug_kwargs['since'] = start_date.strftime('%Y-%m-%dT00:00:00Z')
+                    if end_date:
+                        debug_kwargs['until'] = end_date.strftime('%Y-%m-%dT23:59:59Z')
+                    
+                    debug_gdf = er_io.get_events(**debug_kwargs)
+                    
+                    if not debug_gdf.empty:
+                        debug_df = pd.DataFrame(debug_gdf.drop(columns='geometry', errors='ignore'))
+                        if 'event_type' in debug_df.columns:
+                            event_types = debug_df['event_type'].value_counts()
+                            st.write("**Available event types in 'veterinary' category:**")
+                            st.dataframe(event_types.reset_index())
+                            
+                            st.write("**Sample events:**")
+                            sample_cols = ['time', 'event_type', 'serial_number', 'state']
+                            available_cols = [col for col in sample_cols if col in debug_df.columns]
+                            if available_cols:
+                                st.dataframe(debug_df[available_cols].head(10))
+                        else:
+                            st.write("No 'event_type' column found in veterinary events")
+                    else:
+                        st.write("No veterinary events found in the selected date range")
+                        
+                except Exception as e:
+                    st.error(f"Debug error: {str(e)}")
+        
         st.info("""
         **Possible reasons:**
         - No giraffe translocation events occurred in the selected date range
         - Events may be categorized differently in EarthRanger
         - Access permissions may not include veterinary events
+        - Event type might be named differently (use debug option above to check)
         
         **Event criteria:** event_category='veterinary' AND event_type='giraffe_translocation'
         """)
