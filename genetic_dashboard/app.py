@@ -9,6 +9,7 @@ import os
 from pandas import json_normalize
 import requests
 import time
+from shapely.geometry import Point
 
 # Handle NumPy 2.x compatibility warnings
 import warnings
@@ -23,35 +24,67 @@ except ImportError:
     ECOSCOPE_AVAILABLE = False
     st.warning("⚠️ Ecoscope package not available. Please install ecoscope to use this dashboard.")
 
-# Reverse geocoding function using Nominatim (free service)
+# Global variable to store country boundaries
+WORLD_BOUNDARIES = None
+
 @st.cache_data(ttl=86400)  # Cache for 24 hours
-def get_country_from_coordinates(lat, lon):
-    """Get country name from latitude and longitude using Nominatim reverse geocoding"""
+def load_world_boundaries():
+    """Load world country boundaries using geopandas Natural Earth data"""
+    global WORLD_BOUNDARIES
+    if WORLD_BOUNDARIES is not None:
+        return WORLD_BOUNDARIES
+    
+    try:
+        # Try to load Natural Earth country boundaries
+        # This is a built-in dataset in geopandas
+        world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
+        WORLD_BOUNDARIES = world
+        return world
+    except Exception as e:
+        st.warning(f"Could not load country boundaries: {str(e)}")
+        return None
+
+def get_country_from_coordinates_offline(lat, lon):
+    """Get country name from latitude and longitude using offline country boundaries"""
     if pd.isna(lat) or pd.isna(lon):
         return "Unknown"
     
     try:
-        # Ensure lat and lon are converted to float/string properly
-        lat_str = str(float(lat))
-        lon_str = str(float(lon))
+        # Load country boundaries if not already loaded
+        world = load_world_boundaries()
+        if world is None:
+            return "Unknown"
         
-        # Use Nominatim (OpenStreetMap) reverse geocoding service
-        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat_str}&lon={lon_str}&format=json&addressdetails=1"
-        headers = {'User-Agent': 'GCF-TwigaTools/1.0 (conservation research)'}
+        # Convert coordinates to float
+        lat_float = float(lat)
+        lon_float = float(lon)
         
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            if 'address' in data and 'country' in data['address']:
-                return data['address']['country']
+        # Basic validation of coordinate ranges
+        if not (-90 <= lat_float <= 90 and -180 <= lon_float <= 180):
+            return "Unknown"
+        
+        # Create a point from coordinates
+        point = Point(lon_float, lat_float)  # Note: Point takes (lon, lat)
+        
+        # Find which country contains this point
+        for idx, country in world.iterrows():
+            if country.geometry.contains(point):
+                return country['name']
         
         return "Unknown"
     except Exception as e:
         return "Unknown"
 
 def add_country_column(df):
-    """Add country column to dataframe based on coordinates"""
+    """Add country column to dataframe based on coordinates using offline boundaries"""
     if df.empty or 'latitude' not in df.columns or 'longitude' not in df.columns:
+        df['country'] = "Unknown"
+        return df
+    
+    # Load country boundaries first
+    world = load_world_boundaries()
+    if world is None:
+        st.warning("Country boundaries not available. Setting all countries to 'Unknown'.")
         df['country'] = "Unknown"
         return df
     
@@ -68,16 +101,8 @@ def add_country_column(df):
             
             # Check if coordinates are valid
             if pd.notna(lat) and pd.notna(lon) and lat != '' and lon != '':
-                # Convert to float to ensure proper data type
-                lat_float = float(lat)
-                lon_float = float(lon)
-                
-                # Basic validation of coordinate ranges
-                if -90 <= lat_float <= 90 and -180 <= lon_float <= 180:
-                    country = get_country_from_coordinates(lat_float, lon_float)
-                    countries.append(country)
-                else:
-                    countries.append("Unknown")
+                country = get_country_from_coordinates_offline(lat, lon)
+                countries.append(country)
             else:
                 countries.append("Unknown")
             
@@ -85,9 +110,6 @@ def add_country_column(df):
             progress = (idx + 1) / len(df)
             progress_bar.progress(progress)
             status_text.text(f"Looking up countries... {idx+1}/{len(df)}")
-            
-            # Small delay to be respectful to the geocoding service
-            time.sleep(0.1)
             
         except (ValueError, TypeError) as e:
             # Handle conversion errors
@@ -287,7 +309,7 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                     df['country'] = "Unknown"
                     st.info("🌍 Country lookup skipped (debug mode)")
                 else:
-                    with st.spinner("🌍 Looking up countries from coordinates..."):
+                    with st.spinner("🌍 Looking up countries using offline boundaries..."):
                         df = add_country_column(df)
             except Exception as country_error:
                 st.warning(f"Could not determine countries from coordinates: {str(country_error)}")
@@ -656,7 +678,7 @@ def genetic_dashboard():
         skip_country = st.checkbox(
             "Skip Country Lookup",
             value=False,
-            help="Skip reverse geocoding for faster loading (sets all countries to 'Unknown')"
+            help="Skip offline country boundaries lookup for faster loading (sets all countries to 'Unknown')"
         )
         if skip_country:
             st.session_state['skip_country_lookup'] = True
