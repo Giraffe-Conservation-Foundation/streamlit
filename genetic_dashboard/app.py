@@ -27,22 +27,80 @@ except ImportError:
 # Global variable to store country boundaries
 WORLD_BOUNDARIES = None
 
+# Simple fallback country lookup for major African countries (giraffe habitat)
+AFRICA_COUNTRY_BOUNDS = {
+    'Kenya': {'lat_min': -4.7, 'lat_max': 5.5, 'lon_min': 33.9, 'lon_max': 41.9},
+    'Tanzania': {'lat_min': -11.7, 'lat_max': -0.9, 'lon_min': 29.3, 'lon_max': 40.4},
+    'Namibia': {'lat_min': -29.0, 'lat_max': -16.9, 'lon_min': 11.7, 'lon_max': 25.3},
+    'Botswana': {'lat_min': -26.9, 'lat_max': -17.8, 'lon_min': 19.9, 'lon_max': 29.4},
+    'South Africa': {'lat_min': -34.8, 'lat_max': -22.1, 'lon_min': 16.3, 'lon_max': 32.9},
+    'Zimbabwe': {'lat_min': -22.4, 'lat_max': -15.6, 'lon_min': 25.2, 'lon_max': 33.1},
+    'Zambia': {'lat_min': -18.1, 'lat_max': -8.2, 'lon_min': 21.9, 'lon_max': 33.7},
+    'Chad': {'lat_min': 7.4, 'lat_max': 23.5, 'lon_min': 13.5, 'lon_max': 24.0},
+    'Niger': {'lat_min': 11.7, 'lat_max': 23.5, 'lon_min': 0.2, 'lon_max': 16.0},
+    'Cameroon': {'lat_min': 1.7, 'lat_max': 13.1, 'lon_min': 8.5, 'lon_max': 16.2},
+    'Central African Republic': {'lat_min': 2.2, 'lat_max': 11.0, 'lon_min': 14.4, 'lon_max': 27.5},
+    'Sudan': {'lat_min': 8.7, 'lat_max': 22.0, 'lon_min': 21.8, 'lon_max': 38.6},
+    'South Sudan': {'lat_min': 3.5, 'lat_max': 12.2, 'lon_min': 24.1, 'lon_max': 35.9},
+    'Uganda': {'lat_min': -1.5, 'lat_max': 4.2, 'lon_min': 29.6, 'lon_max': 35.0},
+    'Ethiopia': {'lat_min': 3.4, 'lat_max': 15.0, 'lon_min': 32.9, 'lon_max': 48.0},
+    'Somalia': {'lat_min': -1.7, 'lat_max': 12.0, 'lon_min': 40.9, 'lon_max': 51.4},
+    'Angola': {'lat_min': -18.0, 'lat_max': -4.4, 'lon_min': 11.7, 'lon_max': 24.1}
+}
+
+def get_country_simple_bounds(lat, lon):
+    """Simple country lookup using bounding boxes for major African countries"""
+    if pd.isna(lat) or pd.isna(lon):
+        return "Unknown"
+    
+    try:
+        lat_float = float(lat)
+        lon_float = float(lon)
+        
+        for country, bounds in AFRICA_COUNTRY_BOUNDS.items():
+            if (bounds['lat_min'] <= lat_float <= bounds['lat_max'] and 
+                bounds['lon_min'] <= lon_float <= bounds['lon_max']):
+                return country
+        
+        return "Other"  # Outside known African giraffe range
+    except:
+        return "Unknown"
+
 @st.cache_data(ttl=86400)  # Cache for 24 hours
 def load_world_boundaries():
-    """Load world country boundaries using geopandas Natural Earth data"""
+    """Load world country boundaries using alternative methods"""
     global WORLD_BOUNDARIES
     if WORLD_BOUNDARIES is not None:
         return WORLD_BOUNDARIES
     
     try:
-        # Try to load Natural Earth country boundaries
-        # This is a built-in dataset in geopandas
-        world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
+        # Method 1: Try to load from Natural Earth directly via URL
+        url = "https://www.naturalearthdata.com/http//www.naturalearthdata.com/download/110m/cultural/ne_110m_admin_0_countries.zip"
+        world = gpd.read_file(url)
         WORLD_BOUNDARIES = world
+        st.success("✅ Country boundaries loaded from Natural Earth")
         return world
-    except Exception as e:
-        st.warning(f"Could not load country boundaries: {str(e)}")
-        return None
+    except Exception as e1:
+        try:
+            # Method 2: Try the alternative geopandas approach
+            import geopandas.datasets
+            world = gpd.read_file(geopandas.datasets.get_path('naturalearth_lowres'))
+            WORLD_BOUNDARIES = world
+            st.success("✅ Country boundaries loaded from geopandas datasets")
+            return world
+        except Exception as e2:
+            try:
+                # Method 3: Try using a simple country dataset from a reliable source
+                # This is a backup dataset hosted on GitHub
+                backup_url = "https://raw.githubusercontent.com/holtzy/The-Python-Graph-Gallery/master/static/data/world-110m2.json"
+                world = gpd.read_file(backup_url)
+                WORLD_BOUNDARIES = world
+                st.success("✅ Country boundaries loaded from backup source")
+                return world
+            except Exception as e3:
+                st.warning(f"Could not load detailed country boundaries. Using simple lookup for African countries.")
+                st.info("Note: Country identification will be approximate for major African countries only.")
+                return None
 
 def get_country_from_coordinates_offline(lat, lon):
     """Get country name from latitude and longitude using offline country boundaries"""
@@ -52,28 +110,38 @@ def get_country_from_coordinates_offline(lat, lon):
     try:
         # Load country boundaries if not already loaded
         world = load_world_boundaries()
-        if world is None:
+        
+        # If detailed boundaries are available, use them
+        if world is not None:
+            # Convert coordinates to float
+            lat_float = float(lat)
+            lon_float = float(lon)
+            
+            # Basic validation of coordinate ranges
+            if not (-90 <= lat_float <= 90 and -180 <= lon_float <= 180):
+                return "Unknown"
+            
+            # Create a point from coordinates
+            point = Point(lon_float, lat_float)  # Note: Point takes (lon, lat)
+            
+            # Find which country contains this point
+            for idx, country in world.iterrows():
+                if country.geometry.contains(point):
+                    # Try different possible column names for country name
+                    for col in ['name', 'NAME', 'NAME_LONG', 'ADMIN', 'NAME_EN']:
+                        if col in country and pd.notna(country[col]):
+                            return str(country[col])
+                    # Fallback to index if no name column found
+                    return f"Country_{idx}"
+            
             return "Unknown"
-        
-        # Convert coordinates to float
-        lat_float = float(lat)
-        lon_float = float(lon)
-        
-        # Basic validation of coordinate ranges
-        if not (-90 <= lat_float <= 90 and -180 <= lon_float <= 180):
-            return "Unknown"
-        
-        # Create a point from coordinates
-        point = Point(lon_float, lat_float)  # Note: Point takes (lon, lat)
-        
-        # Find which country contains this point
-        for idx, country in world.iterrows():
-            if country.geometry.contains(point):
-                return country['name']
-        
-        return "Unknown"
+        else:
+            # Fallback to simple bounds-based lookup for African countries
+            return get_country_simple_bounds(lat, lon)
+            
     except Exception as e:
-        return "Unknown"
+        # Final fallback to simple bounds lookup
+        return get_country_simple_bounds(lat, lon)
 
 def add_country_column(df):
     """Add country column to dataframe based on coordinates using offline boundaries"""
