@@ -982,69 +982,69 @@ def upload_to_gcs():
                 img_folder_path = f"survey/{survey_type}/{img_month}/"
                 
                 # Construct blob name using the image-specific folder path
-                    blob_name = img_folder_path + img['new_filename']
-                    
-                    # Check if file exists (NO OVERWRITE ALLOWED)
-                    blob = bucket.blob(blob_name)
-                    if blob.exists():
-                        skipped_files.append(f"{img['new_filename']} (already exists)")
-                        continue
-                    
-                    # Upload image data
-                    blob.upload_from_string(img['data'])
-                    
-                    # Create comprehensive metadata using utility function
-                    metadata = create_metadata_dict(
-                        st.session_state.metadata['site'],
-                        st.session_state.metadata['survey_date'],
-                        st.session_state.metadata.get('photographer'),
-                        st.session_state.metadata.get('camera_model'),
-                        st.session_state.metadata.get('notes'),
-                        img['original_name']
-                    )
-                    
-                    # Add image-specific metadata
-                    metadata.update({
-                        'folder_name': folder_name,
-                        'country': st.session_state.metadata['country'],
-                        'file_size_bytes': str(img['size']),
-                        'original_size_bytes': str(img.get('original_size', img['size'])),
-                        'compressed': str(img.get('compressed', False)),
-                        'image_format': img['metadata'].get('format', 'Unknown'),
-                        'image_width': str(img['metadata'].get('width', 0)),
-                        'image_height': str(img['metadata'].get('height', 0)),
-                        'survey_year': str(st.session_state.metadata['survey_year']),
-                        'survey_month': str(st.session_state.metadata['survey_month'])
-                    })
-                    
-                    blob.metadata = metadata
-                    blob.patch()
-                    
-                    # Track upload details
-                    upload_details.append({
-                        'filename': img['new_filename'],
+                blob_name = img_folder_path + img['new_filename']
+                
+                # Check if file exists (NO OVERWRITE ALLOWED)
+                blob = bucket.blob(blob_name)
+                if blob.exists():
+                    skipped_files.append(f"{img['new_filename']} (already exists)")
+                    continue
+                
+                # Upload image data
+                blob.upload_from_string(img['data'])
+                
+                # Create comprehensive metadata using utility function
+                metadata = create_metadata_dict(
+                    st.session_state.metadata['site'],
+                    st.session_state.metadata['survey_date'],
+                    st.session_state.metadata.get('photographer'),
+                    st.session_state.metadata.get('camera_model'),
+                    st.session_state.metadata.get('notes'),
+                    img['original_name']
+                )
+                
+                # Add image-specific metadata
+                metadata.update({
+                    'folder_name': folder_name,
+                    'country': st.session_state.metadata['country'],
+                    'file_size_bytes': str(img['size']),
+                    'original_size_bytes': str(img.get('original_size', img['size'])),
+                    'compressed': str(img.get('compressed', False)),
+                    'image_format': img['metadata'].get('format', 'Unknown'),
+                    'image_width': str(img['metadata'].get('width', 0)),
+                    'image_height': str(img['metadata'].get('height', 0)),
+                    'survey_year': str(st.session_state.metadata['survey_year']),
+                    'survey_month': str(st.session_state.metadata['survey_month'])
+                })
+                
+                blob.metadata = metadata
+                blob.patch()
+                
+                # Track upload details
+                upload_details.append({
+                    'filename': img['new_filename'],
                         'size_mb': img['size'] / (1024*1024),
                         'blob_path': blob_name,
                         'folder_path': img_folder_path,
                         'month_folder': img_month,
-                        'upload_time': datetime.now().isoformat()
-                    })
-                    
-                    uploaded_count += 1
-                    progress = (uploaded_count + len(skipped_files)) / total_files
-                    progress_bar.progress(progress)
-                    year = img_month[:4]
-                    month = img_month[4:6]
-                    month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
-                    status_text.text(f"✅ Uploaded {img['new_filename']} → {img_month} ({month_name} {year}) ({uploaded_count}/{total_files})")
-                    
-                except Exception as e:
-                    error_msg = f"{img['new_filename']}: {str(e)}"
-                    failed_uploads.append(error_msg)
-                    st.error(f"❌ Error uploading {error_msg}")
-            
-            # Create backup metadata file if requested
-            if create_backup and uploaded_count > 0:
+                    'upload_time': datetime.now().isoformat()
+                })
+                
+                uploaded_count += 1
+                progress = (uploaded_count + len(skipped_files)) / total_files
+                progress_bar.progress(progress)
+                year = img_month[:4]
+                month = img_month[4:6]
+                month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][int(month)-1]
+                status_text.text(f"✅ Uploaded {img['new_filename']} → {img_month} ({month_name} {year}) ({uploaded_count}/{total_files})")
+                
+            except Exception as e:
+                error_msg = f"{img['new_filename']}: {str(e)}"
+                failed_uploads.append(error_msg)
+                st.error(f"❌ Error uploading {error_msg}")
+        
+        # Create backup metadata file if requested
+        if create_backup and uploaded_count > 0:
                 try:
                     backup_metadata = {
                         'upload_session': {
@@ -1074,9 +1074,9 @@ def upload_to_gcs():
                     
                 except Exception as e:
                     st.warning(f"⚠️ Could not create metadata backup: {str(e)}")
-            
-            # Show completion summary
-            if uploaded_count == total_files:
+        
+        # Show completion summary
+        if uploaded_count == total_files:
                 # Group uploads by folder to show accurate summary
                 folder_counts = {}
                 for detail in upload_details:
@@ -1111,15 +1111,15 @@ def upload_to_gcs():
                         path_display = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{folder}/"
                     
                     st.success(f"🎉 Successfully uploaded all {uploaded_count} images to gs://{bucket_name}/{path_display}")
-            elif uploaded_count > 0:
-                st.warning(f"⚠️ Uploaded {uploaded_count} out of {total_files} images")
-                if skipped_files:
-                    st.info(f"📋 {len(skipped_files)} files were skipped (already exist)")
-            else:
-                st.error("❌ No files were uploaded successfully")
-            
-            # Detailed completion report
-            if notify_completion and (uploaded_count > 0 or skipped_files):
+        elif uploaded_count > 0:
+            st.warning(f"⚠️ Uploaded {uploaded_count} out of {total_files} images")
+            if skipped_files:
+                st.info(f"📋 {len(skipped_files)} files were skipped (already exist)")
+        else:
+            st.error("❌ No files were uploaded successfully")
+        
+        # Detailed completion report
+        if notify_completion and (uploaded_count > 0 or skipped_files):
                 st.subheader("📈 Upload Completion Report")
                 
                 # Summary metrics
@@ -1212,18 +1212,18 @@ def upload_to_gcs():
                 
                 for key, value in summary_info.items():
                     st.write(f"**{key}:** {value}")
-                
-        except Exception as e:
-            st.error(f"Error accessing bucket '{bucket_name}': {str(e)}")
-            st.info("Please check your bucket permissions.")
-            
-        # Reset button for new upload
-        if st.button("🔄 Upload Another Folder", type="secondary"):
-            # Clear processed images and folder name to start fresh
-            st.session_state.processed_images = []
-            st.session_state.folder_name = None
-            st.session_state.site_selection_complete = False
-            st.rerun()
+    
+    except Exception as e:
+        st.error(f"Error accessing bucket '{bucket_name}': {str(e)}")
+        st.info("Please check your bucket permissions.")
+    
+    # Reset button for new upload
+    if st.button("🔄 Upload Another Folder", type="secondary"):
+        # Clear processed images and folder name to start fresh
+        st.session_state.processed_images = []
+        st.session_state.folder_name = None
+        st.session_state.site_selection_complete = False
+        st.rerun()
 
 def main():
     """Main application logic"""
@@ -1274,15 +1274,13 @@ def main():
         st.header("🚗 Survey Upload Tool")
         st.write("Welcome to the survey image upload system.")
         
-        # Show process steps 1-6 on landing page
-        st.subheader("📋 Upload Process Overview")
+        # Show process overview on landing page
+        st.subheader("📋 Process Overview")
         st.info("""
         **Step 1:** Authenticate with Google Cloud
         **Step 2:** Configure survey type and select location  
         **Step 3:** Upload ZIP file with images
-        **Step 4:** Review processed images
-        **Step 5:** Confirm upload settings
-        **Step 6:** Upload to cloud storage
+        **Step 4:** Review and upload to cloud storage
         """)
         
         # Show authentication directly on landing page

@@ -436,7 +436,7 @@ def create_summary_page(grouped_annotations, location_id="Unknown Location"):
 # --- STREAMLIT APP ---
 
 #st.title("GiraffeSpotter ID book generator")
-st.markdown("Generate a photo ID book from a GiraffeSpotter (Wildbook) annotation export")
+st.markdown("Generate a photo ID book from a GiraffeSpotter (Wildbook) annotation export. The underlying code was developed by Tech4Conservation for their WildEx platform.")
 
 # How to use instructions - moved to top
 st.markdown("""

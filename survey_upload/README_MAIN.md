@@ -10,8 +10,8 @@ This repository contains Streamlit applications for wildlife conservation data m
 - High-quality PDF output with side-by-side giraffe photos
 - Custom GCF branding with background images
 
-### 📊 EarthRanger Dashboard  
-**Location:** `earthranger_dashboard/`
+### 📊 Source Dashboard  
+**Location:** `source_dashboard/`
 - Real-time tracking device monitoring and analysis
 - Multi-source data visualization with manufacturer filtering
 - Interactive maps and device status monitoring
@@ -21,13 +21,13 @@ This repository contains Streamlit applications for wildlife conservation data m
 Each application can be deployed separately on Streamlit Cloud:
 
 1. **Wildbook ID Generator**: Point to `wildbook_id_generator/app.py`
-2. **EarthRanger Dashboard**: Point to `earthranger_dashboard/app.py`
+2. **Source Dashboard**: Point to `source_dashboard/app.py`
 
 ## Development
 
 ### Structure
 ```
-├── earthranger_dashboard/    # EarthRanger tracking dashboard
+├── source_dashboard/         # Source tracking dashboard
 ├── wildbook_id_generator/    # Wildbook ID book generator  
 ├── shared/                   # Shared utilities and configs
 └── README.md                # This file

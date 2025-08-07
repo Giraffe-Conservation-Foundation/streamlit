@@ -103,7 +103,7 @@ streamlit/
 ├── 🎯 twiga_tools.py             # Main unified application
 ├── 🆔 wildbook_id_generator/     # Wildbook ID generator tool
 ├── 📊 nanw_dashboard/            # NANW event dashboard  
-├── 🌍 earthranger_dashboard/     # EarthRanger integration
+├── 🌍 source_dashboard/         # Source tracking dashboard
 ├── 📸 image_management/          # Image processing system
 ├── 📂 shared/                    # Common utilities & assets
 ├── 📚 docs/                      # Documentation & guides

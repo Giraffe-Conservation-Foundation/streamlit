@@ -13,7 +13,7 @@ current_dir = Path(__file__).parent.parent
 wildbook_dir = current_dir / "wildbook_id_generator"
 sys.path.insert(0, str(wildbook_dir))
 
-st.title("📖 Create an ID Book")
+st.title("📖 Create an ID Book [beta]")
 
 if wildbook_dir.exists() and (wildbook_dir / "app.py").exists():
     # Store original working directory

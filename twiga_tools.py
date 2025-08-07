@@ -43,11 +43,12 @@ Navigate using the sidebar to access:
 - **NANW Dashboard** - monitor Northwest Namibia giraffe population  
 - **Camera Trap Upload** - process and upload camera trap images to Google Cloud
 - **Survey Upload** - process and upload survey images to Google Cloud
+- **Source Dashboard** - monitor tracking device sources and location data
+- **Tagging Dashboard** - monitor newly tagged giraffes by month and country
 
 ### 🚧 Coming soon
             
 - **Life history** - see all events linked with a giraffe (sightings, immobilisations, etc)
-- **Immobilisation dashboard** - check up on recently immobilised/tagged giraffe with a map and details
 - **Impact reports**
 - Please send any other tool/dashboard requests to courtney
 
