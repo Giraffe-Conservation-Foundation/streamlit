@@ -60,7 +60,8 @@ def add_country_column(df):
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    for i, row in df.iterrows():
+    # Use df.index to ensure we iterate through all rows properly
+    for idx, (row_idx, row) in enumerate(df.iterrows()):
         try:
             lat = row['latitude']
             lon = row['longitude']
@@ -81,9 +82,9 @@ def add_country_column(df):
                 countries.append("Unknown")
             
             # Update progress
-            progress = (i + 1) / len(df)
+            progress = (idx + 1) / len(df)
             progress_bar.progress(progress)
-            status_text.text(f"Looking up countries... {i+1}/{len(df)}")
+            status_text.text(f"Looking up countries... {idx+1}/{len(df)}")
             
             # Small delay to be respectful to the geocoding service
             time.sleep(0.1)
@@ -97,7 +98,13 @@ def add_country_column(df):
     progress_bar.empty()
     status_text.empty()
     
-    df['country'] = countries
+    # Ensure the countries list has exactly the same length as the DataFrame
+    if len(countries) != len(df):
+        st.warning(f"Country lookup mismatch: {len(countries)} countries for {len(df)} events. Using 'Unknown' for all.")
+        df['country'] = "Unknown"
+    else:
+        df['country'] = countries
+    
     return df
 
 # Make main available at module level for import
@@ -275,10 +282,16 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
         # Add country information based on coordinates
         if 'latitude' in df.columns and 'longitude' in df.columns:
             try:
-                with st.spinner("🌍 Looking up countries from coordinates..."):
-                    df = add_country_column(df)
+                # Add option to skip country lookup for debugging
+                if st.session_state.get('skip_country_lookup', False):
+                    df['country'] = "Unknown"
+                    st.info("🌍 Country lookup skipped (debug mode)")
+                else:
+                    with st.spinner("🌍 Looking up countries from coordinates..."):
+                        df = add_country_column(df)
             except Exception as country_error:
                 st.warning(f"Could not determine countries from coordinates: {str(country_error)}")
+                st.info("Setting all events to 'Unknown' country and continuing...")
                 df['country'] = "Unknown"
         else:
             df['country'] = "Unknown"
@@ -639,7 +652,16 @@ def genetic_dashboard():
         st.subheader("📅 Date Filters")
     
     with col2:
-        st.write("")  # Spacer
+        # Debug option to skip country lookup
+        skip_country = st.checkbox(
+            "Skip Country Lookup",
+            value=False,
+            help="Skip reverse geocoding for faster loading (sets all countries to 'Unknown')"
+        )
+        if skip_country:
+            st.session_state['skip_country_lookup'] = True
+        else:
+            st.session_state['skip_country_lookup'] = False
     
     with col3:
         # Add max results control
