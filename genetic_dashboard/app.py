@@ -31,8 +31,12 @@ def get_country_from_coordinates(lat, lon):
         return "Unknown"
     
     try:
+        # Ensure lat and lon are converted to float/string properly
+        lat_str = str(float(lat))
+        lon_str = str(float(lon))
+        
         # Use Nominatim (OpenStreetMap) reverse geocoding service
-        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json&addressdetails=1"
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat_str}&lon={lon_str}&format=json&addressdetails=1"
         headers = {'User-Agent': 'GCF-TwigaTools/1.0 (conservation research)'}
         
         response = requests.get(url, headers=headers, timeout=10)
@@ -57,9 +61,24 @@ def add_country_column(df):
     status_text = st.empty()
     
     for i, row in df.iterrows():
-        if pd.notna(row['latitude']) and pd.notna(row['longitude']):
-            country = get_country_from_coordinates(row['latitude'], row['longitude'])
-            countries.append(country)
+        try:
+            lat = row['latitude']
+            lon = row['longitude']
+            
+            # Check if coordinates are valid
+            if pd.notna(lat) and pd.notna(lon) and lat != '' and lon != '':
+                # Convert to float to ensure proper data type
+                lat_float = float(lat)
+                lon_float = float(lon)
+                
+                # Basic validation of coordinate ranges
+                if -90 <= lat_float <= 90 and -180 <= lon_float <= 180:
+                    country = get_country_from_coordinates(lat_float, lon_float)
+                    countries.append(country)
+                else:
+                    countries.append("Unknown")
+            else:
+                countries.append("Unknown")
             
             # Update progress
             progress = (i + 1) / len(df)
@@ -68,8 +87,11 @@ def add_country_column(df):
             
             # Small delay to be respectful to the geocoding service
             time.sleep(0.1)
-        else:
+            
+        except (ValueError, TypeError) as e:
+            # Handle conversion errors
             countries.append("Unknown")
+            continue
     
     # Clear progress indicators
     progress_bar.empty()
@@ -252,8 +274,12 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
         
         # Add country information based on coordinates
         if 'latitude' in df.columns and 'longitude' in df.columns:
-            with st.spinner("🌍 Looking up countries from coordinates..."):
-                df = add_country_column(df)
+            try:
+                with st.spinner("🌍 Looking up countries from coordinates..."):
+                    df = add_country_column(df)
+            except Exception as country_error:
+                st.warning(f"Could not determine countries from coordinates: {str(country_error)}")
+                df['country'] = "Unknown"
         else:
             df['country'] = "Unknown"
         
