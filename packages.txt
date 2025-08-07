@@ -1,4 +1,3 @@
-# System packages required for the application
 libgdal-dev
 libproj-dev
 libgeos-dev
