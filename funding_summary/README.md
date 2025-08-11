@@ -77,7 +77,7 @@ The system accepts various column naming conventions:
 ## Security Configuration
 
 ### Password Management
-The default password is hashed using SHA-256. To change the password:
+The password is hashed using SHA-256 for security. To change the password:
 
 1. Generate a new hash for your desired password:
    ```python
@@ -89,9 +89,7 @@ The default password is hashed using SHA-256. To change the password:
 
 2. Update the `FUNDING_PASSWORD_HASH` variable in `app.py` with the new hash
 
-### Current Default
-- **Password**: `admin123` (change this immediately for production use)
-- **Hash**: `5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5`
+⚠️ **Important**: The password should be strong and kept confidential.
 
 ## Dependencies
 

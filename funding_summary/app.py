@@ -7,19 +7,60 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 import hashlib
+import time
 
 # Security configuration
-FUNDING_PASSWORD_HASH = "5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5"  # Default: "admin123"
+FUNDING_PASSWORD_HASH = "3bd571ebcf3977c862cd6a174de214bfbd1488b0b8f01226c8bb2e22897bef65"
+SESSION_TIMEOUT_MINUTES = 60  # Auto-logout after 60 minutes of inactivity
+MAX_LOGIN_ATTEMPTS = 3  # Maximum failed login attempts before temporary lockout
+LOCKOUT_DURATION_MINUTES = 15  # Duration of lockout after max attempts
 
 def hash_password(password):
     """Hash password using SHA-256"""
     return hashlib.sha256(password.encode()).hexdigest()
 
+def check_session_timeout():
+    """Check if session has timed out"""
+    if 'funding_last_activity' in st.session_state:
+        time_diff = datetime.now() - st.session_state.funding_last_activity
+        if time_diff.total_seconds() > (SESSION_TIMEOUT_MINUTES * 60):
+            st.session_state.funding_authenticated = False
+            st.session_state.funding_last_activity = None
+            st.warning("⏰ Session timed out due to inactivity. Please login again.")
+            return False
+    return True
+
+def check_login_attempts():
+    """Check if user is locked out due to too many failed attempts"""
+    if 'funding_failed_attempts' not in st.session_state:
+        st.session_state.funding_failed_attempts = 0
+        st.session_state.funding_lockout_time = None
+    
+    if st.session_state.funding_lockout_time:
+        time_diff = datetime.now() - st.session_state.funding_lockout_time
+        if time_diff.total_seconds() < (LOCKOUT_DURATION_MINUTES * 60):
+            remaining = LOCKOUT_DURATION_MINUTES - int(time_diff.total_seconds() / 60)
+            st.error(f"🔒 Too many failed login attempts. Please try again in {remaining} minutes.")
+            return False
+        else:
+            # Reset after lockout period
+            st.session_state.funding_failed_attempts = 0
+            st.session_state.funding_lockout_time = None
+    
+    return True
+
+def update_activity():
+    """Update last activity timestamp"""
+    st.session_state.funding_last_activity = datetime.now()
+
 def authenticate_funding_access():
     """Handle password authentication for funding data"""
+    if not check_login_attempts():
+        return False
+    
     st.header("🔐 Secure Access Required")
     st.write("This page contains sensitive financial information and requires authentication.")
     
@@ -37,9 +78,19 @@ def authenticate_funding_access():
         if hash_password(password) == FUNDING_PASSWORD_HASH:
             st.success("✅ Access granted!")
             st.session_state.funding_authenticated = True
+            st.session_state.funding_failed_attempts = 0
+            st.session_state.funding_lockout_time = None
+            update_activity()
             st.rerun()
         else:
-            st.error("❌ Invalid password")
+            st.session_state.funding_failed_attempts += 1
+            remaining_attempts = MAX_LOGIN_ATTEMPTS - st.session_state.funding_failed_attempts
+            
+            if st.session_state.funding_failed_attempts >= MAX_LOGIN_ATTEMPTS:
+                st.session_state.funding_lockout_time = datetime.now()
+                st.error("🔒 Account temporarily locked due to security policy.")
+            else:
+                st.error(f"❌ Access denied. {remaining_attempts} attempts remaining.")
             return False
     
     return False
@@ -61,7 +112,9 @@ def process_funding_excel(uploaded_file):
         return excel_data
         
     except Exception as e:
-        st.error(f"❌ Error reading Excel file: {str(e)}")
+        st.error("❌ Error reading Excel file. Please check file format and try again.")
+        # Log detailed error for debugging (not shown to user)
+        # Consider using logging module in production
         return None
 
 def standardize_funding_data(excel_data):
@@ -389,6 +442,13 @@ def main():
     if 'funding_authenticated' not in st.session_state:
         st.session_state.funding_authenticated = False
     
+    # Check session timeout for authenticated users
+    if st.session_state.funding_authenticated:
+        if not check_session_timeout():
+            return
+        # Update activity timestamp for active users
+        update_activity()
+    
     # Check authentication
     if not st.session_state.funding_authenticated:
         authenticate_funding_access()
@@ -449,8 +509,20 @@ def main():
     
     # Logout option
     st.sidebar.markdown("---")
+    st.sidebar.subheader("🔒 Session Info")
+    
+    if 'funding_last_activity' in st.session_state and st.session_state.funding_last_activity:
+        time_remaining = SESSION_TIMEOUT_MINUTES - int((datetime.now() - st.session_state.funding_last_activity).total_seconds() / 60)
+        if time_remaining > 0:
+            st.sidebar.write(f"⏰ Session expires in: {time_remaining} min")
+        else:
+            st.sidebar.write("⏰ Session expired")
+    
     if st.sidebar.button("🔒 Logout"):
-        st.session_state.funding_authenticated = False
+        # Clear all session data
+        for key in list(st.session_state.keys()):
+            if key.startswith('funding_'):
+                del st.session_state[key]
         st.rerun()
 
 if __name__ == "__main__":
