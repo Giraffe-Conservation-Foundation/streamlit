@@ -21,117 +21,6 @@ except ImportError:
     ECOSCOPE_AVAILABLE = False
     st.warning("⚠️ Ecoscope package not available. Please install ecoscope to use this dashboard.")
 
-# Simple country lookup using bounding boxes for African giraffe range countries
-# Adjusted boundaries to minimize overlaps and improved precision
-GIRAFFE_COUNTRIES = {
-    'Namibia': {'lat_min': -29.0, 'lat_max': -17.5, 'lon_min': 11.7, 'lon_max': 25.3},
-    'Botswana': {'lat_min': -26.9, 'lat_max': -17.8, 'lon_min': 19.9, 'lon_max': 29.4},
-    'South Africa': {'lat_min': -34.8, 'lat_max': -22.1, 'lon_min': 16.3, 'lon_max': 32.9},
-    'Zimbabwe': {'lat_min': -22.4, 'lat_max': -15.6, 'lon_min': 25.2, 'lon_max': 33.1},
-    'Zambia': {'lat_min': -18.1, 'lat_max': -8.2, 'lon_min': 21.9, 'lon_max': 33.7},
-    'Angola': {'lat_min': -18.0, 'lat_max': -4.4, 'lon_min': 11.7, 'lon_max': 24.1},  # Priority for overlaps with Namibia
-    'Kenya': {'lat_min': -4.7, 'lat_max': 5.5, 'lon_min': 33.9, 'lon_max': 41.9},
-    'Tanzania': {'lat_min': -11.7, 'lat_max': -0.9, 'lon_min': 29.3, 'lon_max': 40.4},
-    'Uganda': {'lat_min': -1.5, 'lat_max': 4.2, 'lon_min': 29.6, 'lon_max': 35.0},
-    'Chad': {'lat_min': 7.4, 'lat_max': 23.5, 'lon_min': 13.5, 'lon_max': 24.0},
-    'Niger': {'lat_min': 11.7, 'lat_max': 23.5, 'lon_min': 0.2, 'lon_max': 16.0},
-    'Cameroon': {'lat_min': 1.7, 'lat_max': 13.1, 'lon_min': 8.5, 'lon_max': 16.2},
-    'Central African Republic': {'lat_min': 2.2, 'lat_max': 11.0, 'lon_min': 14.4, 'lon_max': 27.5},
-    'Sudan': {'lat_min': 8.7, 'lat_max': 22.0, 'lon_min': 21.8, 'lon_max': 38.6},
-    'South Sudan': {'lat_min': 3.5, 'lat_max': 12.2, 'lon_min': 24.1, 'lon_max': 35.9},
-    'Ethiopia': {'lat_min': 3.4, 'lat_max': 15.0, 'lon_min': 32.9, 'lon_max': 48.0},
-    'Somalia': {'lat_min': -1.7, 'lat_max': 12.0, 'lon_min': 40.9, 'lon_max': 51.4},
-    'Democratic Republic of Congo': {'lat_min': -13.5, 'lat_max': 5.4, 'lon_min': 12.2, 'lon_max': 31.3},
-    'Mali': {'lat_min': 10.2, 'lat_max': 25.0, 'lon_min': -12.2, 'lon_max': 4.3},
-    'Burkina Faso': {'lat_min': 9.4, 'lat_max': 15.1, 'lon_min': -5.5, 'lon_max': 2.4},
-    'Ghana': {'lat_min': 4.7, 'lat_max': 11.2, 'lon_min': -3.3, 'lon_max': 1.2},
-    'Benin': {'lat_min': 6.2, 'lat_max': 12.4, 'lon_min': 0.8, 'lon_max': 3.9},
-    'Nigeria': {'lat_min': 4.3, 'lat_max': 13.9, 'lon_min': 2.7, 'lon_max': 14.7},
-}
-
-# Priority order for countries when coordinates fall in multiple bounding boxes
-# Countries listed first get priority in case of overlaps
-COUNTRY_PRIORITY = [
-    'Angola',  # High priority for Angola-Namibia border area
-    'Namibia',
-    'Botswana',
-    'South Africa',
-    'Zimbabwe', 
-    'Zambia',
-    'Democratic Republic of Congo',
-    'Kenya',
-    'Tanzania',
-    'Uganda',
-    'Chad',
-    'Niger',
-    'Cameroon',
-    'Central African Republic',
-    'Sudan',
-    'South Sudan',
-    'Ethiopia',
-    'Somalia',
-    'Mali',
-    'Burkina Faso',
-    'Ghana',
-    'Benin',
-    'Nigeria',
-]
-
-def get_country_from_coordinates(lat, lon):
-    """Country lookup with priority system to handle border overlaps"""
-    if pd.isna(lat) or pd.isna(lon):
-        return "Unknown"
-    
-    try:
-        lat_float = float(lat)
-        lon_float = float(lon)
-        
-        # Check if coordinates are within valid ranges
-        if not (-90 <= lat_float <= 90 and -180 <= lon_float <= 180):
-            return "Unknown"
-        
-        # Find all countries that contain this point
-        matching_countries = []
-        for country, bounds in GIRAFFE_COUNTRIES.items():
-            if (bounds['lat_min'] <= lat_float <= bounds['lat_max'] and 
-                bounds['lon_min'] <= lon_float <= bounds['lon_max']):
-                matching_countries.append(country)
-        
-        # If no matches, return "Other"
-        if not matching_countries:
-            return "Other"
-        
-        # If only one match, return it
-        if len(matching_countries) == 1:
-            return matching_countries[0]
-        
-        # If multiple matches, use priority system
-        for priority_country in COUNTRY_PRIORITY:
-            if priority_country in matching_countries:
-                return priority_country
-        
-        # Fallback to first match (shouldn't happen with good priority list)
-        return matching_countries[0]
-        
-    except (ValueError, TypeError):
-        return "Unknown"
-
-def add_country_column(df):
-    """Add country column to dataframe based on coordinates"""
-    if df.empty or 'latitude' not in df.columns or 'longitude' not in df.columns:
-        df['country'] = "Unknown"
-        return df
-    
-    countries = []
-    for _, row in df.iterrows():
-        lat = row.get('latitude')
-        lon = row.get('longitude')
-        country = get_country_from_coordinates(lat, lon)
-        countries.append(country)
-    
-    df['country'] = countries
-    return df
-
 # Make main available at module level for import
 def main():
     """Main application entry point - delegates to _main_implementation"""
@@ -304,11 +193,59 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                 # Continue without geometry data
                 pass
         
-        # Add country information based on coordinates
-        if 'latitude' in df.columns and 'longitude' in df.columns:
-            df = add_country_column(df)
+        # Extract country and site information from event_details
+        if 'event_details' in df.columns:
+            countries = []
+            sites = []
+            for _, row in df.iterrows():
+                event_details = row.get('event_details', {})
+                
+                # Extract country (iso) and site from event_details
+                country = None
+                site = None
+                
+                if isinstance(event_details, dict):
+                    # Direct access to country and site fields
+                    country = event_details.get('country') or event_details.get('iso')
+                    site = event_details.get('site')
+                    
+                    # Also check nested structures
+                    if 'girsam' in event_details:
+                        girsam_data = event_details.get('girsam', {})
+                        if isinstance(girsam_data, dict):
+                            if not country:
+                                country = girsam_data.get('country') or girsam_data.get('iso')
+                            if not site:
+                                site = girsam_data.get('site')
+                                
+                elif isinstance(event_details, str):
+                    # Try to parse JSON string
+                    try:
+                        parsed_details = json.loads(event_details)
+                        if isinstance(parsed_details, dict):
+                            country = parsed_details.get('country') or parsed_details.get('iso')
+                            site = parsed_details.get('site')
+                            
+                            # Check nested structures
+                            if 'girsam' in parsed_details:
+                                girsam_data = parsed_details.get('girsam', {})
+                                if isinstance(girsam_data, dict):
+                                    if not country:
+                                        country = girsam_data.get('country') or girsam_data.get('iso')
+                                    if not site:
+                                        site = girsam_data.get('site')
+                    except json.JSONDecodeError:
+                        pass
+                
+                # Clean and append values
+                countries.append(str(country).strip() if country and str(country).strip() not in ['None', 'null', '', 'nan'] else "Unknown")
+                sites.append(str(site).strip() if site and str(site).strip() not in ['None', 'null', '', 'nan'] else "Unknown")
+            
+            df['country'] = countries
+            df['site'] = sites
         else:
             df['country'] = "Unknown"
+            df['site'] = "Unknown"
         
         return df
         
@@ -410,6 +347,8 @@ def display_event_details_table(df_events):
         'id',                # Event ID
         'serial_number',     # Serial Number
         'event_datetime',    # Event Date/Time
+        'country',           # Country (ISO)
+        'site',              # Site Name
         'latitude',          # Latitude
         'longitude'          # Longitude
     ]
@@ -428,6 +367,8 @@ def display_event_details_table(df_events):
         'id': 'Event ID',
         'serial_number': 'Serial Number',
         'event_datetime': 'Event Date/Time',
+        'country': 'Country (ISO)',
+        'site': 'Site Name',
         'latitude': st.column_config.NumberColumn('Latitude', format="%.6f"),
         'longitude': st.column_config.NumberColumn('Longitude', format="%.6f"),
         'details_girsam_age': 'Giraffe Age',
@@ -735,6 +676,16 @@ def genetic_dashboard():
     else:
         available_countries = ['Unknown']
     
+    # Get unique sites from the data
+    if 'site' in df_events.columns:
+        available_sites = sorted([s for s in df_events['site'].unique() if s not in ['Unknown', 'Other']])
+        if 'Other' in df_events['site'].values:
+            available_sites.append('Other')
+        if 'Unknown' in df_events['site'].values:
+            available_sites.append('Unknown')
+    else:
+        available_sites = ['Unknown']
+    
     # Get unique sample types from the data - need to extract from event_details
     available_sample_types = []
     
@@ -777,8 +728,8 @@ def genetic_dashboard():
         # Get unique values and sort
         available_sample_types = sorted(list(set(sample_types_found)))
     
-    # Filter selection interface
-    col1, col2, col3 = st.columns([2, 2, 2])
+    # Filter selection interface - now with 4 columns for country, site, sample type, and metrics
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
     
     with col1:
         selected_country = st.selectbox(
@@ -789,6 +740,13 @@ def genetic_dashboard():
         )
     
     with col2:
+        selected_site = st.selectbox(
+            "📍 Site",
+            options=["All Sites"] + available_sites,
+            index=0,
+            help="Filter biological sample events by site"
+        )
+    with col3:
         if available_sample_types:
             selected_sample_type = st.selectbox(
                 "🧪 Sample Type",
@@ -804,19 +762,18 @@ def genetic_dashboard():
                 help="No sample type information available in the data"
             )
     
-    with col3:
+    with col4:
         # Metrics
         st.metric(
             "Countries", 
             len([c for c in available_countries if c not in ['Unknown', 'Other']]),
             help="Number of countries with identified events"
         )
-        if available_sample_types:
-            st.metric(
-                "Sample Types", 
-                len(available_sample_types),
-                help="Number of different sample types available"
-            )
+        st.metric(
+            "Sites", 
+            len([s for s in available_sites if s not in ['Unknown', 'Other']]),
+            help="Number of sites with identified events"
+        )
     
     # Apply filters
     df_filtered = df_events.copy()
@@ -826,6 +783,11 @@ def genetic_dashboard():
     if selected_country != "All Countries":
         df_filtered = df_filtered[df_filtered['country'] == selected_country]
         filter_info.append(f"Country: {selected_country}")
+    
+    # Apply site filter
+    if selected_site != "All Sites":
+        df_filtered = df_filtered[df_filtered['site'] == selected_site]
+        filter_info.append(f"Site: {selected_site}")
     
     # Apply sample type filter
     if selected_sample_type != "All Sample Types" and selected_sample_type != "No sample types found":
