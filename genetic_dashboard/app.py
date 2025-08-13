@@ -822,6 +822,30 @@ def genetic_dashboard():
     # Filter section
     st.subheader("🔍 Filters")
     
+    # Summary metrics above filters - horizontal layout
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric(
+            "Countries", 
+            len([c for c in available_countries if c not in ['Unknown', 'Other']]),
+            help="Number of countries with identified events"
+        )
+    
+    with col2:
+        st.metric(
+            "Sites", 
+            len([s for s in available_sites if s not in ['Unknown', 'Other']]),
+            help="Number of sites with identified events"
+        )
+    
+    with col3:
+        st.metric(
+            "Species", 
+            len(available_species),
+            help="Number of species with events"
+        )
+    
     # Get unique countries from the data
     if 'country' in df_events.columns:
         available_countries = sorted([c for c in df_events['country'].unique() if c not in ['Unknown', 'Other', None] and str(c).strip() != ''])
@@ -926,8 +950,8 @@ def genetic_dashboard():
         # Get unique values and sort
         available_species = sorted(list(set(species_found)))
     
-    # Filter selection interface - now with 5 columns for country, site, sample type, species, and metrics
-    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
+    # Filter selection interface - now with 4 columns for country, site, sample type, and species
+    col1, col2, col3, col4 = st.columns([3, 3, 3, 3])
     
     with col1:
         selected_country = st.selectbox(
@@ -944,6 +968,7 @@ def genetic_dashboard():
             index=0,
             help="Filter biological sample events by site"
         )
+    
     with col3:
         if available_sample_types:
             selected_sample_type = st.selectbox(
@@ -975,24 +1000,6 @@ def genetic_dashboard():
                 index=0,
                 help="No species information available in the data"
             )
-    
-    with col5:
-        # Metrics
-        st.metric(
-            "Countries", 
-            len([c for c in available_countries if c not in ['Unknown', 'Other']]),
-            help="Number of countries with identified events"
-        )
-        st.metric(
-            "Sites", 
-            len([s for s in available_sites if s not in ['Unknown', 'Other']]),
-            help="Number of sites with identified events"
-        )
-        st.metric(
-            "Species", 
-            len(available_species),
-            help="Number of species with events"
-        )
     
     # Apply filters
     df_filtered = df_events.copy()
