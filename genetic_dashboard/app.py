@@ -21,14 +21,103 @@ except ImportError:
     ECOSCOPE_AVAILABLE = False
     st.warning("⚠️ Ecoscope package not available. Please install ecoscope to use this dashboard.")
 
+def _main_implementation():
+    """Main application logic"""
+    init_session_state()
+    
+    # Note: set_page_config is handled by the main Twiga Tools app when running as a page
+    
+    # Header with logo
+    with st.container():
+        # Try to load and display logo
+        logo_displayed = False
+        
+        # Get the absolute path to the logo file
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        logo_path = os.path.join(current_dir, '..', 'logo.png')  # Logo is in parent directory
+        
+        if os.path.exists(logo_path):
+            try:
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col2:
+                    st.image(logo_path, width=300)
+                    st.markdown('<div class="logo-title" style="text-align: center;">Genetic Dashboard</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="logo-subtitle" style="text-align: center;">Biological Sample Event Monitoring</div>', unsafe_allow_html=True)
+                    logo_displayed = True
+            except Exception as e:
+                st.error(f"Error loading logo: {str(e)}")
+        
+        # Fallback header without logo
+        if not logo_displayed:
+            st.title("🧬 Genetic Dashboard")
+            st.markdown("Biological sample inventory and status")
+    
+    # Landing page (only shown if not authenticated yet)
+    if not st.session_state.authenticated:
+        # Show authentication directly on landing page
+        authenticate_earthranger()
+        return
+
+    # After authentication, set up global variables like NANW dashboard
+    username = st.session_state.username
+    password = st.session_state.password
+    
+    # Sidebar navigation
+    st.sidebar.title("Navigation")
+    
+    # Authentication status
+    st.sidebar.markdown("### 🔐 Authentication ✅")
+    if st.session_state.get('username'):
+        st.sidebar.write(f"**User:** {st.session_state.username}")
+    
+    # Show dashboard
+    genetic_dashboard()
+    
+    # Sidebar options
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔧 Options")
+    
+    if st.sidebar.button("🔄 Refresh Data"):
+        # Clear cached data
+        get_biological_sample_events.clear()
+        st.rerun()
+    
+    if st.sidebar.button("🔓 Logout"):
+        # Clear authentication
+        for key in ['authenticated', 'username', 'password']:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.rerun()
+
 # Make main available at module level for import
 def main():
     """Main application entry point - delegates to _main_implementation"""
     return _main_implementation()
 
-# Custom CSS for better styling
+# Custom CSS for better styling and widescreen layout
 st.markdown("""
 <style>
+    /* Widescreen layout - reduce margins and padding */
+    .main .block-container {
+        padding-top: 1rem;
+        padding-bottom: 0rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+        max-width: none;
+    }
+    
+    /* Remove default Streamlit margins */
+    .main > div {
+        padding-top: 0rem;
+    }
+    
+    /* Full width content */
+    .stApp > div:first-child {
+        margin: 0;
+        padding: 0;
+    }
+    
+    /* Logo and header styling */
     .logo-title {
         color: #2E8B57;
         font-size: 2.5rem;
@@ -42,6 +131,8 @@ st.markdown("""
         font-weight: 300;
         margin-top: 0;
     }
+    
+    /* Card styling */
     .metric-card {
         background-color: #f0f2f6;
         padding: 1rem;
@@ -56,6 +147,16 @@ st.markdown("""
         padding: 1rem;
         margin: 0.5rem 0;
         border-left: 4px solid #28a745;
+    }
+    
+    /* Make dataframes use full width */
+    .stDataFrame {
+        width: 100%;
+    }
+    
+    /* Sidebar adjustments for widescreen */
+    .css-1d391kg {
+        padding-top: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -205,35 +306,38 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                 site = None
                 
                 if isinstance(event_details, dict):
-                    # Direct access to country and site fields
-                    country = event_details.get('country') or event_details.get('iso')
-                    site = event_details.get('site')
+                    # Direct access to country and site fields - check girsam_ prefixed fields first
+                    country = event_details.get('girsam_iso') or event_details.get('country') or event_details.get('iso')
+                    site = event_details.get('girsam_site') or event_details.get('site')
                     
-                    # Also check nested structures
-                    if 'girsam' in event_details:
+                    # Also check nested structures (girsam) as fallback - prioritize iso field
+                    if not country and 'girsam' in event_details:
                         girsam_data = event_details.get('girsam', {})
                         if isinstance(girsam_data, dict):
-                            if not country:
-                                country = girsam_data.get('country') or girsam_data.get('iso')
-                            if not site:
-                                site = girsam_data.get('site')
+                            # Try iso first, then country as fallback
+                            country = girsam_data.get('iso') or girsam_data.get('country')
+                    if not site and 'girsam' in event_details:
+                        girsam_data = event_details.get('girsam', {})
+                        if isinstance(girsam_data, dict):
+                            site = girsam_data.get('site')
                                 
                 elif isinstance(event_details, str):
                     # Try to parse JSON string
                     try:
                         parsed_details = json.loads(event_details)
                         if isinstance(parsed_details, dict):
-                            country = parsed_details.get('country') or parsed_details.get('iso')
-                            site = parsed_details.get('site')
+                            country = parsed_details.get('girsam_iso') or parsed_details.get('country') or parsed_details.get('iso')
+                            site = parsed_details.get('girsam_site') or parsed_details.get('site')
                             
-                            # Check nested structures
-                            if 'girsam' in parsed_details:
+                            # Check nested structures - prioritize iso field
+                            if not country and 'girsam' in parsed_details:
                                 girsam_data = parsed_details.get('girsam', {})
                                 if isinstance(girsam_data, dict):
-                                    if not country:
-                                        country = girsam_data.get('country') or girsam_data.get('iso')
-                                    if not site:
-                                        site = girsam_data.get('site')
+                                    country = girsam_data.get('iso') or girsam_data.get('country')
+                            if not site and 'girsam' in parsed_details:
+                                girsam_data = parsed_details.get('girsam', {})
+                                if isinstance(girsam_data, dict):
+                                    site = girsam_data.get('site')
                     except json.JSONDecodeError:
                         pass
                 
@@ -246,6 +350,63 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
         else:
             df['country'] = "Unknown"
             df['site'] = "Unknown"
+        
+        # Also create flattened detail fields for display (this ensures both approaches work)
+        try:
+            if 'event_details' in df.columns:
+                # Quick flattening for key fields to ensure we have the flattened columns too
+                girsam_iso_values = []
+                girsam_site_values = []
+                
+                for _, row in df.iterrows():
+                    event_details = row.get('event_details', {})
+                    iso_val = None
+                    site_val = None
+                    
+                    if isinstance(event_details, dict):
+                        # Check girsam_ prefixed fields first (root level)
+                        iso_val = event_details.get('girsam_iso')
+                        site_val = event_details.get('girsam_site')
+                        
+                        # Fallback: Check girsam nested structure - prioritize iso field
+                        if not iso_val and 'girsam' in event_details:
+                            girsam_data = event_details.get('girsam', {})
+                            if isinstance(girsam_data, dict):
+                                iso_val = girsam_data.get('iso') or girsam_data.get('country')
+                        if not site_val and 'girsam' in event_details:
+                            girsam_data = event_details.get('girsam', {})
+                            if isinstance(girsam_data, dict):
+                                site_val = girsam_data.get('site')
+                    elif isinstance(event_details, str):
+                        try:
+                            parsed_details = json.loads(event_details)
+                            if isinstance(parsed_details, dict):
+                                # Check girsam_ prefixed fields first
+                                iso_val = parsed_details.get('girsam_iso')
+                                site_val = parsed_details.get('girsam_site')
+                                
+                                # Fallback: check nested girsam structure
+                                if not iso_val and 'girsam' in parsed_details:
+                                    girsam_data = parsed_details.get('girsam', {})
+                                    if isinstance(girsam_data, dict):
+                                        iso_val = girsam_data.get('iso') or girsam_data.get('country')
+                                if not site_val and 'girsam' in parsed_details:
+                                    girsam_data = parsed_details.get('girsam', {})
+                                    if isinstance(girsam_data, dict):
+                                        site_val = girsam_data.get('site')
+                        except json.JSONDecodeError:
+                            pass
+                    
+                    girsam_iso_values.append(str(iso_val).strip() if iso_val and str(iso_val).strip() not in ['None', 'null', '', 'nan'] else "Unknown")
+                    girsam_site_values.append(str(site_val).strip() if site_val and str(site_val).strip() not in ['None', 'null', '', 'nan'] else "Unknown")
+                
+                # Add the flattened columns
+                df['details_girsam_iso'] = girsam_iso_values
+                df['details_girsam_site'] = girsam_site_values
+        except Exception as flatten_error:
+            st.warning(f"Field flattening warning: {str(flatten_error)}")
+            # Continue without flattened fields
+            pass
         
         return df
         
@@ -330,7 +491,7 @@ def display_event_details_table(df_events):
             
             details_expanded.append(flattened)
         
-        # Convert to DataFrame and merge
+        # Convert to DataFrame and merge (avoid creating duplicates)
         if details_expanded:
             details_df = pd.DataFrame(details_expanded)
             
@@ -338,29 +499,49 @@ def display_event_details_table(df_events):
             details_df.reset_index(drop=True, inplace=True)
             display_df.reset_index(drop=True, inplace=True)
             
-            # Add the details columns to the main dataframe with proper index alignment
+            # Add the details columns to the main dataframe, but skip if they already exist
             for col in details_df.columns:
-                display_df[col] = details_df[col]
+                if col not in display_df.columns:
+                    display_df[col] = details_df[col]
+    
+    # Ensure alias columns exist for filtering (if not already created in fetch function)
+    if 'country' not in display_df.columns:
+        if 'details_girsam_iso' in display_df.columns:
+            display_df['country'] = display_df['details_girsam_iso']
+        else:
+            display_df['country'] = "Unknown"
+        
+    if 'site' not in display_df.columns:
+        if 'details_girsam_site' in display_df.columns:
+            display_df['site'] = display_df['details_girsam_site']
+        else:
+            display_df['site'] = "Unknown"
     
     # Define preferred column order - cleaned up to only essential columns
     preferred_columns = [
-        'id',                # Event ID
-        'serial_number',     # Serial Number
-        'event_datetime',    # Event Date/Time
-        'country',           # Country (ISO)
-        'site',              # Site Name
-        'latitude',          # Latitude
-        'longitude'          # Longitude
+        'id',                    # Event ID
+        'serial_number',         # Serial Number
+        'event_datetime',        # Event Date/Time
+        'details_girsam_iso',    # Country (ISO) - from flattened event_details
+        'details_girsam_site',   # Site Name - from flattened event_details
+        'details_girsam_origin', # Origin - from flattened event_details
+        'latitude',              # Latitude
+        'longitude'              # Longitude
     ]
     
     # Add all event_details columns (these are the exploded details) except excluded ones
     excluded_columns = ['details_updates', 'event_type']
     details_columns = [col for col in display_df.columns 
-                      if col.startswith('details_') and col not in excluded_columns]
+                      if col.startswith('details_') and col not in excluded_columns and col not in preferred_columns]
     preferred_columns.extend(details_columns)
     
-    # Select only existing columns from our preferred list
-    available_columns = [col for col in preferred_columns if col in display_df.columns]
+    # Select only existing columns from our preferred list and remove duplicates
+    available_columns = []
+    seen_columns = set()
+    for col in preferred_columns:
+        if col in display_df.columns and col not in seen_columns:
+            available_columns.append(col)
+            seen_columns.add(col)
     
     # Create custom column configuration with renamed headers
     column_config = {
@@ -369,6 +550,8 @@ def display_event_details_table(df_events):
         'event_datetime': 'Event Date/Time',
         'country': 'Country (ISO)',
         'site': 'Site Name',
+        'details_girsam_iso': 'Country (ISO)',  # Map flattened field to country
+        'details_girsam_site': 'Site Name',     # Map flattened field to site
         'latitude': st.column_config.NumberColumn('Latitude', format="%.6f"),
         'longitude': st.column_config.NumberColumn('Longitude', format="%.6f"),
         'details_girsam_age': 'Giraffe Age',
@@ -381,12 +564,26 @@ def display_event_details_table(df_events):
         'details_girsam_smpid2': 'Secondary Sample ID',
         'details_girsam_subid': 'Giraffe ER ID',
         'details_girsam_species': 'Species',
-        'details_girsam_status': 'Sample Status'
+        'details_girsam_status': 'Sample Status',
+        'details_girsam_origin': 'Origin'
     }
     
-    # Display the table
+    # Display the table with comprehensive deduplication
+    # First, ensure the DataFrame itself has no duplicate columns
+    if len(display_df.columns) != len(set(display_df.columns)):
+        # Remove duplicates keeping first occurrence
+        display_df = display_df.loc[:, ~display_df.columns.duplicated(keep='first')]
+        
+    # Then ensure available_columns has no duplicates and all columns exist
+    final_columns = []
+    seen = set()
+    for col in available_columns:
+        if col in display_df.columns and col not in seen:
+            final_columns.append(col)
+            seen.add(col)
+    
     st.dataframe(
-        display_df[available_columns],
+        display_df[final_columns],
         use_container_width=True,
         column_config=column_config
     )
@@ -620,47 +817,6 @@ def genetic_dashboard():
     
     if df_events.empty:
         st.warning("No biological sample events found for the selected date range.")
-        
-        # Add debugging information to help understand available event types
-        if st.checkbox("🔍 Debug: Show available veterinary event types", value=False):
-            with st.spinner("Fetching all veterinary events for debugging..."):
-                try:
-                    er_io = EarthRangerIO(
-                        server=st.session_state.server_url,
-                        username=st.session_state.username,
-                        password=st.session_state.password
-                    )
-                    
-                    # Get all veterinary events to see what event types are available
-                    debug_kwargs = {
-                        'event_category': 'veterinary',
-                        'max_results': 100,  # Limit for debugging
-                        'drop_null_geometry': False
-                    }
-                    
-                    if start_date:
-                        debug_kwargs['since'] = start_date.strftime('%Y-%m-%dT00:00:00Z')
-                    if end_date:
-                        debug_kwargs['until'] = end_date.strftime('%Y-%m-%dT23:59:59Z')
-                    
-                    debug_gdf = er_io.get_events(**debug_kwargs)
-                    
-                    if not debug_gdf.empty:
-                        debug_df = pd.DataFrame(debug_gdf.drop(columns='geometry', errors='ignore'))
-                        if 'event_type' in debug_df.columns:
-                            event_types = debug_df['event_type'].value_counts()
-                            st.write("**Available event types in 'veterinary' category:**")
-                            st.dataframe(event_types.reset_index())
-                            
-                            st.write("**Sample events:**")
-                            sample_cols = ['time', 'event_type', 'serial_number', 'state']
-                            available_cols = [col for col in sample_cols if col in debug_df.columns]
-                            st.dataframe(debug_df[available_cols].head())
-                    else:
-                        st.write("No veterinary events found in the selected date range.")
-                        
-                except Exception as debug_error:
-                    st.error(f"Debug error: {str(debug_error)}")
         return
     
     # Filter section
@@ -668,7 +824,7 @@ def genetic_dashboard():
     
     # Get unique countries from the data
     if 'country' in df_events.columns:
-        available_countries = sorted([c for c in df_events['country'].unique() if c not in ['Unknown', 'Other']])
+        available_countries = sorted([c for c in df_events['country'].unique() if c not in ['Unknown', 'Other', None] and str(c).strip() != ''])
         if 'Other' in df_events['country'].values:
             available_countries.append('Other')
         if 'Unknown' in df_events['country'].values:
@@ -678,7 +834,7 @@ def genetic_dashboard():
     
     # Get unique sites from the data
     if 'site' in df_events.columns:
-        available_sites = sorted([s for s in df_events['site'].unique() if s not in ['Unknown', 'Other']])
+        available_sites = sorted([s for s in df_events['site'].unique() if s not in ['Unknown', 'Other', None] and str(s).strip() != ''])
         if 'Other' in df_events['site'].values:
             available_sites.append('Other')
         if 'Unknown' in df_events['site'].values:
@@ -728,8 +884,50 @@ def genetic_dashboard():
         # Get unique values and sort
         available_sample_types = sorted(list(set(sample_types_found)))
     
-    # Filter selection interface - now with 4 columns for country, site, sample type, and metrics
-    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+    # Get unique species from the data - need to extract from event_details
+    available_species = []
+    
+    if 'event_details' in df_events.columns:
+        # Extract species from the nested event_details structure
+        species_found = []
+        
+        for _, row in df_events.iterrows():
+            event_details = row.get('event_details', {})
+            
+            # Handle different data structures
+            species = None
+            if isinstance(event_details, dict):
+                # Direct access
+                species = event_details.get('girsam_species')
+                # Also check nested structures
+                if not species and 'girsam' in event_details:
+                    girsam_data = event_details.get('girsam', {})
+                    if isinstance(girsam_data, dict):
+                        species = girsam_data.get('species')
+            elif isinstance(event_details, str):
+                # Try to parse JSON string
+                try:
+                    parsed_details = json.loads(event_details)
+                    if isinstance(parsed_details, dict):
+                        species = parsed_details.get('girsam_species')
+                        if not species and 'girsam' in parsed_details:
+                            girsam_data = parsed_details.get('girsam', {})
+                            if isinstance(girsam_data, dict):
+                                species = girsam_data.get('species')
+                except json.JSONDecodeError:
+                    pass
+            
+            # Clean and add the species if found
+            if species:
+                str_value = str(species).strip()
+                if str_value and str_value.lower() not in ['none', 'null', '', 'nan']:
+                    species_found.append(str_value)
+        
+        # Get unique values and sort
+        available_species = sorted(list(set(species_found)))
+    
+    # Filter selection interface - now with 5 columns for country, site, sample type, species, and metrics
+    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
     
     with col1:
         selected_country = st.selectbox(
@@ -763,6 +961,22 @@ def genetic_dashboard():
             )
     
     with col4:
+        if available_species:
+            selected_species = st.selectbox(
+                "🦒 Species",
+                options=["All Species"] + available_species,
+                index=0,
+                help="Filter biological sample events by species"
+            )
+        else:
+            selected_species = st.selectbox(
+                "🦒 Species",
+                options=["All Species", "No species found"],
+                index=0,
+                help="No species information available in the data"
+            )
+    
+    with col5:
         # Metrics
         st.metric(
             "Countries", 
@@ -773,6 +987,11 @@ def genetic_dashboard():
             "Sites", 
             len([s for s in available_sites if s not in ['Unknown', 'Other']]),
             help="Number of sites with identified events"
+        )
+        st.metric(
+            "Species", 
+            len(available_species),
+            help="Number of species with events"
         )
     
     # Apply filters
@@ -828,6 +1047,45 @@ def genetic_dashboard():
         
         filter_info.append(f"Sample Type: {selected_sample_type}")
     
+    # Apply species filter
+    if selected_species != "All Species" and selected_species != "No species found":
+        # Filter based on event_details structure
+        filtered_indices = []
+        for idx, row in df_filtered.iterrows():
+            event_details = row.get('event_details', {})
+            
+            # Extract species from event_details
+            species = None
+            if isinstance(event_details, dict):
+                species = event_details.get('girsam_species')
+                if not species and 'girsam' in event_details:
+                    girsam_data = event_details.get('girsam', {})
+                    if isinstance(girsam_data, dict):
+                        species = girsam_data.get('species')
+            elif isinstance(event_details, str):
+                try:
+                    parsed_details = json.loads(event_details)
+                    if isinstance(parsed_details, dict):
+                        species = parsed_details.get('girsam_species')
+                        if not species and 'girsam' in parsed_details:
+                            girsam_data = parsed_details.get('girsam', {})
+                            if isinstance(girsam_data, dict):
+                                species = girsam_data.get('species')
+                except json.JSONDecodeError:
+                    pass
+            
+            # Check if this row matches the selected species
+            if species and str(species).strip() == selected_species:
+                filtered_indices.append(idx)
+        
+        # Apply the filter
+        if filtered_indices:
+            df_filtered = df_filtered.loc[filtered_indices]
+        else:
+            df_filtered = df_filtered.iloc[0:0]  # Empty dataframe with same structure
+        
+        filter_info.append(f"Species: {selected_species}")
+    
     # Display filter status
     if filter_info:
         st.info(f"📊 Filtered by: **{' | '.join(filter_info)}** ({len(df_filtered)} events)")
@@ -848,80 +1106,6 @@ def genetic_dashboard():
     
     # Display the map with exploded data for processing status coloring
     display_events_map(df_exploded)
-
-def _main_implementation():
-    """Main application logic"""
-    init_session_state()
-    
-    # Set wide layout for better dashboard display
-    st.set_page_config(
-        page_title="Genetic Dashboard",
-        page_icon="🧬",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
-    # Header with logo
-    with st.container():
-        # Try to load and display logo
-        logo_displayed = False
-        
-        # Get the absolute path to the logo file
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        logo_path = os.path.join(current_dir, '..', 'logo.png')  # Logo is in parent directory
-        
-        if os.path.exists(logo_path):
-            try:
-                col1, col2, col3 = st.columns([1, 2, 1])
-                with col2:
-                    st.image(logo_path, width=300)
-                    st.markdown('<div class="logo-title" style="text-align: center;">Genetic Dashboard</div>', unsafe_allow_html=True)
-                    st.markdown('<div class="logo-subtitle" style="text-align: center;">Biological Sample Event Monitoring</div>', unsafe_allow_html=True)
-                    logo_displayed = True
-            except Exception as e:
-                st.error(f"Error loading logo: {str(e)}")
-        
-        # Fallback header without logo
-        if not logo_displayed:
-            st.title("🧬 Genetic Dashboard")
-            st.markdown("Biological sample inventory and status")
-    
-    # Landing page (only shown if not authenticated yet)
-    if not st.session_state.authenticated:
-        # Show authentication directly on landing page
-        authenticate_earthranger()
-        return
-
-    # After authentication, set up global variables like NANW dashboard
-    username = st.session_state.username
-    password = st.session_state.password
-    
-    # Sidebar navigation
-    st.sidebar.title("Navigation")
-    
-    # Authentication status
-    st.sidebar.markdown("### 🔐 Authentication ✅")
-    if st.session_state.get('username'):
-        st.sidebar.write(f"**User:** {st.session_state.username}")
-    
-    # Show dashboard
-    genetic_dashboard()
-    
-    # Sidebar options
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🔧 Options")
-    
-    if st.sidebar.button("🔄 Refresh Data"):
-        # Clear cached data
-        get_biological_sample_events.clear()
-        st.rerun()
-    
-    if st.sidebar.button("🔓 Logout"):
-        # Clear authentication
-        for key in ['authenticated', 'username', 'password']:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
 
 # Make main() available for import while still allowing direct execution
 if __name__ == "__main__":
