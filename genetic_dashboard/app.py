@@ -760,15 +760,15 @@ def genetic_dashboard():
     #st.header("🧬 Genetic Dashboard")
     #st.markdown("Monitor and analyze biological sample events from EarthRanger")
     
-    # Dashboard controls - use wider layout
-    col1, col2, col3 = st.columns([4, 2, 1])
-    
+    # Dashboard controls - use wider layout for max results only
+    col1, col2, col3 = st.columns([6, 2, 1])
+
     with col1:
-        st.subheader("📅 Date Filters")
-    
+        st.write("")  # Spacer
+
     with col2:
         st.write("")  # Spacer
-    
+
     with col3:
         # Add max results control
         max_results = st.selectbox(
@@ -777,74 +777,19 @@ def genetic_dashboard():
             index=2,  # Default to 200
             help="Limit the number of events to fetch (higher numbers may be slower)"
         )
-    
-    # Date selection controls in a wider format
-    col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
-    # Date selection controls in a wider format
-    col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
-    
-    with col1:
-        start_date = st.date_input(
-            "Start Date",
-            value=date.today() - timedelta(days=365),  # Default to last year
-            help="Select the earliest date for biological sample events"
-        )
-    
-    with col2:
-        end_date = st.date_input(
-            "End Date", 
-            value=date.today(),
-            help="Select the latest date for biological sample events"
-        )
-    
-    with col3:
-        st.write("")  # Spacer for alignment
-    
-    with col4:
-        if st.button("🔄 Refresh Data", type="primary"):
-            # Clear cache to force refresh
-            get_biological_sample_events.clear()
-            st.rerun()
-    
-    # Validate date range
-    if start_date > end_date:
-        st.error("❌ Start date cannot be after end date")
-        return
-    
-    # Fetch biological sample events with the selected max_results
+
+    # Temporary date values for initial data fetch - will be replaced by user input
+    start_date_temp = date.today() - timedelta(days=365)
+    end_date_temp = date.today()
+
+    # Fetch biological sample events with the selected max_results for initial display
     with st.spinner("Fetching biological sample events..."):
-        df_events = get_biological_sample_events(start_date, end_date, max_results)
-    
+        df_events = get_biological_sample_events(start_date_temp, end_date_temp, max_results)
+
     if df_events.empty:
-        st.warning("No biological sample events found for the selected date range.")
-        return
-    
-    # Filter section
+        st.warning("No biological sample events found for the initial date range.")
+        return    # Filter section
     st.subheader("🔍 Filters")
-    
-    # Summary metrics above filters - horizontal layout
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric(
-            "Countries", 
-            len([c for c in available_countries if c not in ['Unknown', 'Other']]),
-            help="Number of countries with identified events"
-        )
-    
-    with col2:
-        st.metric(
-            "Sites", 
-            len([s for s in available_sites if s not in ['Unknown', 'Other']]),
-            help="Number of sites with identified events"
-        )
-    
-    with col3:
-        st.metric(
-            "Species", 
-            len(available_species),
-            help="Number of species with events"
-        )
     
     # Get unique countries from the data
     if 'country' in df_events.columns:
@@ -950,6 +895,30 @@ def genetic_dashboard():
         # Get unique values and sort
         available_species = sorted(list(set(species_found)))
     
+    # Summary metrics above filters - horizontal layout
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric(
+            "Countries", 
+            len([c for c in available_countries if c not in ['Unknown', 'Other']]),
+            help="Number of countries with identified events"
+        )
+    
+    with col2:
+        st.metric(
+            "Sites", 
+            len([s for s in available_sites if s not in ['Unknown', 'Other']]),
+            help="Number of sites with identified events"
+        )
+    
+    with col3:
+        st.metric(
+            "Species", 
+            len(available_species),
+            help="Number of species with events"
+        )
+    
     # Filter selection interface - now with 4 columns for country, site, sample type, and species
     col1, col2, col3, col4 = st.columns([3, 3, 3, 3])
     
@@ -1000,6 +969,47 @@ def genetic_dashboard():
                 index=0,
                 help="No species information available in the data"
             )
+    
+    # Date filters under the main filters section
+    st.write("")  # Small spacer
+    col1, col2, col3, col4 = st.columns([3, 3, 3, 3])
+    
+    with col1:
+        start_date = st.date_input(
+            "📅 Start Date",
+            value=date.today() - timedelta(days=365),  # Default to last year
+            help="Select the earliest date for biological sample events"
+        )
+    
+    with col2:
+        end_date = st.date_input(
+            "📅 End Date", 
+            value=date.today(),
+            help="Select the latest date for biological sample events"
+        )
+    
+    with col3:
+        st.write("")  # Spacer
+    
+    with col4:
+        if st.button("🔄 Refresh Data", type="primary"):
+            # Clear cache to force refresh
+            get_biological_sample_events.clear()
+            st.rerun()
+    
+    # Validate date range and refetch data if dates are different
+    if start_date > end_date:
+        st.error("❌ Start date cannot be after end date")
+        return
+    
+    # Refetch data if date range has changed
+    if start_date != start_date_temp or end_date != end_date_temp:
+        with st.spinner("Updating data for selected date range..."):
+            df_events = get_biological_sample_events(start_date, end_date, max_results)
+        
+        if df_events.empty:
+            st.warning("No biological sample events found for the selected date range.")
+            return
     
     # Apply filters
     df_filtered = df_events.copy()
