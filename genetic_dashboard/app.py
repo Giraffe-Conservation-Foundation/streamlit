@@ -778,43 +778,44 @@ def genetic_dashboard():
             help="Limit the number of events to fetch (higher numbers may be slower)"
         )
 
-    # Temporary date values for initial data fetch - will be replaced by user input
-    start_date_temp = date.today() - timedelta(days=365)
-    end_date_temp = date.today()
+    # Default date values for initial data fetch - cover 2024 data
+    start_date_temp = date(2024, 1, 1)  # Start of 2024
+    end_date_temp = date(2024, 12, 31)  # End of 2024
 
     # Fetch biological sample events with the selected max_results for initial display
     with st.spinner("Fetching biological sample events..."):
         df_events = get_biological_sample_events(start_date_temp, end_date_temp, max_results)
 
     if df_events.empty:
-        st.warning("No biological sample events found for the initial date range.")
-        return    # Filter section
+        st.warning("No biological sample events found for the initial date range (2024). Try adjusting the date filters below.")
+        # Don't return here - still show the filters so user can adjust dates
+        df_events = pd.DataFrame()  # Continue with empty dataframe    # Filter section - always show, even if initial data is empty
     st.subheader("🔍 Filters")
     
-    # Get unique countries from the data
-    if 'country' in df_events.columns:
+    # Get unique countries from the data (if any)
+    if not df_events.empty and 'country' in df_events.columns:
         available_countries = sorted([c for c in df_events['country'].unique() if c not in ['Unknown', 'Other', None] and str(c).strip() != ''])
         if 'Other' in df_events['country'].values:
             available_countries.append('Other')
         if 'Unknown' in df_events['country'].values:
             available_countries.append('Unknown')
     else:
-        available_countries = ['Unknown']
+        available_countries = []
     
-    # Get unique sites from the data
-    if 'site' in df_events.columns:
+    # Get unique sites from the data (if any)
+    if not df_events.empty and 'site' in df_events.columns:
         available_sites = sorted([s for s in df_events['site'].unique() if s not in ['Unknown', 'Other', None] and str(s).strip() != ''])
         if 'Other' in df_events['site'].values:
             available_sites.append('Other')
         if 'Unknown' in df_events['site'].values:
             available_sites.append('Unknown')
     else:
-        available_sites = ['Unknown']
+        available_sites = []
     
     # Get unique sample types from the data - need to extract from event_details
     available_sample_types = []
     
-    if 'event_details' in df_events.columns:
+    if not df_events.empty and 'event_details' in df_events.columns:
         # Extract sample types from the nested event_details structure
         sample_types_found = []
         
@@ -856,7 +857,7 @@ def genetic_dashboard():
     # Get unique species from the data - need to extract from event_details
     available_species = []
     
-    if 'event_details' in df_events.columns:
+    if not df_events.empty and 'event_details' in df_events.columns:
         # Extract species from the nested event_details structure
         species_found = []
         
@@ -901,21 +902,21 @@ def genetic_dashboard():
     with col1:
         st.metric(
             "Countries", 
-            len([c for c in available_countries if c not in ['Unknown', 'Other']]),
+            len([c for c in available_countries if c not in ['Unknown', 'Other']]) if available_countries else 0,
             help="Number of countries with identified events"
         )
     
     with col2:
         st.metric(
             "Sites", 
-            len([s for s in available_sites if s not in ['Unknown', 'Other']]),
+            len([s for s in available_sites if s not in ['Unknown', 'Other']]) if available_sites else 0,
             help="Number of sites with identified events"
         )
     
     with col3:
         st.metric(
             "Species", 
-            len(available_species),
+            len(available_species) if available_species else 0,
             help="Number of species with events"
         )
     
@@ -923,17 +924,19 @@ def genetic_dashboard():
     col1, col2, col3, col4 = st.columns([3, 3, 3, 3])
     
     with col1:
+        country_options = ["All Countries"] + available_countries if available_countries else ["All Countries", "No data available"]
         selected_country = st.selectbox(
             "🌍 Country",
-            options=["All Countries"] + available_countries,
+            options=country_options,
             index=0,
             help="Filter biological sample events by country"
         )
     
     with col2:
+        site_options = ["All Sites"] + available_sites if available_sites else ["All Sites", "No data available"]
         selected_site = st.selectbox(
             "📍 Site",
-            options=["All Sites"] + available_sites,
+            options=site_options,
             index=0,
             help="Filter biological sample events by site"
         )
@@ -977,14 +980,14 @@ def genetic_dashboard():
     with col1:
         start_date = st.date_input(
             "📅 Start Date",
-            value=date.today() - timedelta(days=365),  # Default to last year
+            value=date(2024, 1, 1),  # Default to start of 2024 where data exists
             help="Select the earliest date for biological sample events"
         )
     
     with col2:
         end_date = st.date_input(
             "📅 End Date", 
-            value=date.today(),
+            value=date(2024, 12, 31),  # Default to end of 2024 where data exists
             help="Select the latest date for biological sample events"
         )
     
@@ -1002,16 +1005,16 @@ def genetic_dashboard():
         st.error("❌ Start date cannot be after end date")
         return
     
-    # Refetch data if date range has changed
-    if start_date != start_date_temp or end_date != end_date_temp:
+    # Refetch data if date range has changed or if initial data was empty
+    if start_date != start_date_temp or end_date != end_date_temp or df_events.empty:
         with st.spinner("Updating data for selected date range..."):
             df_events = get_biological_sample_events(start_date, end_date, max_results)
         
         if df_events.empty:
             st.warning("No biological sample events found for the selected date range.")
-            return
+            # Still continue to show empty dashboard with filters available
     
-    # Apply filters
+    # Apply filters (only if we have data)
     df_filtered = df_events.copy()
     filter_info = []
     
@@ -1111,8 +1114,11 @@ def genetic_dashboard():
     
     # Check if filtered data is empty
     if df_filtered.empty:
-        filter_desc = ' and '.join(filter_info) if filter_info else "the selected criteria"
-        st.warning(f"No biological sample events found for {filter_desc} in the selected date range.")
+        if filter_info:
+            filter_desc = ' and '.join(filter_info)
+            st.warning(f"No biological sample events found for {filter_desc} in the selected date range.")
+        else:
+            st.warning("No biological sample events found in the selected date range. Try adjusting the date filters or check if you have data for this period.")
         return
     
     # Display the events table and get exploded data

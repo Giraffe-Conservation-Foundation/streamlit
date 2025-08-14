@@ -1,0 +1,6 @@
+serial_number,event_datetime,details_girsam_iso,details_girsam_site,details_girsam_origin,latitude,longitude,details_girsam_age,details_girsam_sex,details_girsam_type,details_girsam_smpid,details_girsam_subid,details_girsam_status,details_girsam_species,details_girsam_notes,details_girsam_smpid2
+1,2024-01-15 10:30:00,NAM,Etosha National Park,Wild,-15.123456,28.456789,Adult,Female,blood,SAMP001,G001_NAM_2024,Collected,Giraffa giraffa,Healthy adult female with calf nearby,SAMP001_ALT
+2,2024-01-20 14:15:00,NAM,Caprivi Strip,Wild,-16.234567,29.567890,Juvenile,Male,tissue,SAMP002,G002_NAM_2024,Processing,Giraffa giraffa,Young male calf - ear notch sample,SAMP002_ALT
+3,2024-02-05 09:45:00,ZAF,Kruger National Park,Wild,-17.345678,30.678901,Elderly,Male,hair,SAMP003,G003_ZAF_2024,Analyzed,Giraffa camelopardalis,Elderly bull - hair follicles collected,SAMP003_ALT
+4,2024-02-18 16:20:00,BWA,Okavango Delta,Wild,-18.456789,31.789012,Adult,Female,blood,SAMP004,G004_BWA_2024,Shipped,Giraffa tippelskirchi,Adult female with newborn calf,SAMP004_ALT
+5,2024-03-10 11:00:00,ZWE,Hwange National Park,Wild,-19.567890,32.890123,Sub-adult,Male,tissue,SAMP005,G005_ZWE_2024,Ready,Giraffa giraffa,Sub-adult male - biopsy sample,SAMP005_ALT

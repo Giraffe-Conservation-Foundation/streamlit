@@ -1,0 +1,6 @@
+timestamp,latitude,longitude,country_code,site_name,sample_type,species,origin,collector,notes
+2024-01-15 10:30:00,-15.123456,28.456789,NAM,Etosha National Park,blood,Giraffa giraffa,Wild,Dr. Smith,Healthy adult female
+2024-01-20 14:15:00,-16.234567,29.567890,NAM,Caprivi Strip,tissue,Giraffa giraffa,Wild,Dr. Jones,Young male calf
+2024-02-05 09:45:00,-17.345678,30.678901,ZAF,Kruger National Park,hair,Giraffa camelopardalis,Wild,Dr. Brown,Elderly bull
+2024-02-18 16:20:00,-18.456789,31.789012,BWA,Okavango Delta,blood,Giraffa tippelskirchi,Wild,Dr. Wilson,Adult female with calf
+2024-03-10 11:00:00,-19.567890,32.890123,ZWE,Hwange National Park,tissue,Giraffa giraffa,Wild,Dr. Davis,Sub-adult male
