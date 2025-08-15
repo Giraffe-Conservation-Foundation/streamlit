@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Direct EarthRanger API Upload Script
-===================================
+Direct EarthRanger API Upload Script - Command Line Version
+==========================================================
 
 Bypasses ecoscope and calls EarthRanger API directly for better control.
 
 Usage:
-    python direct_api_upload.py
+    python upload_batch.py <csv_file> <username> <password>
 
 Requirements:
     pip install pandas requests
@@ -21,7 +21,6 @@ import json
 import sys
 import os
 from datetime import datetime
-import getpass
 
 class DirectEarthRangerUploader:
     """Direct API uploader for EarthRanger"""
@@ -91,8 +90,11 @@ def main():
     print("🦒 Direct EarthRanger API Upload Tool")
     print("=" * 50)
     
-    # Get CSV file
-    csv_file = input("📁 Enter path to CSV file: ").strip().strip('"')
+    # Check if file is provided as argument
+    if len(sys.argv) > 1:
+        csv_file = sys.argv[1]
+    else:
+        csv_file = input("📁 Enter path to CSV file: ").strip().strip('"')
     
     if not os.path.exists(csv_file):
         print(f"❌ File not found: {csv_file}")
@@ -111,9 +113,14 @@ def main():
     print("\n📋 DATA PREVIEW:")
     print(df.head(3))
     
-    # Get credentials
-    username = input("\nEarthRanger Username: ")
-    password = getpass.getpass("EarthRanger Password: ")
+    # Get credentials from command line or prompt
+    if len(sys.argv) > 3:
+        username = sys.argv[2]
+        password = sys.argv[3]
+        print(f"\nUsing provided credentials for user: {username}")
+    else:
+        username = input("\nEarthRanger Username: ")
+        password = input("EarthRanger Password: ")
     
     # Initialize uploader
     uploader = DirectEarthRangerUploader()
@@ -128,10 +135,13 @@ def main():
     print("✅ API connection test successful!")
     
     # Confirm upload
-    proceed = input(f"\n❓ Proceed with uploading {len(df)} events? (y/N): ").lower().strip()
-    if proceed != 'y':
-        print("❌ Upload cancelled")
-        return
+    if len(sys.argv) <= 1:  # Only ask for confirmation if interactive
+        proceed = input(f"\n❓ Proceed with uploading {len(df)} events? (y/N): ").lower().strip()
+        if proceed != 'y':
+            print("❌ Upload cancelled")
+            return
+    else:
+        print(f"\n🚀 Proceeding with upload of {len(df)} events...")
     
     # Upload events
     print(f"\n🚀 Starting upload of {len(df)} events...")

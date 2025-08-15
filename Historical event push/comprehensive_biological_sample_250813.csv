@@ -1,152 +1,151 @@
-serial_number,event_datetime,details_girsam_iso,details_girsam_site,details_girsam_origin,latitude,longitude,details_girsam_age,details_girsam_sex,details_girsam_type,details_girsam_smpid,details_girsam_subid,details_girsam_status,details_girsam_species,details_girsam_notes,details_girsam_smpid2
-,2024-01-01T12:00:00Z,NAM,Agarob Safaris,biopsy,0,0,,,tissue,152,,analysed,southern_angolan,,AGS01
-,2024-01-01T12:00:00Z,NAM,Agarob Safaris,biopsy,0,0,,,tissue,158,,recevied,southern_angolan,,AGS02
-,2024-01-01T12:00:00Z,NAM,Ai Aiba (Erongo),biopsy,-21.50635431,15.55686765,,,tissue,163,,recevied,southern_angolan,,AAB01
-,2024-01-01T12:00:00Z,NAM,Auas,biopsy,-22.78892659,17.33191855,,,tissue,61,,recevied,southern_angolan,,ASL01
-,2024-01-01T12:00:00Z,NAM,Auas,biopsy,-22.78892659,17.33191855,,,tissue,62,,recevied,southern_angolan,,ASL02
-,2024-01-01T12:00:00Z,NAM,Auas,biopsy,-22.78892659,17.33191855,,,tissue,63,,analysed,southern_angolan,,ASL03
-,2024-01-01T12:00:00Z,NAM,Bambatsi,biopsy,-20.20485724,15.46253364,,,tissue,33,,recevied,southern_angolan,,BBS01
-,2024-01-01T12:00:00Z,NAM,Bambatsi,biopsy,-20.20485724,15.46253364,,,tissue,34,,recevied,southern_angolan,,BBS02
-,2024-01-01T12:00:00Z,NAM,Beenbreek,biopsy,-28.67659052,19.44360976,,,tissue,168,,analysed,southern_angolan,,BBK01
-,2024-01-01T12:00:00Z,NAM,Bellebenno,biopsy,-20.32837718,17.05448269,,,tissue,52,,recevied,southern_angolan,,CCFB01
-,2024-01-01T12:00:00Z,NAM,Bellebenno,biopsy,-20.32837718,17.05448269,,,tissue,53,,recevied,southern_angolan,,CCFB02
-,2024-01-01T12:00:00Z,NAM,Bellebenno,biopsy,-20.32837718,17.05448269,,,tissue,54,,recevied,southern_angolan,,CCFB03
-,2024-01-01T12:00:00Z,NAM,Betrtram,biopsy,-20.37745388,15.47387073,,,tissue,26,,recevied,southern_angolan,,VKB01
-,2024-01-01T12:00:00Z,NAM,Blaser,biopsy,-22.13937455,16.51111758,,,tissue,132,,recevied,southern_angolan,,BLA01
-,2024-01-01T12:00:00Z,NAM,Blaser,biopsy,-22.13937455,16.51111758,,,tissue,133,,recevied,southern_angolan,,BLA02
-,2024-01-01T12:00:00Z,NAM,Blaser,biopsy,-22.13937455,16.51111758,,,tissue,134,,recevied,southern_angolan,,BLA03
-,2024-01-01T12:00:00Z,NAM,Cheetah Conservation Fund - Reserve,biopsy,-20.49608855,17.05553837,,,tissue,46,,recevied,southern_angolan,,CCFR01
-,2024-01-01T12:00:00Z,NAM,Cheetah Conservation Fund - Reserve,biopsy,-20.49608855,17.05553837,,,tissue,47,,analysed,southern_angolan,,CCFR02
-,2024-01-01T12:00:00Z,NAM,Damaraland Nth,biopsy,0,0,,,tissue,108,,recevied,southern_angolan,,DLNW01
-,2024-01-01T12:00:00Z,NAM,Damaraland Nth,biopsy,0,0,,,tissue,110,,recevied,southern_angolan,,DLNW02
-,2024-01-01T12:00:00Z,NAM,Damaraland Nth,biopsy,0,0,,,tissue,111,,recevied,southern_angolan,,DLNW03
-,2024-01-01T12:00:00Z,NAM,Damaraland Nth,biopsy,0,0,,,tissue,172,,recevied,southern_angolan,,DLNW04
-,2024-01-01T12:00:00Z,NAM,Damaraland Nth,biopsy,0,0,,,tissue,173,,recevied,southern_angolan,,DLNW05
-,2024-01-01T12:00:00Z,NAM,Damaraland Nth,biopsy,0,0,,,tissue,174,,analysed,southern_angolan,,DLNW06
-,2024-01-01T12:00:00Z,NAM,Doro Nawas Conservancy,biopsy,-20.45789265,14.32796161,,,tissue,51,,recevied,southern_angolan,,DNC01
-,2024-01-01T12:00:00Z,NAM,Epacha,biopsy,-19.39195628,15.68441097,,,tissue,42,,recevied,southern_angolan,,EPA01
-,2024-01-01T12:00:00Z,NAM,Epacha,biopsy,-19.39195628,15.68441097,,,tissue,43,,analysed,southern_angolan,,EPA02
-,2024-01-01T12:00:00Z,NAM,Erindi,biopsy,-21.36721771,16.45490573,,,tissue,187,,analysed,southern_angolan,,ERD01
-,2024-01-01T12:00:00Z,NAM,Erindi,biopsy,-21.36721771,16.45490573,,,tissue,188,,recevied,southern_angolan,,ERD02
-,2024-01-01T12:00:00Z,NAM,Erindi,biopsy,-21.36721771,16.45490573,,,tissue,189,,analysed,southern_angolan,,ERD03
-,2024-01-01T12:00:00Z,NAM,Erongo park,biopsy,-21.45245064,15.92894308,,,tissue,15,,recevied,southern_angolan,,ERP01
-,2024-01-01T12:00:00Z,NAM,Erongo park,biopsy,-21.45245064,15.92894308,,,tissue,16,,recevied,southern_angolan,,ERP02
-,2024-01-01T12:00:00Z,NAM,Etekero,biopsy,-20.70224254,16.72248162,,,tissue,8,,analysed,southern_angolan,,ETK01
-,2024-01-01T12:00:00Z,NAM,Etekero,biopsy,-20.70224254,16.72248162,,,tissue,9,,analysed,southern_angolan,,ETK02
-,2024-01-01T12:00:00Z,NAM,Etosha Heights,biopsy,-19.2967323,14.88830676,,,tissue,120,,recevied,southern_angolan,,ETHS01
-,2024-01-01T12:00:00Z,NAM,Etosha Heights,biopsy,-19.2967323,14.88830676,,,tissue,121,,recevied,southern_angolan,,ETHS02
-,2024-01-01T12:00:00Z,NAM,Etosha Heights,biopsy,-19.2967323,14.88830676,,,tissue,122,,recevied,southern_angolan,,ETHS03
-,2024-01-01T12:00:00Z,NAM,Etosha Heights West,biopsy,-19.10028591,14.12739003,,,tissue,137,,recevied,southern_angolan,,ETHSW01
-,2024-01-01T12:00:00Z,NAM,Etosha Heights West,biopsy,-19.10028591,14.12739003,,,tissue,138,,analysed,southern_angolan,,ETHSW02
-,2024-01-01T12:00:00Z,NAM,Etosha Heights West,biopsy,-19.10028591,14.12739003,,,tissue,185,,analysed,southern_angolan,,ETHSW03
-,2024-01-01T12:00:00Z,NAM,Etosha Heights West,biopsy,-19.10028591,14.12739003,,,tissue,186,,analysed,southern_angolan,,ETHSW04
-,2024-01-01T12:00:00Z,NAM,Etosha Safari Lodge,biopsy,-19.41019571,15.91129364,,,tissue,170,,recevied,southern_angolan,,ESL01
-,2024-01-01T12:00:00Z,NAM,Excelsior,biopsy,-25.43076836,16.16786855,,,tissue,102,,recevied,southern_angolan,,EXC01
-,2024-01-01T12:00:00Z,NAM,Fish River Canyon,biopsy,-27.7139252,17.59079675,,,tissue,28,,recevied,southern_angolan,,FRL01
-,2024-01-01T12:00:00Z,NAM,Gobabis (Makadi Safaris),biopsy,0,0,,,tissue,157,,analysed,southern_angolan,,GBB01
-,2024-01-01T12:00:00Z,NAM,Kalahari Anib Lodge,biopsy,-24.42712607,18.10542198,,,tissue,129,,recevied,southern_angolan,,KGL04
-,2024-01-01T12:00:00Z,NAM,Kalahari Anib Lodge,biopsy,-24.42712607,18.10542198,,,tissue,130,,recevied,southern_angolan,,KGL05
-,2024-01-01T12:00:00Z,NAM,Kalahari Area,biopsy,0,0,,,tissue,160,,recevied,southern_angolan,,KHA01
-,2024-01-01T12:00:00Z,NAM,Kalahari Game Lodge,biopsy,-25.64123135,19.86486582,,,tissue,126,,recevied,southern_angolan,,KGL01
-,2024-01-01T12:00:00Z,NAM,Kalahari Game Lodge,biopsy,-25.64123135,19.86486582,,,tissue,127,,recevied,southern_angolan,,KGL02
-,2024-01-01T12:00:00Z,NAM,Kalahari Game Lodge,biopsy,-25.64123135,19.86486582,,,tissue,128,,recevied,southern_angolan,,KGL03
-,2024-01-01T12:00:00Z,NAM,Kalkrand,biopsy,-19.56372182,18.01796523,,,tissue,165,,analysed,southern_angolan,,KALK01
-,2024-01-01T12:00:00Z,NAM,Kamanjab Area,biopsy,-19.64138603,14.74046168,,,tissue,24,,recevied,southern_angolan,,KJA01
-,2024-01-01T12:00:00Z,NAM,Kamanjab Area,biopsy,-19.64138603,14.74046168,,,tissue,25,,recevied,southern_angolan,,KJA02
-,2024-01-01T12:00:00Z,NAM,Kamanjab Area,biopsy,-19.64138603,14.74046168,,,tissue,151,,recevied,southern_angolan,,KMJ01
-,2024-01-01T12:00:00Z,NAM,Kanaan,biopsy,-25.86814289,16.16728009,,,tissue,19,,recevied,southern_angolan,,NKS01
-,2024-01-01T12:00:00Z,NAM,Kanaan,biopsy,-25.86814289,16.16728009,,,tissue,20,,recevied,southern_angolan,,NKS02
-,2024-01-01T12:00:00Z,NAM,Kanona-west,biopsy,-21.61795181,15.90395708,,,tissue,30,,recevied,southern_angolan,,KAW01
-,2024-01-01T12:00:00Z,NAM,Kassandara,biopsy,-21.36727176,16.01521943,,,tissue,35,,recevied,southern_angolan,,KSD01
-,2024-01-01T12:00:00Z,NAM,Kassandara,biopsy,-21.36727176,16.01521943,,,tissue,36,,recevied,southern_angolan,,KSD02
-,2024-01-01T12:00:00Z,NAM,Kassandara,biopsy,-21.36727176,16.01521943,,,tissue,37,,recevied,southern_angolan,,KSD03
-,2024-01-01T12:00:00Z,NAM,Khomas Hochland,biopsy,0,0,,,tissue,156,,analysed,southern_angolan,,KHH01
-,2024-01-01T12:00:00Z,NAM,Khomas Hochland Safaris,biopsy,0,0,,,tissue,153,,recevied,southern_angolan,,KHHS01
-,2024-01-01T12:00:00Z,NAM,Khomas Hochland Safaris,biopsy,0,0,,,tissue,171,,recevied,southern_angolan,,KHHS02
-,2024-01-01T12:00:00Z,NAM,Koedoeberg,biopsy,-21.66721814,15.80527187,,,tissue,29,,recevied,southern_angolan,,KDB01
-,2024-01-01T12:00:00Z,NAM,Lake Oanob,biopsy,-23.3169617,17.0212884,,,tissue,70,,recevied,southern_angolan,,LOA01
-,2024-01-01T12:00:00Z,NAM,Lake Oanob,biopsy,-23.3169617,17.0212884,,,tissue,71,,recevied,southern_angolan,,LOA02
-,2024-01-01T12:00:00Z,NAM,Lake Oanob,biopsy,-23.3169617,17.0212884,,,tissue,72,,recevied,southern_angolan,,LOA03
-,2024-01-01T12:00:00Z,NAM,Langbeen,biopsy,-24.65245911,19.5339153,,,tissue,31,,recevied,southern_angolan,,LGB01
-,2024-01-01T12:00:00Z,NAM,Langbeen,biopsy,-24.65245911,19.5339153,,,tissue,32,,recevied,southern_angolan,,LGB02
-,2024-01-01T12:00:00Z,NAM,Mountain View,biopsy,-22.82358812,17.86225322,,,tissue,94,,recevied,southern_angolan,,MVE01
-,2024-01-01T12:00:00Z,NAM,Mountain View,biopsy,-22.82358812,17.86225322,,,tissue,95,,recevied,southern_angolan,,MVE02
-,2024-01-01T12:00:00Z,NAM,Mt Etjo,biopsy,-21.08727478,16.4589084,,,tissue,182,,analysed,southern_angolan,,MET01
-,2024-01-01T12:00:00Z,NAM,Mt Etjo,biopsy,-21.08727478,16.4589084,,,tissue,183,,recevied,southern_angolan,,MET02
-,2024-01-01T12:00:00Z,NAM,Mt Etjo,biopsy,-21.08727478,16.4589084,,,tissue,184,,analysed,southern_angolan,,MET03
-,2024-01-01T12:00:00Z,NAM,Namib Rand Reserve,biopsy,-25.00128442,16.00017052,,,tissue,135,,recevied,southern_angolan,,NRR01
-,2024-01-01T12:00:00Z,NAM,Namib Rand Reserve,biopsy,-25.00128442,16.00017052,,,tissue,136,,recevied,southern_angolan,,NRR02
-,2024-01-01T12:00:00Z,NAM,Neuhof,biopsy,-24.74611899,16.12297788,,,tissue,131,,recevied,southern_angolan,,NEU01
-,2024-01-01T12:00:00Z,NAM,Okakongo,biopsy,-21.11992698,15.90776349,,,tissue,67,,recevied,southern_angolan,,OKK01
-,2024-01-01T12:00:00Z,NAM,Okakongo,biopsy,-21.11992698,15.90776349,,,tissue,68,,recevied,southern_angolan,,OKK02
-,2024-01-01T12:00:00Z,NAM,Okakongo,biopsy,-21.11992698,15.90776349,,,tissue,69,,recevied,southern_angolan,,OKK03
-,2024-01-01T12:00:00Z,NAM,Okambara,biopsy,-22.61265282,18.1637868,,,tissue,78,,recevied,southern_angolan,,OKB01
-,2024-01-01T12:00:00Z,NAM,Okambara,biopsy,-22.61265282,18.1637868,,,tissue,79,,recevied,southern_angolan,,OKB02
-,2024-01-01T12:00:00Z,NAM,Okambara,biopsy,-22.61265282,18.1637868,,,tissue,80,,recevied,southern_angolan,,OKB03
-,2024-01-01T12:00:00Z,NAM,Okambara (Khomas Hochland),biopsy,0,0,,,tissue,167,,recevied,southern_angolan,,OKBK01
-,2024-01-01T12:00:00Z,NAM,Okapuka,biopsy,-22.29109693,17.06190107,,,tissue,146,,analysed,southern_angolan,,OKPK01
-,2024-01-01T12:00:00Z,NAM,Okapuka,biopsy,-22.29109693,17.06190107,,,tissue,147,,recevied,southern_angolan,,OKPK02
-,2024-01-01T12:00:00Z,NAM,Okapuka,biopsy,-22.29109693,17.06190107,,,tissue,148,,analysed,southern_angolan,,OKPK03
-,2024-01-01T12:00:00Z,NAM,Okonjima,biopsy,-20.8541568,16.66206514,,,tissue,97,,recevied,southern_angolan,,OKJ01
-,2024-01-01T12:00:00Z,NAM,Okonjima,biopsy,-20.8541568,16.66206514,,,tissue,100,,recevied,southern_angolan,,OKJ02
-,2024-01-01T12:00:00Z,NAM,Okonjima,biopsy,-20.8541568,16.66206514,,,tissue,101,,recevied,southern_angolan,,OKJ03
-,2024-01-01T12:00:00Z,NAM,Okorongoro,biopsy,-21.11782213,16.08254394,,,tissue,38,,recevied,southern_angolan,,OKR01
-,2024-01-01T12:00:00Z,NAM,Okorongoro,biopsy,-21.11782213,16.08254394,,,tissue,39,,recevied,southern_angolan,,OKR02
-,2024-01-01T12:00:00Z,NAM,Okorongoro,biopsy,-21.11782213,16.08254394,,,tissue,40,,recevied,southern_angolan,,OKR03
-,2024-01-01T12:00:00Z,NAM,Okutala,biopsy,0,0,,,tissue,4,,recevied,southern_angolan,,OKU01
-,2024-01-01T12:00:00Z,NAM,Okutala,biopsy,0,0,,,tissue,5,,recevied,southern_angolan,,OKU02
-,2024-01-01T12:00:00Z,NAM,Omaruru,biopsy,-21.32591902,16.07366864,,,tissue,3,,analysed,southern_angolan,,OWE01
-,2024-01-01T12:00:00Z,NAM,Omaruru (Omaruru Farm),biopsy,-21.32591902,16.07366864,,,tissue,155,,recevied,southern_angolan,,OMRR01
-,2024-01-01T12:00:00Z,NAM,Omaruru Game Lodge,biopsy,-21.33425122,16.08082152,,,tissue,44,,recevied,southern_angolan,,OGL01
-,2024-01-01T12:00:00Z,NAM,Ombu,biopsy,-21.67109868,15.71512366,,,tissue,91,,recevied,southern_angolan,,OMBU01
-,2024-01-01T12:00:00Z,NAM,Ombu,biopsy,-21.67109868,15.71512366,,,tissue,92,,recevied,southern_angolan,,OMBU02
-,2024-01-01T12:00:00Z,NAM,Ombu,biopsy,-21.67109868,15.71512366,,,tissue,93,,recevied,southern_angolan,,OMBU03
-,2024-01-01T12:00:00Z,NAM,Omuwiwie,biopsy,0,0,,,tissue,73,,recevied,southern_angolan,,OWW01
-,2024-01-01T12:00:00Z,NAM,Omuwiwie,biopsy,0,0,,,tissue,74,,recevied,southern_angolan,,OWW02
-,2024-01-01T12:00:00Z,NAM,Ondombo-wes,biopsy,-21.02399668,16.05853326,,,tissue,17,,recevied,southern_angolan,,ODB01
-,2024-01-01T12:00:00Z,NAM,Ondombo-wes,biopsy,-21.02399668,16.05853326,,,tissue,18,,analysed,southern_angolan,,ODB02
-,2024-01-01T12:00:00Z,NAM,Ondundu,biopsy,-19.88477995,14.98122851,,,tissue,22,,recevied,southern_angolan,,ODD01
-,2024-01-01T12:00:00Z,NAM,Ondundu,biopsy,-19.88477995,14.98122851,,,tissue,23,,recevied,southern_angolan,,ODD02
-,2024-01-01T12:00:00Z,NAM,Ongeama,biopsy,-22.40314321,17.2792096,,,tissue,7,,recevied,southern_angolan,,OGA02
-,2024-01-01T12:00:00Z,NAM,Osonjiva,biopsy,-20.87919739,17.4013474,,,tissue,56,,recevied,southern_angolan,,OSJ01
-,2024-01-01T12:00:00Z,NAM,Osonjiva,biopsy,-20.87919739,17.4013474,,,tissue,57,,recevied,southern_angolan,,OSJ02
-,2024-01-01T12:00:00Z,NAM,Otavi (Tambiti Safaris),biopsy,0,0,,,tissue,162,,recevied,southern_angolan,,OTAVI01
-,2024-01-01T12:00:00Z,NAM,Otjikoto,biopsy,-19.98672172,17.12371538,,,tissue,11,,recevied,southern_angolan,,OJK01
-,2024-01-01T12:00:00Z,NAM,Otjikoto,biopsy,-19.98672172,17.12371538,,,tissue,12,,analysed,southern_angolan,,OJK02
-,2024-01-01T12:00:00Z,NAM,Otjipaue,biopsy,-20.84870686,16.29872309,,,tissue,103,,recevied,southern_angolan,,OTJ01
-,2024-01-01T12:00:00Z,NAM,Otjipaue,biopsy,-20.84870686,16.29872309,,,tissue,104,,recevied,southern_angolan,,OTJ02
-,2024-01-01T12:00:00Z,NAM,Otjipaue,biopsy,-20.84870686,16.29872309,,,tissue,106,,recevied,southern_angolan,,OTJ03
-,2024-01-01T12:00:00Z,NAM,Otjiruze,biopsy,-21.81182749,17.38605222,,,tissue,87,,recevied,southern_angolan,,OJR01
-,2024-01-01T12:00:00Z,NAM,Otjiruze,biopsy,-21.81182749,17.38605222,,,tissue,88,,recevied,southern_angolan,,OJR02
-,2024-01-01T12:00:00Z,NAM,Otjiruze,biopsy,-21.81182749,17.38605222,,,tissue,89,,recevied,southern_angolan,,OJR03
-,2024-01-01T12:00:00Z,NAM,Otjiwarong Area,biopsy,0,0,,,tissue,154,,recevied,southern_angolan,,OJWA01
-,2024-01-01T12:00:00Z,NAM,Otjompaue,biopsy,-22.56733247,16.84408739,,,tissue,13,,analysed,southern_angolan,,OJP01
-,2024-01-01T12:00:00Z,NAM,Ottawa,biopsy,-22.27648777,18.39293977,,,tissue,142,,recevied,southern_angolan,,OTW01
-,2024-01-01T12:00:00Z,NAM,Ottawa,biopsy,-22.27648777,18.39293977,,,tissue,143,,recevied,southern_angolan,,OTW02
-,2024-01-01T12:00:00Z,NAM,Ottawa,biopsy,-22.27648777,18.39293977,,,tissue,144,,recevied,southern_angolan,,OTW03
-,2024-01-01T12:00:00Z,NAM,Pack-grunental,biopsy,-22.29158528,18.44470437,,,tissue,139,,recevied,southern_angolan,,GRT01
-,2024-01-01T12:00:00Z,NAM,Pack-grunental,biopsy,-22.29158528,18.44470437,,,tissue,140,,recevied,southern_angolan,,GRT02
-,2024-01-01T12:00:00Z,NAM,Pack-grunental,biopsy,-22.29158528,18.44470437,,,tissue,141,,recevied,southern_angolan,,GRT03
-,2024-01-01T12:00:00Z,NAM,Paresis,biopsy,-20.32228162,16.22534632,,,tissue,58,,analysed,southern_angolan,,PAR01
-,2024-01-01T12:00:00Z,NAM,Paresis,biopsy,-20.32228162,16.22534632,,,tissue,59,,analysed,southern_angolan,,PAR02
-,2024-01-01T12:00:00Z,NAM,Schonfeld,biopsy,-21.82934355,19.26140519,,,tissue,2,,analysed,southern_angolan,,SCH01
-,2024-01-01T12:00:00Z,NAM,Stinkwater,biopsy,-22.89862268,17.54455749,,,tissue,27,,recevied,southern_angolan,,STW01
-,2024-01-01T12:00:00Z,NAM,Torra Conservancy,biopsy,-20.01866793,14.02422927,,,tissue,14,,recevied,southern_angolan,,TOC01
-,2024-01-01T12:00:00Z,NAM,Urusis,biopsy,-24.48602868,16.6551662,,,tissue,149,,analysed,southern_angolan,,URU01
-,2024-01-01T12:00:00Z,NAM,Urusis,biopsy,-24.48602868,16.6551662,,,tissue,150,,recevied,southern_angolan,,URU02
-,2024-01-01T12:00:00Z,NAM,Veronica,biopsy,-22.67741083,19.80718881,,,tissue,82,,recevied,southern_angolan,,VER01
-,2024-01-01T12:00:00Z,NAM,Veronica,biopsy,-22.67741083,19.80718881,,,tissue,84,,recevied,southern_angolan,,VER02
-,2024-01-01T12:00:00Z,NAM,Veronica,biopsy,-22.67741083,19.80718881,,,tissue,85,,recevied,southern_angolan,,VER03
-,2024-01-01T12:00:00Z,NAM,Voloviga,biopsy,0,0,,,tissue,64,,analysed,southern_angolan,,VOL01
-,2024-01-01T12:00:00Z,NAM,Voloviga,biopsy,0,0,,,tissue,65,,recevied,southern_angolan,,VOL02
-,2024-01-01T12:00:00Z,NAM,Voloviga,biopsy,0,0,,,tissue,66,,recevied,southern_angolan,,VOL03
-,2024-01-01T12:00:00Z,NAM,Welvaart,biopsy,-19.59464667,14.70109946,,,tissue,6,,recevied,southern_angolan,,WVT752
-,2024-01-01T12:00:00Z,NAM,Windhoek Farm,biopsy,0,0,,,tissue,169,,recevied,southern_angolan,,WHKF01
-,2024-01-01T12:00:00Z,NAM,Winkerlhaak,biopsy,0,0,,,tissue,75,,recevied,southern_angolan,,WKH01
-,2024-01-01T12:00:00Z,NAM,Winkerlhaak,biopsy,0,0,,,tissue,76,,recevied,southern_angolan,,WKH02
-,2024-01-01T12:00:00Z,NAM,Woltemade,biopsy,-21.19259231,17.65627634,,,tissue,164,,recevied,southern_angolan,,WTMH01
-,2024-01-01T12:00:00Z,NAM,Zannier,biopsy,-22.45392307,17.40515191,,,tissue,48,,recevied,southern_angolan,,ZAN01
-,2024-01-01T12:00:00Z,NAM,Zannier,biopsy,-22.45392307,17.40515191,,,tissue,49,,recevied,southern_angolan,,ZAN02
-,2024-01-01T12:00:00Z,NAM,Zannier,biopsy,-22.45392307,17.40515191,,,tissue,50,,recevied,southern_angolan,,ZAN03
-,2024-01-01T12:00:00Z,NAM,Zaris,biopsy,-24.97194337,16.2625404,,,tissue,161,,recevied,southern_angolan,,MHH01
-,2024-01-01T12:00:00Z,NAM,Zelda,biopsy,-22.25389796,19.81435916,,,tissue,166,,recevied,southern_angolan,,ZELDA01
+event_datetime,details_girsam_iso,details_girsam_site,details_girsam_origin,latitude,longitude,details_girsam_age,details_girsam_sex,details_girsam_type,details_girsam_smpid,details_girsam_subid,details_girsam_status,details_girsam_species,details_girsam_notes,details_girsam_smpid2
+2024-01-01T12:00:00Z,nam,Agarob Safaris,biopsy,-22.98142062,16.40981895,,,tissue,152,,analysed,southern_angolan,,AGS01
+2024-01-01T12:00:00Z,nam,Agarob Safaris,biopsy,-22.98142062,16.40981895,,,tissue,158,,recevied,southern_angolan,,AGS02
+2024-01-01T12:00:00Z,nam,Ai Aiba (Erongo),biopsy,-21.50635431,15.55686765,,m,tissue,163,,recevied,southern_angolan,,AAB01
+2024-01-01T12:00:00Z,nam,Auas,biopsy,-22.78892659,17.33191855,,,tissue,61,,recevied,southern_angolan,,ASL01
+2024-01-01T12:00:00Z,nam,Auas,biopsy,-22.78892659,17.33191855,,,tissue,62,,recevied,southern_angolan,,ASL02
+2024-01-01T12:00:00Z,nam,Auas,biopsy,-22.78892659,17.33191855,,,tissue,63,,analysed,southern_angolan,,ASL03
+2024-01-01T12:00:00Z,nam,Bambatsi,biopsy,-20.20485724,15.46253364,,m,tissue,33,,recevied,southern_angolan,,BBS01
+2024-01-01T12:00:00Z,nam,Bambatsi,biopsy,-20.20485724,15.46253364,,m,tissue,34,,recevied,southern_angolan,,BBS02
+2024-01-01T12:00:00Z,nam,Beenbreek,biopsy,-28.67659052,19.44360976,,,tissue,168,,analysed,southern_angolan,,BBK01
+2024-01-01T12:00:00Z,nam,Bellebenno,biopsy,-20.32837718,17.05448269,,,tissue,52,,recevied,southern_angolan,,CCFB01
+2024-01-01T12:00:00Z,nam,Bellebenno,biopsy,-20.32837718,17.05448269,,,tissue,53,,recevied,southern_angolan,,CCFB02
+2024-01-01T12:00:00Z,nam,Bellebenno,biopsy,-20.32837718,17.05448269,,,tissue,54,,recevied,southern_angolan,,CCFB03
+2024-01-01T12:00:00Z,nam,Betrtram,biopsy,-20.37745388,15.47387073,,m,tissue,26,,recevied,southern_angolan,,VKB01
+2024-01-01T12:00:00Z,nam,Blaser,biopsy,-22.13937455,16.51111758,,m,tissue,132,,recevied,southern_angolan,,BLA01
+2024-01-01T12:00:00Z,nam,Blaser,biopsy,-22.13937455,16.51111758,,m,tissue,133,,recevied,southern_angolan,,BLA02
+2024-01-01T12:00:00Z,nam,Blaser,biopsy,-22.13937455,16.51111758,,f,tissue,134,,recevied,southern_angolan,,BLA03
+2024-01-01T12:00:00Z,nam,Cheetah Conservation Fund - Reserve,biopsy,-20.49608855,17.05553837,,,tissue,46,,recevied,southern_angolan,,CCFR01
+2024-01-01T12:00:00Z,nam,Cheetah Conservation Fund - Reserve,biopsy,-20.49608855,17.05553837,,,tissue,47,,analysed,southern_angolan,,CCFR02
+2024-01-01T12:00:00Z,nam,Damaraland Nth,biopsy,-18.729939,12.941159,,f,tissue,108,,recevied,southern_angolan,,DLNW01
+2024-01-01T12:00:00Z,nam,Damaraland Nth,biopsy,-18.729939,12.941159,,,tissue,110,,recevied,southern_angolan,,DLNW02
+2024-01-01T12:00:00Z,nam,Damaraland Nth,biopsy,-18.729939,12.941159,,,tissue,111,,recevied,southern_angolan,,DLNW03
+2024-01-01T12:00:00Z,nam,Damaraland Nth,biopsy,-18.729939,12.941159,,f,tissue,172,,recevied,southern_angolan,,DLNW04
+2024-01-01T12:00:00Z,nam,Damaraland Nth,biopsy,-18.729939,12.941159,,f,tissue,173,,recevied,southern_angolan,,DLNW05
+2024-01-01T12:00:00Z,nam,Damaraland Nth,biopsy,-18.729939,12.941159,,f,tissue,174,,analysed,southern_angolan,,DLNW06
+2024-01-01T12:00:00Z,nam,Doro Nawas Conservancy,biopsy,-20.45789265,14.32796161,,,tissue,51,,recevied,southern_angolan,,DNC01
+2024-01-01T12:00:00Z,nam,Epacha,biopsy,-19.39195628,15.68441097,,,tissue,42,,recevied,southern_angolan,,EPA01
+2024-01-01T12:00:00Z,nam,Epacha,biopsy,-19.39195628,15.68441097,,,tissue,43,,analysed,southern_angolan,,EPA02
+2024-01-01T12:00:00Z,nam,Erindi,biopsy,-21.36721771,16.45490573,,,tissue,187,,analysed,southern_angolan,,ERD01
+2024-01-01T12:00:00Z,nam,Erindi,biopsy,-21.36721771,16.45490573,,,tissue,188,,recevied,southern_angolan,,ERD02
+2024-01-01T12:00:00Z,nam,Erindi,biopsy,-21.36721771,16.45490573,,,tissue,189,,analysed,southern_angolan,,ERD03
+2024-01-01T12:00:00Z,nam,Erongo park,biopsy,-21.45245064,15.92894308,,f,tissue,15,,recevied,southern_angolan,,ERP01
+2024-01-01T12:00:00Z,nam,Erongo park,biopsy,-21.45245064,15.92894308,,,tissue,16,,recevied,southern_angolan,,ERP02
+2024-01-01T12:00:00Z,nam,Etekero,biopsy,-20.70224254,16.72248162,,,tissue,8,,analysed,southern_angolan,,ETK01
+2024-01-01T12:00:00Z,nam,Etekero,biopsy,-20.70224254,16.72248162,,,tissue,9,,analysed,southern_angolan,,ETK02
+2024-01-01T12:00:00Z,nam,Etosha Heights,biopsy,-19.2967323,14.88830676,,,tissue,120,,recevied,southern_angolan,,ETHS01
+2024-01-01T12:00:00Z,nam,Etosha Heights,biopsy,-19.2967323,14.88830676,,,tissue,121,,recevied,southern_angolan,,ETHS02
+2024-01-01T12:00:00Z,nam,Etosha Heights,biopsy,-19.2967323,14.88830676,,,tissue,122,,recevied,southern_angolan,,ETHS03
+2024-01-01T12:00:00Z,nam,Etosha Heights West,biopsy,-19.10028591,14.12739003,,f,tissue,137,,recevied,southern_angolan,,ETHSW01
+2024-01-01T12:00:00Z,nam,Etosha Heights West,biopsy,-19.10028591,14.12739003,,f,tissue,138,,analysed,southern_angolan,,ETHSW02
+2024-01-01T12:00:00Z,nam,Etosha Heights West,biopsy,-19.10028591,14.12739003,,,tissue,185,,analysed,southern_angolan,,ETHSW03
+2024-01-01T12:00:00Z,nam,Etosha Heights West,biopsy,-19.10028591,14.12739003,,,tissue,186,,analysed,southern_angolan,,ETHSW04
+2024-01-01T12:00:00Z,nam,Etosha Safari Lodge,biopsy,-19.41019571,15.91129364,,m,tissue,170,,recevied,southern_angolan,,ESL01
+2024-01-01T12:00:00Z,nam,Excelsior,biopsy,-25.43076836,16.16786855,,,tissue,102,,recevied,southern_angolan,,EXC01
+2024-01-01T12:00:00Z,nam,Fish River Canyon,biopsy,-27.7139252,17.59079675,,,tissue,28,,recevied,southern_angolan,,FRL01
+2024-01-01T12:00:00Z,nam,Illala Game Reserve (Makadi Safaris),biopsy,-23.27751842,16.01874793,,,tissue,157,,analysed,southern_angolan,,GBB01
+2024-01-01T12:00:00Z,nam,Kalahari Anib Lodge,biopsy,-24.42712607,18.10542198,,,tissue,129,,recevied,southern_angolan,,KGL04
+2024-01-01T12:00:00Z,nam,Kalahari Anib Lodge,biopsy,-24.42712607,18.10542198,,,tissue,130,,recevied,southern_angolan,,KGL05
+2024-01-01T12:00:00Z,nam,Kalahari Area,biopsy,-25.64123135,19.86486582,,,tissue,160,,recevied,southern_angolan,,KHA01
+2024-01-01T12:00:00Z,nam,Kalahari Game Lodge,biopsy,-25.64123135,19.86486582,,,tissue,126,,recevied,southern_angolan,,KGL01
+2024-01-01T12:00:00Z,nam,Kalahari Game Lodge,biopsy,-25.64123135,19.86486582,,,tissue,127,,recevied,southern_angolan,,KGL02
+2024-01-01T12:00:00Z,nam,Kalahari Game Lodge,biopsy,-25.64123135,19.86486582,,,tissue,128,,recevied,southern_angolan,,KGL03
+2024-01-01T12:00:00Z,nam,Kalkrand,biopsy,-19.56372182,18.01796523,,,tissue,165,,analysed,southern_angolan,,KALK01
+2024-01-01T12:00:00Z,nam,Kamanjab Area,biopsy,-19.64138603,14.74046168,,,tissue,24,,recevied,southern_angolan,,KJA01
+2024-01-01T12:00:00Z,nam,Kamanjab Area,biopsy,-19.64138603,14.74046168,,,tissue,25,,recevied,southern_angolan,,KJA02
+2024-01-01T12:00:00Z,nam,Kamanjab Area,biopsy,-19.64138603,14.74046168,,,tissue,151,,recevied,southern_angolan,,KMJ01
+2024-01-01T12:00:00Z,nam,Kanaan,biopsy,-25.86814289,16.16728009,,f,tissue,19,,recevied,southern_angolan,,NKS01
+2024-01-01T12:00:00Z,nam,Kanaan,biopsy,-25.86814289,16.16728009,,f,tissue,20,,recevied,southern_angolan,,NKS02
+2024-01-01T12:00:00Z,nam,Kanona-west,biopsy,-21.61795181,15.90395708,,,tissue,30,,recevied,southern_angolan,,KAW01
+2024-01-01T12:00:00Z,nam,Kassandara,biopsy,-21.36727176,16.01521943,,,tissue,35,,recevied,southern_angolan,,KSD01
+2024-01-01T12:00:00Z,nam,Kassandara,biopsy,-21.36727176,16.01521943,,,tissue,36,,recevied,southern_angolan,,KSD02
+2024-01-01T12:00:00Z,nam,Kassandara,biopsy,-21.36727176,16.01521943,,,tissue,37,,recevied,southern_angolan,,KSD03
+2024-01-01T12:00:00Z,nam,Khomas Hochland,biopsy,-22.6999001,16.552731,,,tissue,156,,analysed,southern_angolan,,KHH01
+2024-01-01T12:00:00Z,nam,Khomas Hochland Safaris,biopsy,-22.6999001,16.552731,,,tissue,153,,recevied,southern_angolan,,KHHS01
+2024-01-01T12:00:00Z,nam,Khomas Hochland Safaris,biopsy,-22.6999001,16.552731,,,tissue,171,,recevied,southern_angolan,,KHHS02
+2024-01-01T12:00:00Z,nam,Koedoeberg,biopsy,-21.66721814,15.80527187,,,tissue,29,,recevied,southern_angolan,,KDB01
+2024-01-01T12:00:00Z,nam,Lake Oanob,biopsy,-23.3169617,17.0212884,,,tissue,70,,recevied,southern_angolan,,LOA01
+2024-01-01T12:00:00Z,nam,Lake Oanob,biopsy,-23.3169617,17.0212884,,,tissue,71,,recevied,southern_angolan,,LOA02
+2024-01-01T12:00:00Z,nam,Lake Oanob,biopsy,-23.3169617,17.0212884,,,tissue,72,,recevied,southern_angolan,,LOA03
+2024-01-01T12:00:00Z,nam,Langbeen,biopsy,-24.65245911,19.5339153,,f,tissue,31,,recevied,southern_angolan,,LGB01
+2024-01-01T12:00:00Z,nam,Langbeen,biopsy,-24.65245911,19.5339153,,m,tissue,32,,recevied,southern_angolan,,LGB02
+2024-01-01T12:00:00Z,nam,Mountain View,biopsy,-22.82358812,17.86225322,,,tissue,94,,recevied,southern_angolan,,MVE01
+2024-01-01T12:00:00Z,nam,Mountain View,biopsy,-22.82358812,17.86225322,,f,tissue,95,,recevied,southern_angolan,,MVE02
+2024-01-01T12:00:00Z,nam,Mt Etjo,biopsy,-21.08727478,16.4589084,,,tissue,182,,analysed,southern_angolan,,MET01
+2024-01-01T12:00:00Z,nam,Mt Etjo,biopsy,-21.08727478,16.4589084,,,tissue,183,,recevied,southern_angolan,,MET02
+2024-01-01T12:00:00Z,nam,Mt Etjo,biopsy,-21.08727478,16.4589084,,,tissue,184,,analysed,southern_angolan,,MET03
+2024-01-01T12:00:00Z,nam,Namib Rand Reserve,biopsy,-25.00128442,16.00017052,,,tissue,135,,recevied,southern_angolan,,NRR01
+2024-01-01T12:00:00Z,nam,Namib Rand Reserve,biopsy,-25.00128442,16.00017052,,,tissue,136,,recevied,southern_angolan,,NRR02
+2024-01-01T12:00:00Z,nam,Neuhof,biopsy,-24.74611899,16.12297788,,,tissue,131,,recevied,southern_angolan,,NEU01
+2024-01-01T12:00:00Z,nam,Okakongo,biopsy,-21.11992698,15.90776349,,,tissue,67,,recevied,southern_angolan,,OKK01
+2024-01-01T12:00:00Z,nam,Okakongo,biopsy,-21.11992698,15.90776349,,,tissue,68,,recevied,southern_angolan,,OKK02
+2024-01-01T12:00:00Z,nam,Okakongo,biopsy,-21.11992698,15.90776349,,,tissue,69,,recevied,southern_angolan,,OKK03
+2024-01-01T12:00:00Z,nam,Okambara,biopsy,-22.61265282,18.1637868,,m,tissue,78,,recevied,southern_angolan,,OKB01
+2024-01-01T12:00:00Z,nam,Okambara,biopsy,-22.61265282,18.1637868,,f,tissue,79,,recevied,southern_angolan,,OKB02
+2024-01-01T12:00:00Z,nam,Okambara,biopsy,-22.61265282,18.1637868,,f,tissue,80,,recevied,southern_angolan,,OKB03
+2024-01-01T12:00:00Z,nam,Okambara (Khomas Hochland),biopsy,-22.61265282,18.1637868,,,tissue,167,,recevied,southern_angolan,,OKBK01
+2024-01-01T12:00:00Z,nam,Okapuka,biopsy,-22.29109693,17.06190107,,m,tissue,146,,analysed,southern_angolan,,OKPK01
+2024-01-01T12:00:00Z,nam,Okapuka,biopsy,-22.29109693,17.06190107,,,tissue,147,,recevied,southern_angolan,,OKPK02
+2024-01-01T12:00:00Z,nam,Okapuka,biopsy,-22.29109693,17.06190107,,,tissue,148,,analysed,southern_angolan,,OKPK03
+2024-01-01T12:00:00Z,nam,Okonjima,biopsy,-20.8541568,16.66206514,,f,tissue,97,,recevied,southern_angolan,,OKJ01
+2024-01-01T12:00:00Z,nam,Okonjima,biopsy,-20.8541568,16.66206514,,m,tissue,100,,recevied,southern_angolan,,OKJ02
+2024-01-01T12:00:00Z,nam,Okonjima,biopsy,-20.8541568,16.66206514,,,tissue,101,,recevied,southern_angolan,,OKJ03
+2024-01-01T12:00:00Z,nam,Okorongoro,biopsy,-21.11782213,16.08254394,,,tissue,38,,recevied,southern_angolan,,OKR01
+2024-01-01T12:00:00Z,nam,Okorongoro,biopsy,-21.11782213,16.08254394,,,tissue,39,,recevied,southern_angolan,,OKR02
+2024-01-01T12:00:00Z,nam,Okorongoro,biopsy,-21.11782213,16.08254394,,,tissue,40,,recevied,southern_angolan,,OKR03
+2024-01-01T12:00:00Z,nam,Okutala,biopsy,-19.576803,15.751285,,m,tissue,4,,recevied,southern_angolan,,OKU01
+2024-01-01T12:00:00Z,nam,Okutala,biopsy,-19.576803,15.751285,,,tissue,5,,recevied,southern_angolan,,OKU02
+2024-01-01T12:00:00Z,nam,Omaruru,biopsy,-21.32591902,16.07366864,,,tissue,3,,analysed,southern_angolan,,OWE01
+2024-01-01T12:00:00Z,nam,Omaruru (Omaruru Farm),biopsy,-21.32591902,16.07366864,,,tissue,155,,recevied,southern_angolan,,OMRR01
+2024-01-01T12:00:00Z,nam,Omaruru Game Lodge,biopsy,-21.33425122,16.08082152,,,tissue,44,,recevied,southern_angolan,,OGL01
+2024-01-01T12:00:00Z,nam,Ombu,biopsy,-21.67109868,15.71512366,,,tissue,91,,recevied,southern_angolan,,OMBU01
+2024-01-01T12:00:00Z,nam,Ombu,biopsy,-21.67109868,15.71512366,,,tissue,92,,recevied,southern_angolan,,OMBU02
+2024-01-01T12:00:00Z,nam,Ombu,biopsy,-21.67109868,15.71512366,,,tissue,93,,recevied,southern_angolan,,OMBU03
+2024-01-01T12:00:00Z,nam,Omuwiwie,biopsy,-21.62978318,15.796193,,,tissue,73,,recevied,southern_angolan,,OWW01
+2024-01-01T12:00:00Z,nam,Omuwiwie,biopsy,-21.62978318,15.796193,,,tissue,74,,recevied,southern_angolan,,OWW02
+2024-01-01T12:00:00Z,nam,Ondombo-wes,biopsy,-21.02399668,16.05853326,,,tissue,17,,recevied,southern_angolan,,ODB01
+2024-01-01T12:00:00Z,nam,Ondombo-wes,biopsy,-21.02399668,16.05853326,,,tissue,18,,analysed,southern_angolan,,ODB02
+2024-01-01T12:00:00Z,nam,Ondundu,biopsy,-19.88477995,14.98122851,,m,tissue,22,,recevied,southern_angolan,,ODD01
+2024-01-01T12:00:00Z,nam,Ondundu,biopsy,-19.88477995,14.98122851,,,tissue,23,,recevied,southern_angolan,,ODD02
+2024-01-01T12:00:00Z,nam,Ongeama,biopsy,-22.40314321,17.2792096,,m,tissue,7,,recevied,southern_angolan,,OGA02
+2024-01-01T12:00:00Z,nam,Osonjiva,biopsy,-20.87919739,17.4013474,,,tissue,56,,recevied,southern_angolan,,OSJ01
+2024-01-01T12:00:00Z,nam,Osonjiva,biopsy,-20.87919739,17.4013474,,,tissue,57,,recevied,southern_angolan,,OSJ02
+2024-01-01T12:00:00Z,nam,Tambuti Wilderness Safaris,biopsy,-19.33404001,17.02728504,,,tissue,162,,recevied,southern_angolan,,OTAVI01
+2024-01-01T12:00:00Z,nam,Otjikoto,biopsy,-19.98672172,17.12371538,,,tissue,11,,recevied,southern_angolan,,OJK01
+2024-01-01T12:00:00Z,nam,Otjikoto,biopsy,-19.98672172,17.12371538,,,tissue,12,,analysed,southern_angolan,,OJK02
+2024-01-01T12:00:00Z,nam,Otjipaue,biopsy,-20.84870686,16.29872309,,,tissue,103,,recevied,southern_angolan,,OTJ01
+2024-01-01T12:00:00Z,nam,Otjipaue,biopsy,-20.84870686,16.29872309,,,tissue,104,,recevied,southern_angolan,,OTJ02
+2024-01-01T12:00:00Z,nam,Otjipaue,biopsy,-20.84870686,16.29872309,,,tissue,106,,recevied,southern_angolan,,OTJ03
+2024-01-01T12:00:00Z,nam,Otjiruze,biopsy,-21.81182749,17.38605222,,f,tissue,87,,recevied,southern_angolan,,OJR01
+2024-01-01T12:00:00Z,nam,Otjiruze,biopsy,-21.81182749,17.38605222,,m,tissue,88,,recevied,southern_angolan,,OJR02
+2024-01-01T12:00:00Z,nam,Otjiruze,biopsy,-21.81182749,17.38605222,,f,tissue,89,,recevied,southern_angolan,,OJR03
+2024-01-01T12:00:00Z,nam,Otjompaue,biopsy,-22.56733247,16.84408739,,,tissue,13,,analysed,southern_angolan,,OJP01
+2024-01-01T12:00:00Z,nam,Ottawa,biopsy,-22.27648777,18.39293977,,f,tissue,142,,recevied,southern_angolan,,OTW01
+2024-01-01T12:00:00Z,nam,Ottawa,biopsy,-22.27648777,18.39293977,,f,tissue,143,,recevied,southern_angolan,,OTW02
+2024-01-01T12:00:00Z,nam,Ottawa,biopsy,-22.27648777,18.39293977,,m,tissue,144,,recevied,southern_angolan,,OTW03
+2024-01-01T12:00:00Z,nam,Pack-grunental,biopsy,-22.29158528,18.44470437,,m,tissue,139,,recevied,southern_angolan,,GRT01
+2024-01-01T12:00:00Z,nam,Pack-grunental,biopsy,-22.29158528,18.44470437,,m,tissue,140,,recevied,southern_angolan,,GRT02
+2024-01-01T12:00:00Z,nam,Pack-grunental,biopsy,-22.29158528,18.44470437,,f,tissue,141,,recevied,southern_angolan,,GRT03
+2024-01-01T12:00:00Z,nam,Paresis,biopsy,-20.32228162,16.22534632,,,tissue,58,,analysed,southern_angolan,,PAR01
+2024-01-01T12:00:00Z,nam,Paresis,biopsy,-20.32228162,16.22534632,,,tissue,59,,analysed,southern_angolan,,PAR02
+2024-01-01T12:00:00Z,nam,Schonfeld,biopsy,-21.82934355,19.26140519,,,tissue,2,,analysed,southern_angolan,,SCH01
+2024-01-01T12:00:00Z,nam,Stinkwater,biopsy,-22.89862268,17.54455749,,f,tissue,27,,recevied,southern_angolan,,STW01
+2024-01-01T12:00:00Z,nam,Torra Conservancy,biopsy,-20.01866793,14.02422927,,,tissue,14,,recevied,southern_angolan,,TOC01
+2024-01-01T12:00:00Z,nam,Urusis,biopsy,-24.48602868,16.6551662,,,tissue,149,,analysed,southern_angolan,,URU01
+2024-01-01T12:00:00Z,nam,Urusis,biopsy,-24.48602868,16.6551662,,,tissue,150,,recevied,southern_angolan,,URU02
+2024-01-01T12:00:00Z,nam,Veronica,biopsy,-22.67741083,19.80718881,,m,tissue,82,,recevied,southern_angolan,,VER01
+2024-01-01T12:00:00Z,nam,Veronica,biopsy,-22.67741083,19.80718881,,f,tissue,84,,recevied,southern_angolan,,VER02
+2024-01-01T12:00:00Z,nam,Veronica,biopsy,-22.67741083,19.80718881,,f,tissue,85,,recevied,southern_angolan,,VER03
+2024-01-01T12:00:00Z,nam,Volouiga,biopsy,-19.28195,15.37538,,,tissue,64,,analysed,southern_angolan,,VOL01
+2024-01-01T12:00:00Z,nam,Volouiga,biopsy,-19.28195,15.37538,,,tissue,65,,recevied,southern_angolan,,VOL02
+2024-01-01T12:00:00Z,nam,Volouiga,biopsy,-19.28195,15.37538,,,tissue,66,,recevied,southern_angolan,,VOL03
+2024-01-01T12:00:00Z,nam,Welvaart,biopsy,-19.59464667,14.70109946,,f,tissue,6,,recevied,southern_angolan,,WVT752
+2024-01-01T12:00:00Z,nam,Windhoek Farm,biopsy,-22.597702,17.18247,,,tissue,169,,recevied,southern_angolan,,WHKF01
+2024-01-01T12:00:00Z,nam,Winkerlhaak,biopsy,0,0,,,tissue,75,,recevied,southern_angolan,,WKH01
+2024-01-01T12:00:00Z,nam,Winkerlhaak,biopsy,0,0,,,tissue,76,,recevied,southern_angolan,,WKH02
+2024-01-01T12:00:00Z,nam,Woltemade,biopsy,-21.19259231,17.65627634,,,tissue,164,,recevied,southern_angolan,,WTMH01
+2024-01-01T12:00:00Z,nam,Zannier,biopsy,-22.45392307,17.40515191,,m,tissue,48,,recevied,southern_angolan,,ZAN01
+2024-01-01T12:00:00Z,nam,Zannier,biopsy,-22.45392307,17.40515191,,f,tissue,49,,recevied,southern_angolan,,ZAN02
+2024-01-01T12:00:00Z,nam,Zannier,biopsy,-22.45392307,17.40515191,,m,tissue,50,,recevied,southern_angolan,,ZAN03
+2024-01-01T12:00:00Z,nam,Zaris,biopsy,-24.97194337,16.2625404,,,tissue,161,,recevied,southern_angolan,,MHH01
+2024-01-01T12:00:00Z,nam,Zelda,biopsy,-22.25389796,19.81435916,,,tissue,166,,recevied,southern_angolan,,ZELDA01

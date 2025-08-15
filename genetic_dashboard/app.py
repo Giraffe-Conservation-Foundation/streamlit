@@ -281,34 +281,65 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             df['month'] = df['time'].dt.month
             df['month_name'] = df['time'].dt.strftime('%B')
         
-        # Add location information if geometry was available
+        # Add location information if geometry was available, but preserve CSV coordinates if they exist
         if not gdf_events.empty and 'geometry' in gdf_events.columns:
             # Extract coordinates from geometry with error handling
             try:
-                gdf_events['latitude'] = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
-                gdf_events['longitude'] = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
-                df['latitude'] = gdf_events['latitude']
-                df['longitude'] = gdf_events['longitude']
+                geo_latitude = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
+                geo_longitude = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
+                
+                # Only use geometry coordinates where CSV coordinates are missing/zero
+                if 'latitude' not in df.columns:
+                    df['latitude'] = geo_latitude
+                else:
+                    # Fill missing or zero values with geometry coordinates
+                    df['latitude'] = df['latitude'].fillna(geo_latitude)
+                    df.loc[(df['latitude'] == 0) & (geo_latitude.notna()), 'latitude'] = geo_latitude
+                
+                if 'longitude' not in df.columns:
+                    df['longitude'] = geo_longitude
+                else:
+                    # Fill missing or zero values with geometry coordinates
+                    df['longitude'] = df['longitude'].fillna(geo_longitude)
+                    df.loc[(df['longitude'] == 0) & (geo_longitude.notna()), 'longitude'] = geo_longitude
+                    
             except Exception as geo_error:
                 st.warning(f"Geometry processing warning: {str(geo_error)}")
                 # Continue without geometry data
                 pass
         
-        # Extract country and site information from event_details
+        # Extract country and site information from event_details and check for coordinate data
         if 'event_details' in df.columns:
             countries = []
             sites = []
+            csv_latitudes = []
+            csv_longitudes = []
+            
             for _, row in df.iterrows():
                 event_details = row.get('event_details', {})
                 
                 # Extract country (iso) and site from event_details
                 country = None
                 site = None
+                csv_lat = None
+                csv_lng = None
                 
                 if isinstance(event_details, dict):
                     # Direct access to country and site fields - check girsam_ prefixed fields first
                     country = event_details.get('girsam_iso') or event_details.get('country') or event_details.get('iso')
                     site = event_details.get('girsam_site') or event_details.get('site')
+                    
+                    # Check for coordinate data from the original CSV upload
+                    if 'latitude' in event_details:
+                        try:
+                            csv_lat = float(event_details['latitude'])
+                        except (ValueError, TypeError):
+                            csv_lat = None
+                    if 'longitude' in event_details:
+                        try:
+                            csv_lng = float(event_details['longitude'])
+                        except (ValueError, TypeError):
+                            csv_lng = None
                     
                     # Also check nested structures (girsam) as fallback - prioritize iso field
                     if not country and 'girsam' in event_details:
@@ -320,7 +351,7 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                         girsam_data = event_details.get('girsam', {})
                         if isinstance(girsam_data, dict):
                             site = girsam_data.get('site')
-                                
+                            
                 elif isinstance(event_details, str):
                     # Try to parse JSON string
                     try:
@@ -328,6 +359,18 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                         if isinstance(parsed_details, dict):
                             country = parsed_details.get('girsam_iso') or parsed_details.get('country') or parsed_details.get('iso')
                             site = parsed_details.get('girsam_site') or parsed_details.get('site')
+                            
+                            # Check for coordinate data
+                            if 'latitude' in parsed_details:
+                                try:
+                                    csv_lat = float(parsed_details['latitude'])
+                                except (ValueError, TypeError):
+                                    csv_lat = None
+                            if 'longitude' in parsed_details:
+                                try:
+                                    csv_lng = float(parsed_details['longitude'])
+                                except (ValueError, TypeError):
+                                    csv_lng = None
                             
                             # Check nested structures - prioritize iso field
                             if not country and 'girsam' in parsed_details:
@@ -344,9 +387,33 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                 # Clean and append values
                 countries.append(str(country).strip() if country and str(country).strip() not in ['None', 'null', '', 'nan'] else "Unknown")
                 sites.append(str(site).strip() if site and str(site).strip() not in ['None', 'null', '', 'nan'] else "Unknown")
+                csv_latitudes.append(csv_lat)
+                csv_longitudes.append(csv_lng)
             
             df['country'] = countries
             df['site'] = sites
+            
+            # Prioritize CSV coordinates from event_details over any other source
+            csv_coords_found = any(lat is not None for lat in csv_latitudes)
+            if csv_coords_found:
+                print(f"DEBUG - Found coordinate data in event_details from {sum(1 for lat in csv_latitudes if lat is not None)} events, using as primary source")
+                
+                # Initialize coordinate columns if they don't exist
+                if 'latitude' not in df.columns:
+                    df['latitude'] = [None] * len(df)
+                if 'longitude' not in df.columns:
+                    df['longitude'] = [None] * len(df)
+                
+                # Set coordinates from CSV data, preserving original values
+                for i, (lat, lng) in enumerate(zip(csv_latitudes, csv_longitudes)):
+                    if lat is not None and lng is not None:
+                        df.iloc[i, df.columns.get_loc('latitude')] = lat
+                        df.iloc[i, df.columns.get_loc('longitude')] = lng
+                        if i < 5:  # Debug first few entries
+                            site = sites[i] if i < len(sites) else 'Unknown'
+                            print(f"DEBUG - Set coordinates for {site}: {lat}, {lng}")
+            else:
+                print("DEBUG - No coordinate data found in event_details")
         else:
             df['country'] = "Unknown"
             df['site'] = "Unknown"
@@ -407,6 +474,23 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             st.warning(f"Field flattening warning: {str(flatten_error)}")
             # Continue without flattened fields
             pass
+        
+        # Debug: Check coordinate sources
+        if 'latitude' in df.columns and 'longitude' in df.columns:
+            # Check for mismatched coordinates (Namibian sites with non-Namibian coordinates)
+            namibian_events = df[df['country'].str.upper() == 'NAM'] if 'country' in df.columns else df
+            if not namibian_events.empty:
+                # Namibia longitude should be roughly 12°E to 25°E
+                suspicious_coords = namibian_events[
+                    (namibian_events['longitude'] < 10) | (namibian_events['longitude'] > 26)
+                ]
+                if not suspicious_coords.empty:
+                    print(f"DEBUG - Found {len(suspicious_coords)} Namibian events with suspicious coordinates:")
+                    for idx, row in suspicious_coords.iterrows():
+                        site = row.get('details_girsam_site', 'Unknown')
+                        lat = row.get('latitude', 'N/A')
+                        lng = row.get('longitude', 'N/A')
+                        print(f"  {site}: {lat}, {lng}")
         
         return df
         
@@ -602,7 +686,12 @@ def display_events_map(df_events):
         return
     
     # Filter events with valid coordinates
-    df_map = df_events[(df_events['latitude'].notna()) & (df_events['longitude'].notna())].copy()
+    df_map = df_events[
+        (df_events['latitude'].notna()) & 
+        (df_events['longitude'].notna()) &
+        (df_events['latitude'] != 0) &
+        (df_events['longitude'] != 0)
+    ].copy()
     
     if df_map.empty:
         st.warning("No events with valid coordinates found for mapping.")
