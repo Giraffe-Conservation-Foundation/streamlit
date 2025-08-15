@@ -8,6 +8,7 @@ import json
 import os
 from pandas import json_normalize
 
+# Genetic Dashboard v2.1 - Fixed coordinate mapping (2025-08-15)
 # Handle NumPy 2.x compatibility warnings
 import warnings
 warnings.filterwarnings("ignore", message=".*copy keyword.*")
