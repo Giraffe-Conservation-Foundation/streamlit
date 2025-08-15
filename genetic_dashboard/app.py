@@ -8,7 +8,6 @@ import json
 import os
 from pandas import json_normalize
 
-# Genetic Dashboard v2.1 - Fixed coordinate mapping (2025-08-15)
 # Handle NumPy 2.x compatibility warnings
 import warnings
 warnings.filterwarnings("ignore", message=".*copy keyword.*")
@@ -210,8 +209,8 @@ def authenticate_earthranger():
             st.error("Invalid credentials. Please try again.")
     st.stop()
 
-# @st.cache_data(ttl=60)  # Cache DISABLED for coordinate fix deployment
-def get_biological_sample_events(start_date=None, end_date=None, max_results=200, cache_bust=None):
+# @st.cache_data(ttl=3600)  # Cache temporarily disabled for coordinate fix
+def get_biological_sample_events(start_date=None, end_date=None, max_results=200):
     """Fetch biological sample events from EarthRanger using ecoscope"""
     if not ECOSCOPE_AVAILABLE:
         st.error("❌ Ecoscope package is required but not available.")
@@ -282,9 +281,32 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             df['month'] = df['time'].dt.month
             df['month_name'] = df['time'].dt.strftime('%B')
         
-        # CSV-ONLY coordinate extraction - prioritize CSV coordinates over EarthRanger geometry
-        # This ensures we always get the correct original CSV coordinates, not EarthRanger's processed geometry
-        # The geometry coordinates were causing Namibian sites to show incorrect locations
+        # Add location information if geometry was available, but preserve CSV coordinates if they exist
+        if not gdf_events.empty and 'geometry' in gdf_events.columns:
+            # Extract coordinates from geometry with error handling
+            try:
+                geo_latitude = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
+                geo_longitude = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
+                
+                # Only use geometry coordinates where CSV coordinates are missing/zero
+                if 'latitude' not in df.columns:
+                    df['latitude'] = geo_latitude
+                else:
+                    # Fill missing or zero values with geometry coordinates
+                    df['latitude'] = df['latitude'].fillna(geo_latitude)
+                    df.loc[(df['latitude'] == 0) & (geo_latitude.notna()), 'latitude'] = geo_latitude
+                
+                if 'longitude' not in df.columns:
+                    df['longitude'] = geo_longitude
+                else:
+                    # Fill missing or zero values with geometry coordinates
+                    df['longitude'] = df['longitude'].fillna(geo_longitude)
+                    df.loc[(df['longitude'] == 0) & (geo_longitude.notna()), 'longitude'] = geo_longitude
+                    
+            except Exception as geo_error:
+                st.warning(f"Geometry processing warning: {str(geo_error)}")
+                # Continue without geometry data
+                pass
         
         # Extract country and site information from event_details and check for coordinate data
         if 'event_details' in df.columns:
@@ -374,23 +396,24 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             # Prioritize CSV coordinates from event_details over any other source
             csv_coords_found = any(lat is not None for lat in csv_latitudes)
             if csv_coords_found:
-                coords_found_count = sum(1 for lat in csv_latitudes if lat is not None)
-                st.info(f"🎯 COORDINATE DEBUG: Found CSV coordinate data in event_details from {coords_found_count} events, using as primary source (v2.1)")
+                print(f"DEBUG - Found coordinate data in event_details from {sum(1 for lat in csv_latitudes if lat is not None)} events, using as primary source")
                 
-                # Ensure coordinate columns exist
-                df['latitude'] = csv_latitudes  # Set all latitudes from CSV
-                df['longitude'] = csv_longitudes  # Set all longitudes from CSV
+                # Initialize coordinate columns if they don't exist
+                if 'latitude' not in df.columns:
+                    df['latitude'] = [None] * len(df)
+                if 'longitude' not in df.columns:
+                    df['longitude'] = [None] * len(df)
                 
-                # Debug first few entries in UI
+                # Set coordinates from CSV data, preserving original values
                 for i, (lat, lng) in enumerate(zip(csv_latitudes, csv_longitudes)):
-                    if lat is not None and lng is not None and i < 3:
-                        site = sites[i] if i < len(sites) else 'Unknown'
-                        st.success(f"✅ Set coordinates for {site}: {lat}, {lng}")
+                    if lat is not None and lng is not None:
+                        df.iloc[i, df.columns.get_loc('latitude')] = lat
+                        df.iloc[i, df.columns.get_loc('longitude')] = lng
+                        if i < 5:  # Debug first few entries
+                            site = sites[i] if i < len(sites) else 'Unknown'
+                            print(f"DEBUG - Set coordinates for {site}: {lat}, {lng}")
             else:
-                st.warning("⚠️ COORDINATE DEBUG: No coordinate data found in event_details - this may cause mapping issues")
-                # Initialize empty coordinate columns if no CSV data found
-                df['latitude'] = [None] * len(df)
-                df['longitude'] = [None] * len(df)
+                print("DEBUG - No coordinate data found in event_details")
         else:
             df['country'] = "Unknown"
             df['site'] = "Unknown"
@@ -826,9 +849,6 @@ def genetic_dashboard():
     #st.header("🧬 Genetic Dashboard")
     #st.markdown("Monitor and analyze biological sample events from EarthRanger")
     
-    # Version indicator for deployment verification
-    st.info("🔧 **Genetic Dashboard v2.1** - Coordinate Fix Deployed (2025-08-15) - Geometry coordinates DISABLED")
-    
     # Dashboard controls - use wider layout for max results only
     col1, col2, col3 = st.columns([6, 2, 1])
 
@@ -853,7 +873,7 @@ def genetic_dashboard():
 
     # Fetch biological sample events with the selected max_results for initial display
     with st.spinner("Fetching biological sample events..."):
-        df_events = get_biological_sample_events(start_date_temp, end_date_temp, max_results, cache_bust=datetime.now().timestamp())
+        df_events = get_biological_sample_events(start_date_temp, end_date_temp, max_results)
 
     if df_events.empty:
         st.warning("No biological sample events found for the initial date range (2024). Try adjusting the date filters below.")
@@ -1077,7 +1097,7 @@ def genetic_dashboard():
     # Refetch data if date range has changed or if initial data was empty
     if start_date != start_date_temp or end_date != end_date_temp or df_events.empty:
         with st.spinner("Updating data for selected date range..."):
-            df_events = get_biological_sample_events(start_date, end_date, max_results, cache_bust=datetime.now().timestamp())
+            df_events = get_biological_sample_events(start_date, end_date, max_results)
         
         if df_events.empty:
             st.warning("No biological sample events found for the selected date range.")
