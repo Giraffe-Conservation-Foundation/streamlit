@@ -210,8 +210,8 @@ def authenticate_earthranger():
             st.error("Invalid credentials. Please try again.")
     st.stop()
 
-@st.cache_data(ttl=3600)  # Cache for 1 hour like NANW dashboard
-def get_biological_sample_events(start_date=None, end_date=None, max_results=200):
+@st.cache_data(ttl=60)  # Cache for 1 minute - reduced for coordinate fix deployment
+def get_biological_sample_events(start_date=None, end_date=None, max_results=200, cache_bust=None):
     """Fetch biological sample events from EarthRanger using ecoscope"""
     if not ECOSCOPE_AVAILABLE:
         st.error("❌ Ecoscope package is required but not available.")
@@ -874,7 +874,7 @@ def genetic_dashboard():
 
     # Fetch biological sample events with the selected max_results for initial display
     with st.spinner("Fetching biological sample events..."):
-        df_events = get_biological_sample_events(start_date_temp, end_date_temp, max_results)
+        df_events = get_biological_sample_events(start_date_temp, end_date_temp, max_results, cache_bust=datetime.now().timestamp())
 
     if df_events.empty:
         st.warning("No biological sample events found for the initial date range (2024). Try adjusting the date filters below.")
@@ -1098,7 +1098,7 @@ def genetic_dashboard():
     # Refetch data if date range has changed or if initial data was empty
     if start_date != start_date_temp or end_date != end_date_temp or df_events.empty:
         with st.spinner("Updating data for selected date range..."):
-            df_events = get_biological_sample_events(start_date, end_date, max_results)
+            df_events = get_biological_sample_events(start_date, end_date, max_results, cache_bust=datetime.now().timestamp())
         
         if df_events.empty:
             st.warning("No biological sample events found for the selected date range.")
