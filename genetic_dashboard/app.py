@@ -183,7 +183,29 @@ def er_login(username, password):
         # Try a simple call to check credentials
         er.get_subjects(limit=1)
         return True
-    except Exception:
+    except Exception as e:
+        # Write detailed error info to Desktop for debugging
+        try:
+            desktop_path = os.path.expanduser(r"C:\Users\court\Desktop\er_login_error.txt")
+            with open(desktop_path, "a") as f:
+                f.write(f"[{datetime.now()}] Username: {username}\n")
+                f.write(f"Server: {st.session_state.server_url}\n")
+                f.write(f"Environment: {'DEPLOYED' if 'STREAMLIT_SHARING' in os.environ or 'STREAMLIT_CLOUD' in os.environ else 'LOCAL'}\n")
+                f.write(f"Error Type: {type(e).__name__}\n")
+                f.write(f"Error Message: {str(e)}\n")
+                if hasattr(e, 'response') and e.response is not None:
+                    f.write(f"HTTP Status: {e.response.status_code}\n")
+                    f.write(f"Response Text: {e.response.text}\n")
+                f.write("="*50 + "\n\n")
+        except Exception as file_error:
+            print(f"Failed to write error log: {file_error}")
+        
+        # Also display error in UI for deployed version
+        if 'STREAMLIT_SHARING' in os.environ or 'STREAMLIT_CLOUD' in os.environ:
+            st.error(f"Deployment Authentication Error: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                st.error(f"HTTP Status: {e.response.status_code}")
+        
         return False
 
 def authenticate_earthranger():
@@ -735,7 +757,8 @@ def display_events_map(df_events):
         status_color_map = {
             'analysed': '#DB580F',  # Orange
             'office': '#6C757D',    # Grey
-            'shipped': '#28A745'    # Green
+            'shipped': '#28A745',    # Green
+            'collected': '#4683B7' # blue 
         }
         
         # Get unique statuses and create color mapping
