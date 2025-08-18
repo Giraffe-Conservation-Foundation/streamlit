@@ -796,7 +796,8 @@ def display_events_map(df_events):
             color=color_column,
             color_discrete_map=color_discrete_map,
             size_max=15,
-            zoom=6,
+            zoom=4,  # Zoom level for Southern Africa region
+            center={"lat": -25.0, "lon": 25.0},  # Center on Southern Africa
             height=600,
             title=f"Biological Sample Events by Sample Status ({len(df_map)} events with coordinates)",
             labels={color_column: 'Sample Status'}
@@ -817,7 +818,8 @@ def display_events_map(df_events):
                 'details_girsam_status': True
             },
             size_max=15,
-            zoom=6,
+            zoom=4,  # Zoom level for Southern Africa region
+            center={"lat": -25.0, "lon": 25.0},  # Center on Southern Africa
             height=600,
             title=f"Biological Sample Events Map ({len(df_map)} events with coordinates)"
         )
