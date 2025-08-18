@@ -173,15 +173,21 @@ def init_session_state():
         st.session_state.server_url = "https://twiga.pamdas.org"
 
 def er_login(username, password):
-    """Simple login function like NANW dashboard"""
+    """Simple login function like NANW dashboard with enhanced cloud compatibility"""
     try:
+        # Try with explicit SSL settings for cloud compatibility
+        import ssl
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        
         er = EarthRangerIO(
             server=st.session_state.server_url,
             username=username,
-            password=password
+            password=password,
+            verify_ssl=True  # Ensure SSL verification is explicit
         )
-        # Try a simple call to check credentials
-        er.get_subjects(limit=1)
+        # Try a simple call to check credentials - use events instead of subjects
+        er.get_events(limit=1)  # This might work better than get_subjects
         return True
     except Exception as e:
         # Write detailed error info to Desktop for debugging
@@ -1114,14 +1120,14 @@ def genetic_dashboard():
     with col1:
         start_date = st.date_input(
             "📅 Start Date",
-            value=date(2024, 1, 1),  # Default to start of 2024 where data exists
+            value=date.today().replace(year=date.today().year - 1),  # Default to 1 year ago
             help="Select the earliest date for biological sample events"
         )
     
     with col2:
         end_date = st.date_input(
             "📅 End Date", 
-            value=date(2024, 12, 31),  # Default to end of 2024 where data exists
+            value=date.today(),  # Default to today's date
             help="Select the latest date for biological sample events"
         )
     
