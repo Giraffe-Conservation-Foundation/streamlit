@@ -209,7 +209,7 @@ def authenticate_earthranger():
             st.error("Invalid credentials. Please try again.")
     st.stop()
 
-@st.cache_data(ttl=3600)  # Cache for 1 hour like NANW dashboard
+# @st.cache_data(ttl=3600)  # Cache disabled to ensure fresh data
 def get_biological_sample_events(start_date=None, end_date=None, max_results=200):
     """Fetch biological sample events from EarthRanger using ecoscope"""
     if not ECOSCOPE_AVAILABLE:
