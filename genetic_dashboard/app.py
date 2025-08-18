@@ -288,11 +288,8 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             # Do not extract any geometry coordinates - they are causing coordinate mapping errors
             pass
         
-        # Initialize coordinate columns as None if they don't exist
-        if 'latitude' not in df.columns:
-            df['latitude'] = None
-        if 'longitude' not in df.columns:
-            df['longitude'] = None
+        # Initialize coordinate columns as empty lists that will be populated from CSV data
+        # Do not initialize as None - this will be populated row by row from event_details
         
         # Extract country and site information from event_details and check for coordinate data
         if 'event_details' in df.columns:
@@ -384,16 +381,20 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             if csv_coords_found:
                 print(f"DEBUG - Found coordinate data in event_details from {sum(1 for lat in csv_latitudes if lat is not None)} events, using as ONLY source")
                 
-                # Set coordinates from CSV data ONLY - this is the correct source
+                # Create coordinate columns with CSV data
+                df['latitude'] = csv_latitudes
+                df['longitude'] = csv_longitudes
+                
+                # Debug first few entries
                 for i, (lat, lng) in enumerate(zip(csv_latitudes, csv_longitudes)):
-                    if lat is not None and lng is not None:
-                        df.iloc[i, df.columns.get_loc('latitude')] = lat
-                        df.iloc[i, df.columns.get_loc('longitude')] = lng
-                        if i < 5:  # Debug first few entries
-                            site = sites[i] if i < len(sites) else 'Unknown'
-                            print(f"DEBUG - Set CSV coordinates for {site}: {lat}, {lng}")
+                    if lat is not None and lng is not None and i < 5:
+                        site = sites[i] if i < len(sites) else 'Unknown'
+                        print(f"DEBUG - Set CSV coordinates for {site}: {lat}, {lng}")
             else:
                 print("DEBUG - No CSV coordinate data found in event_details")
+                # Create empty coordinate columns if no CSV data
+                df['latitude'] = [None] * len(df)
+                df['longitude'] = [None] * len(df)
         else:
             df['country'] = "Unknown"
             df['site'] = "Unknown"
