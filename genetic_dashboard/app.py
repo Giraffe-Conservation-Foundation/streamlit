@@ -317,6 +317,11 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             
             for _, row in df.iterrows():
                 event_details = row.get('event_details', {})
+                serial_number = row.get('serial_number', 'Unknown')
+                
+                # Debug the problematic serial number
+                if str(serial_number) == '31297':
+                    st.error(f"🔍 DEBUG Serial 31297 - Raw event_details: {event_details}")
                 
                 # Extract country (iso) and site from event_details
                 country = None
@@ -333,11 +338,17 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                     if 'latitude' in event_details:
                         try:
                             csv_lat = float(event_details['latitude'])
+                            # Debug coordinate extraction
+                            if csv_lat is not None:
+                                print(f"DEBUG - Extracted latitude from event_details: {csv_lat}")
                         except (ValueError, TypeError):
                             csv_lat = None
                     if 'longitude' in event_details:
                         try:
                             csv_lng = float(event_details['longitude'])
+                            # Debug coordinate extraction
+                            if csv_lng is not None:
+                                print(f"DEBUG - Extracted longitude from event_details: {csv_lng}")
                         except (ValueError, TypeError):
                             csv_lng = None
                     
@@ -410,6 +421,13 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                         # Force CSV coordinates to override any existing coordinates (including geometry)
                         df.iloc[i, df.columns.get_loc('latitude')] = lat
                         df.iloc[i, df.columns.get_loc('longitude')] = lng
+                        
+                        # Debug serial number 31297 specifically
+                        if 'serial_number' in df.columns:
+                            serial = df.iloc[i, df.columns.get_loc('serial_number')]
+                            if str(serial) == '31297':
+                                st.error(f"🎯 DEBUG Serial 31297 - Assigned coordinates: lat={lat}, lng={lng}")
+                        
                         if i < 5:  # Debug first few entries
                             site = sites[i] if i < len(sites) else 'Unknown'
                             print(f"DEBUG - Set CSV coordinates for {site}: {lat}, {lng} (overriding any geometry coords)")
