@@ -281,32 +281,18 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             df['month'] = df['time'].dt.month
             df['month_name'] = df['time'].dt.strftime('%B')
         
-        # Add location information if geometry was available, but preserve CSV coordinates if they exist
+        # COMPLETELY DISABLE geometry coordinate extraction to prevent incorrect coordinates
+        # The issue is that EarthRanger geometry has incorrect coordinates for some Namibian sites
+        # that show up in Zambia/South Africa instead of correct Namibian locations
         if not gdf_events.empty and 'geometry' in gdf_events.columns:
-            # Extract coordinates from geometry with error handling
-            try:
-                geo_latitude = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
-                geo_longitude = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
-                
-                # Only use geometry coordinates where CSV coordinates are missing/zero
-                if 'latitude' not in df.columns:
-                    df['latitude'] = geo_latitude
-                else:
-                    # Fill missing or zero values with geometry coordinates
-                    df['latitude'] = df['latitude'].fillna(geo_latitude)
-                    df.loc[(df['latitude'] == 0) & (geo_latitude.notna()), 'latitude'] = geo_latitude
-                
-                if 'longitude' not in df.columns:
-                    df['longitude'] = geo_longitude
-                else:
-                    # Fill missing or zero values with geometry coordinates
-                    df['longitude'] = df['longitude'].fillna(geo_longitude)
-                    df.loc[(df['longitude'] == 0) & (geo_longitude.notna()), 'longitude'] = geo_longitude
-                    
-            except Exception as geo_error:
-                st.warning(f"Geometry processing warning: {str(geo_error)}")
-                # Continue without geometry data
-                pass
+            # Do not extract any geometry coordinates - they are causing coordinate mapping errors
+            pass
+        
+        # Initialize coordinate columns as None if they don't exist
+        if 'latitude' not in df.columns:
+            df['latitude'] = None
+        if 'longitude' not in df.columns:
+            df['longitude'] = None
         
         # Extract country and site information from event_details and check for coordinate data
         if 'event_details' in df.columns:
@@ -393,27 +379,21 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             df['country'] = countries
             df['site'] = sites
             
-            # Prioritize CSV coordinates from event_details over any other source
+            # ONLY use CSV coordinates from event_details - this prevents the Zambia/South Africa coordinate error
             csv_coords_found = any(lat is not None for lat in csv_latitudes)
             if csv_coords_found:
-                print(f"DEBUG - Found coordinate data in event_details from {sum(1 for lat in csv_latitudes if lat is not None)} events, using as primary source")
+                print(f"DEBUG - Found coordinate data in event_details from {sum(1 for lat in csv_latitudes if lat is not None)} events, using as ONLY source")
                 
-                # Initialize coordinate columns if they don't exist
-                if 'latitude' not in df.columns:
-                    df['latitude'] = [None] * len(df)
-                if 'longitude' not in df.columns:
-                    df['longitude'] = [None] * len(df)
-                
-                # Set coordinates from CSV data, preserving original values
+                # Set coordinates from CSV data ONLY - this is the correct source
                 for i, (lat, lng) in enumerate(zip(csv_latitudes, csv_longitudes)):
                     if lat is not None and lng is not None:
                         df.iloc[i, df.columns.get_loc('latitude')] = lat
                         df.iloc[i, df.columns.get_loc('longitude')] = lng
                         if i < 5:  # Debug first few entries
                             site = sites[i] if i < len(sites) else 'Unknown'
-                            print(f"DEBUG - Set coordinates for {site}: {lat}, {lng}")
+                            print(f"DEBUG - Set CSV coordinates for {site}: {lat}, {lng}")
             else:
-                print("DEBUG - No coordinate data found in event_details")
+                print("DEBUG - No CSV coordinate data found in event_details")
         else:
             df['country'] = "Unknown"
             df['site'] = "Unknown"
@@ -846,6 +826,9 @@ def display_events_map(df_events):
 
 def genetic_dashboard():
     """Main genetic dashboard interface"""
+    # Version identifier for deployment tracking
+    st.info("🧬 **Genetic Dashboard v2.2** - Coordinate Source Fix Deployed (CSV-only coordinates)")
+    
     #st.header("🧬 Genetic Dashboard")
     #st.markdown("Monitor and analyze biological sample events from EarthRanger")
     
