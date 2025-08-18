@@ -200,11 +200,11 @@ def er_login(username, password):
         except Exception as file_error:
             print(f"Failed to write error log: {file_error}")
         
-        # Also display error in UI for deployed version
-        if 'STREAMLIT_SHARING' in os.environ or 'STREAMLIT_CLOUD' in os.environ:
-            st.error(f"Deployment Authentication Error: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
-                st.error(f"HTTP Status: {e.response.status_code}")
+        # Display error in UI for better debugging
+        st.error(f"🚫 Authentication Failed: {str(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            st.error(f"📊 HTTP Status: {e.response.status_code}")
+            st.error(f"📝 Response: {e.response.text[:200]}...")
         
         return False
 
@@ -216,6 +216,12 @@ def authenticate_earthranger():
         
     st.title("Login to Genetic Dashboard")
     st.info("**Server:** https://twiga.pamdas.org")
+    
+    # Show environment info for debugging
+    env_type = "DEPLOYED" if ('STREAMLIT_SHARING' in os.environ or 'STREAMLIT_CLOUD' in os.environ) else "LOCAL"
+    st.write(f"🔧 **Environment:** {env_type}")
+    if env_type == "DEPLOYED":
+        st.write("🌐 **Running on Streamlit Cloud/Sharing**")
     
     username = st.text_input("EarthRanger Username")
     password = st.text_input("EarthRanger Password", type="password")
