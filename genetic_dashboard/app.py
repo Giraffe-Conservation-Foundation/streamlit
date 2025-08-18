@@ -8,10 +8,12 @@ import json
 import os
 from pandas import json_normalize
 
-# Handle NumPy 2.x compatibility warnings
+# Handle NumPy 2.x compatibility warnings and GeoPandas issues
 import warnings
 warnings.filterwarnings("ignore", message=".*copy keyword.*")
 warnings.filterwarnings("ignore", message=".*np.array.*")
+warnings.filterwarnings("ignore", message=".*geospatial method.*")
+warnings.filterwarnings("ignore", message=".*geometry column.*")
 
 # Ecoscope imports for EarthRanger integration
 try:
@@ -187,9 +189,16 @@ def er_login(username, password):
             password=password,
             verify_ssl=True  # Ensure SSL verification is explicit
         )
-        # Try a simple call to check credentials - use events instead of subjects
-        er.get_events(limit=1)  # This might work better than get_subjects
-        return True
+        # Try a simple call to check credentials but handle geospatial errors
+        try:
+            er.get_events(limit=1)
+            return True
+        except Exception as geo_error:
+            # If it's a geospatial error but authentication worked, consider it success
+            if "geospatial method" in str(geo_error) or "geometry column" in str(geo_error):
+                return True  # Authentication worked, just a geometry issue
+            else:
+                raise geo_error  # Re-raise if it's a real auth error
     except Exception as e:
         # Write detailed error info to Desktop for debugging
         try:
