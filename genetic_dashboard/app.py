@@ -288,6 +288,14 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                 geo_latitude = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
                 geo_longitude = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
                 
+                # Debug geometry coordinates for serial 31297
+                if 'serial_number' in df.columns:
+                    for i in range(len(df)):
+                        if str(df.iloc[i]['serial_number']) == '31297':
+                            geo_lat = geo_latitude.iloc[i] if i < len(geo_latitude) else None
+                            geo_lng = geo_longitude.iloc[i] if i < len(geo_longitude) else None
+                            st.warning(f"🌍 DEBUG Serial 31297 - Geometry coordinates: lat={geo_lat}, lng={geo_lng}")
+                
                 # Only use geometry coordinates where CSV coordinates are missing/zero
                 if 'latitude' not in df.columns:
                     df['latitude'] = geo_latitude
@@ -322,6 +330,7 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                 # Debug the problematic serial number
                 if str(serial_number) == '31297':
                     st.error(f"🔍 DEBUG Serial 31297 - Raw event_details: {event_details}")
+                    st.error(f"🔍 DEBUG Serial 31297 - All row data: {dict(row)}")
                 
                 # Extract country (iso) and site from event_details
                 country = None
@@ -351,6 +360,25 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                                 print(f"DEBUG - Extracted longitude from event_details: {csv_lng}")
                         except (ValueError, TypeError):
                             csv_lng = None
+                
+                # CRITICAL: Also check the 'location' field for correct coordinates
+                if csv_lat is None or csv_lng is None:
+                    location = row.get('location', {})
+                    if isinstance(location, dict):
+                        if csv_lat is None and 'latitude' in location:
+                            try:
+                                csv_lat = float(location['latitude'])
+                                if str(serial_number) == '31297':
+                                    st.success(f"✅ DEBUG Serial 31297 - Found latitude in location field: {csv_lat}")
+                            except (ValueError, TypeError):
+                                pass
+                        if csv_lng is None and 'longitude' in location:
+                            try:
+                                csv_lng = float(location['longitude'])
+                                if str(serial_number) == '31297':
+                                    st.success(f"✅ DEBUG Serial 31297 - Found longitude in location field: {csv_lng}")
+                            except (ValueError, TypeError):
+                                pass
                     
                     # Also check nested structures (girsam) as fallback - prioritize iso field
                     if not country and 'girsam' in event_details:
