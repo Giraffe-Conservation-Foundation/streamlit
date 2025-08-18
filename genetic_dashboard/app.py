@@ -78,8 +78,9 @@ def _main_implementation():
     st.sidebar.subheader("🔧 Options")
     
     if st.sidebar.button("🔄 Refresh Data"):
-        # Clear cached data
-        get_biological_sample_events.clear()
+        # Force refresh by clearing session state
+        if 'events_data' in st.session_state:
+            del st.session_state['events_data']
         st.rerun()
     
     if st.sidebar.button("🔓 Logout"):
@@ -1138,8 +1139,9 @@ def genetic_dashboard():
     
     with col4:
         if st.button("🔄 Refresh Data", type="primary"):
-            # Clear cache to force refresh
-            get_biological_sample_events.clear()
+            # Force refresh by clearing session state
+            if 'events_data' in st.session_state:
+                del st.session_state['events_data']
             st.rerun()
     
     # Validate date range and refetch data if dates are different
