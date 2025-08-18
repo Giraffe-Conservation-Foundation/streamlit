@@ -288,13 +288,7 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                 geo_latitude = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
                 geo_longitude = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
                 
-                # Debug geometry coordinates for serial 31297
-                if 'serial_number' in df.columns:
-                    for i in range(len(df)):
-                        if str(df.iloc[i]['serial_number']) == '31297':
-                            geo_lat = geo_latitude.iloc[i] if i < len(geo_latitude) else None
-                            geo_lng = geo_longitude.iloc[i] if i < len(geo_longitude) else None
-                            st.warning(f"🌍 DEBUG Serial 31297 - Geometry coordinates: lat={geo_lat}, lng={geo_lng}")
+
                 
                 # Only use geometry coordinates where CSV coordinates are missing/zero
                 if 'latitude' not in df.columns:
@@ -327,11 +321,6 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                 event_details = row.get('event_details', {})
                 serial_number = row.get('serial_number', 'Unknown')
                 
-                # Debug the problematic serial number
-                if str(serial_number) == '31297':
-                    st.error(f"🔍 DEBUG Serial 31297 - Raw event_details: {event_details}")
-                    st.error(f"🔍 DEBUG Serial 31297 - All row data: {dict(row)}")
-                
                 # Extract country (iso) and site from event_details
                 country = None
                 site = None
@@ -347,17 +336,11 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                     if 'latitude' in event_details:
                         try:
                             csv_lat = float(event_details['latitude'])
-                            # Debug coordinate extraction
-                            if csv_lat is not None:
-                                print(f"DEBUG - Extracted latitude from event_details: {csv_lat}")
                         except (ValueError, TypeError):
                             csv_lat = None
                     if 'longitude' in event_details:
                         try:
                             csv_lng = float(event_details['longitude'])
-                            # Debug coordinate extraction
-                            if csv_lng is not None:
-                                print(f"DEBUG - Extracted longitude from event_details: {csv_lng}")
                         except (ValueError, TypeError):
                             csv_lng = None
                 
@@ -368,15 +351,11 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                         if csv_lat is None and 'latitude' in location:
                             try:
                                 csv_lat = float(location['latitude'])
-                                if str(serial_number) == '31297':
-                                    st.success(f"✅ DEBUG Serial 31297 - Found latitude in location field: {csv_lat}")
                             except (ValueError, TypeError):
                                 pass
                         if csv_lng is None and 'longitude' in location:
                             try:
                                 csv_lng = float(location['longitude'])
-                                if str(serial_number) == '31297':
-                                    st.success(f"✅ DEBUG Serial 31297 - Found longitude in location field: {csv_lng}")
                             except (ValueError, TypeError):
                                 pass
                     
@@ -435,7 +414,6 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             # Prioritize CSV coordinates from event_details over any other source
             csv_coords_found = any(lat is not None for lat in csv_latitudes)
             if csv_coords_found:
-                print(f"DEBUG - Found coordinate data in event_details from {sum(1 for lat in csv_latitudes if lat is not None)} events, using as primary source")
                 
                 # Initialize coordinate columns if they don't exist
                 if 'latitude' not in df.columns:
@@ -449,16 +427,6 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                         # Force CSV coordinates to override any existing coordinates (including geometry)
                         df.iloc[i, df.columns.get_loc('latitude')] = lat
                         df.iloc[i, df.columns.get_loc('longitude')] = lng
-                        
-                        # Debug serial number 31297 specifically
-                        if 'serial_number' in df.columns:
-                            serial = df.iloc[i, df.columns.get_loc('serial_number')]
-                            if str(serial) == '31297':
-                                st.error(f"🎯 DEBUG Serial 31297 - Assigned coordinates: lat={lat}, lng={lng}")
-                        
-                        if i < 5:  # Debug first few entries
-                            site = sites[i] if i < len(sites) else 'Unknown'
-                            print(f"DEBUG - Set CSV coordinates for {site}: {lat}, {lng} (overriding any geometry coords)")
                     elif 'latitude' in df.columns and 'longitude' in df.columns:
                         # If CSV coordinates are missing, but we have columns, ensure they're not left as zero
                         if pd.isna(df.iloc[i, df.columns.get_loc('latitude')]) or df.iloc[i, df.columns.get_loc('latitude')] == 0:
@@ -466,7 +434,7 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                         if pd.isna(df.iloc[i, df.columns.get_loc('longitude')]) or df.iloc[i, df.columns.get_loc('longitude')] == 0:
                             df.iloc[i, df.columns.get_loc('longitude')] = None
             else:
-                print("DEBUG - No coordinate data found in event_details")
+                pass
         else:
             df['country'] = "Unknown"
             df['site'] = "Unknown"
@@ -538,12 +506,7 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
                     (namibian_events['longitude'] < 10) | (namibian_events['longitude'] > 26)
                 ]
                 if not suspicious_coords.empty:
-                    print(f"DEBUG - Found {len(suspicious_coords)} Namibian events with suspicious coordinates:")
-                    for idx, row in suspicious_coords.iterrows():
-                        site = row.get('details_girsam_site', 'Unknown')
-                        lat = row.get('latitude', 'N/A')
-                        lng = row.get('longitude', 'N/A')
-                        print(f"  {site}: {lat}, {lng}")
+                    pass
         
         return df
         
