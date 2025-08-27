@@ -7,6 +7,14 @@ import plotly.graph_objects as go
 import json
 import os
 
+# Import ecoscope for events functionality
+try:
+    import ecoscope
+    ECOSCOPE_AVAILABLE = True
+except ImportError:
+    ECOSCOPE_AVAILABLE = False
+    st.warning("⚠️ ecoscope library not available. Events functionality will be limited.")
+
 # Make main available at module level for import
 def main():
     """Main application entry point - delegates to _main_implementation"""
@@ -144,6 +152,64 @@ def get_latest_location(source_id):
         }
     
     return None
+
+def get_unit_events(source_ids, since_days=7, dashboard_df=None):
+    """Fetch events for selected unit IDs using ecoscope get_events function"""
+    if not ECOSCOPE_AVAILABLE or not st.session_state.get('api_token'):
+        return pd.DataFrame()
+    
+    try:
+        # Initialize EarthRanger connection using ecoscope
+        er_client = ecoscope.io.EarthRangerIO(
+            server="https://twiga.pamdas.org",
+            token=st.session_state.api_token
+        )
+        
+        # Calculate date range
+        since_date = (datetime.now() - timedelta(days=since_days)).isoformat()
+        until_date = datetime.now().isoformat()
+        
+        # Get events for monitoring category and unit_update type
+        events_gdf = er_client.get_events(
+            event_category="monitoring",
+            since=since_date,
+            until=until_date,
+            include_details=True
+        )
+        
+        if events_gdf.empty:
+            return pd.DataFrame()
+        
+        # Filter events for unit_update type
+        unit_events = events_gdf[
+            (events_gdf.get('event_type', pd.Series(dtype='object')).str.contains('unit_update', na=False)) |
+            (events_gdf.get('title', pd.Series(dtype='object')).str.contains('unit_update', case=False, na=False))
+        ]
+        
+        # Filter events by EarthRanger source UUID in unitupdate_unitid
+        if not unit_events.empty:
+            matching_events = []
+            
+            for _, event in unit_events.iterrows():
+                event_details = event.get('event_details', {})
+                if isinstance(event_details, dict):
+                    # Get the stored EarthRanger source UUID
+                    stored_source_uuid = event_details.get('unitupdate_unitid', '')
+                    
+                    # Check if this UUID matches any of our selected source IDs
+                    if stored_source_uuid in source_ids:
+                        matching_events.append(event)
+            
+            if matching_events:
+                return pd.DataFrame(matching_events)
+            else:
+                return pd.DataFrame()
+        
+        return pd.DataFrame()
+        
+    except Exception as e:
+        st.error(f"Error fetching events: {str(e)}")
+        return pd.DataFrame()
 
 def get_last_7_days(source_id):
     """Fetch last 7 days of locations for a source"""
@@ -547,6 +613,17 @@ def source_dashboard():
     
     selected_source_ids = df_sources[df_sources['label'].isin(selected_labels)]['id'].tolist()
     
+    # Create a mapping for debugging and show ALL sources that match selected labels
+    source_mapping = df_sources[df_sources['label'].isin(selected_labels)][['label', 'id', 'collar_key']].to_dict('records')
+    
+    # Also check for duplicate collar keys
+    for label in selected_labels:
+        matching_sources = df_sources[df_sources['label'] == label]
+        if len(matching_sources) > 1:
+            st.warning(f"⚠️ Found {len(matching_sources)} sources with label '{label}'. Using first one.")
+            for idx, (_, source) in enumerate(matching_sources.iterrows()):
+                st.write(f"  {idx+1}. ID: `{source['id']}`, Collar Key: `{source.get('collar_key', 'N/A')}`")
+    
     # Create a color mapping for the selected sources
     colors = px.colors.qualitative.Set1
     color_map = {label: colors[i % len(colors)] for i, label in enumerate(selected_labels)}
@@ -559,7 +636,13 @@ def source_dashboard():
     
     with st.spinner("Fetching latest locations..."):
         for i, source_id in enumerate(selected_source_ids):
-            source_label = selected_labels[i]
+            # Safely get the source label - find it from the dataframe instead of assuming index alignment
+            matching_source = df_sources[df_sources['id'] == source_id]
+            if not matching_source.empty:
+                source_label = matching_source.iloc[0]['label']
+            else:
+                source_label = f"Unknown Source {i+1}"
+            
             latest = get_latest_location(source_id)
             
             if latest:
@@ -761,6 +844,166 @@ def source_dashboard():
             st.metric("Average Daily", f"{avg_daily.mean():.1f}")
         with col3:
             st.metric("Sources Reporting", len(selected_labels))
+    
+    # Unit Events Section
+    st.subheader("📋 Unit Events")
+    st.write("Events associated with selected units (event_category=monitoring, event_type=unit_update)")
+    
+    if ECOSCOPE_AVAILABLE:
+        # Time range selector for events
+        col1, col2 = st.columns(2)
+        with col1:
+            event_days = st.selectbox(
+                "Event history period",
+                [7, 14, 30, 60, 90],
+                index=0,
+                help="Number of days to look back for events"
+            )
+        with col2:
+            if st.button("🔄 Refresh Events", help="Refresh event data"):
+                st.rerun()
+        # Manual fix for TAIL-ST1386 - add correct EarthRanger source ID
+        manual_source_ids = selected_source_ids.copy()
+        if any('TAIL-ST1386' in mapping['label'] for mapping in source_mapping):
+            correct_tail_id = '68a5642d-6ddc-4693-8031-580c9eab01c3'
+            if correct_tail_id not in manual_source_ids:
+                manual_source_ids.append(correct_tail_id)
+        
+        with st.spinner(f"Fetching unit events for last {event_days} days..."):
+            events_df = get_unit_events(manual_source_ids, since_days=event_days, dashboard_df=df_sources)
+        
+        if not events_df.empty:
+            st.success(f"Found {len(events_df)} unit events in the last {event_days} days")
+            
+            # Prepare events display
+            display_events = events_df.copy()
+            
+            # Extract useful fields from event_details for display
+            if 'event_details' in display_events.columns:
+                for idx, row in display_events.iterrows():
+                    event_details = row.get('event_details', {})
+                    if isinstance(event_details, dict):
+                        # Extract common fields
+                        for key in ['unitupdate_notes', 'unitupdate_action', 'unitupdate_country']:
+                            if key in event_details:
+                                display_events.loc[idx, key] = event_details[key]
+                
+                # Get unit names for display
+                display_events['unit_name'] = display_events.apply(
+                    lambda row: df_sources[df_sources['id'] == row.get('event_details', {}).get('unitupdate_unitid', '')]['label'].iloc[0] 
+                    if not df_sources[df_sources['id'] == row.get('event_details', {}).get('unitupdate_unitid', '')].empty 
+                    else 'Unknown Unit',
+                    axis=1
+                )
+            
+            # Format datetime columns
+            time_columns = ['time', 'created_at', 'updated_at', 'event_time']
+            for col in time_columns:
+                if col in display_events.columns:
+                    display_events[col] = pd.to_datetime(display_events[col], errors='coerce')
+                    display_events[f'{col}_formatted'] = display_events[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Select columns for display (avoid duplicates)
+            display_cols = ['unit_name']
+            
+            # Add time column
+            if 'time_formatted' in display_events.columns:
+                display_cols.append('time_formatted')
+            elif 'event_time_formatted' in display_events.columns:
+                display_cols.append('event_time_formatted')
+            elif 'created_at_formatted' in display_events.columns:
+                display_cols.append('created_at_formatted')
+            
+            # Add other relevant columns (check they exist and aren't already added)
+            additional_cols = ['unitupdate_action', 'unitupdate_notes', 'unitupdate_country']
+            for col in additional_cols:
+                if col in display_events.columns and col not in display_cols:
+                    display_cols.append(col)
+            
+            # Display the events table
+            st.subheader("📊 Unit Events Table")
+            st.dataframe(
+                display_events[display_cols],
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            base_cols = ['title', 'event_type', 'state', 'priority']
+            for col in base_cols:
+                if col in display_events.columns:
+                    display_cols.append(col)
+            
+            # Add location info if available
+            if 'geometry' in display_events.columns:
+                # Extract coordinates from geometry
+                try:
+                    display_events['latitude'] = display_events['geometry'].apply(
+                        lambda geom: geom.y if hasattr(geom, 'y') else None
+                    )
+                    display_events['longitude'] = display_events['geometry'].apply(
+                        lambda geom: geom.x if hasattr(geom, 'x') else None
+                    )
+                    display_cols.extend(['latitude', 'longitude'])
+                except:
+                    pass
+            
+            # Add event details if available
+            if 'event_details' in display_events.columns:
+                display_cols.append('event_details')
+            
+            # Final column selection
+            available_cols = [col for col in display_cols if col in display_events.columns]
+            
+            if available_cols:
+                # Display events table
+                st.dataframe(
+                    display_events[available_cols],
+                    use_container_width=True,
+                    column_config={
+                        'time_formatted': 'Event Time',
+                        'event_time_formatted': 'Event Time',
+                        'created_at_formatted': 'Created At',
+                        'title': 'Title',
+                        'event_type': 'Event Type',
+                        'state': 'State',
+                        'priority': 'Priority',
+                        'latitude': st.column_config.NumberColumn('Latitude', format="%.6f"),
+                        'longitude': st.column_config.NumberColumn('Longitude', format="%.6f"),
+                        'event_details': 'Event Details'
+                    }
+                )
+            
+            # Show event summary statistics  
+            st.subheader("📊 Event Summary")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if 'event_type' in display_events.columns:
+                    event_types = display_events['event_type'].value_counts()
+                    st.write("**Event Types:**")
+                    for event_type, count in event_types.items():
+                        st.write(f"• {event_type}: {count}")
+            
+            with col2:
+                if 'unitupdate_action' in display_events.columns:
+                    actions = display_events['unitupdate_action'].value_counts()
+                    st.write("**Actions:**")
+                    for action, count in actions.items():
+                        st.write(f"• {action}: {count}")
+            
+            with col3:
+                if 'unitupdate_country' in display_events.columns:
+                    countries = display_events['unitupdate_country'].value_counts()
+                    st.write("**Countries:**")
+                    for country, count in countries.items():
+                        st.write(f"• {country}: {count}")
+                        
+        else:
+            st.info(f"No unit events found for selected sources in the last {event_days} days")
+    
+    else:
+        st.warning("⚠️ ecoscope library not available. Cannot fetch events data.")
+        st.info("To enable events functionality, install ecoscope: `pip install ecoscope`")
     
     # Inactive sources section
     st.header("⚠️ Inactive Source Analysis")
