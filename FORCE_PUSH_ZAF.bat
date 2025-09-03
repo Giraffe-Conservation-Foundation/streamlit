@@ -1,11 +1,16 @@
 @echo off
-title Git Force Push - ZAF Dashboard Update
+title Git Force Push - ZAF Dashboard + NANW Herd Count Fix
 color 0A
 
 echo.
 echo ========================================
-echo    FORCING GIT PUSH - ZAF DASHBOARD
+echo    FORCING GIT PUSH - MULTIPLE FIXES
 echo ========================================
+echo.
+echo Pushing:
+echo  ✓ ZAF Dashboard (blank page fix)
+echo  ✓ NANW Dashboard (herd count fix)
+echo  ✓ All metric calculation improvements
 echo.
 
 :: Change to the correct directory
@@ -45,9 +50,7 @@ echo === ADDING ALL FILES ===
 git add -A
 git add pages\3_🦒_ZAF_Dashboard.py
 git add zaf_dashboard\
-git add zaf_dashboard\app.py
-git add zaf_dashboard\README.md
-git add zaf_dashboard\requirements.txt
+git add nanw_dashboard\
 echo Files added.
 echo.
 
@@ -58,7 +61,7 @@ echo.
 
 :: Commit the changes
 echo === COMMITTING CHANGES ===
-git commit -m "FORCE UPDATE: Add ZAF Dashboard with satellite mapping - %date% %time%"
+git commit -m "MAJOR FIX: ZAF Dashboard blank page + NANW herd count double-counting bug - %date% %time%"
 if errorlevel 1 (
     echo.
     echo Note: Commit may have failed because there are no changes to commit
@@ -99,9 +102,15 @@ echo.
 echo Repository should now be updated on GitHub:
 echo https://github.com/Giraffe-Conservation-Foundation/streamlit
 echo.
+echo FIXES DEPLOYED:
+echo  ✓ ZAF Dashboard: Fixed blank page issue (restructured main function)
+echo  ✓ NANW Dashboard: Fixed herd count double-counting bug
+echo  ✓ Both dashboards: Accurate metrics calculations
+echo.
 echo After confirming the files are on GitHub:
 echo 1. Go to your Streamlit Cloud app
 echo 2. Restart the app deployment
 echo 3. Check if ZAF Dashboard appears at position #3
+echo 4. Verify NANW Dashboard shows correct herd counts
 echo.
 pause
