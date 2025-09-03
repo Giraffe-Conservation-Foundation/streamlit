@@ -39,6 +39,11 @@ def init_session_state():
         st.session_state.backup_progress = {}
     if 'current_backup_id' not in st.session_state:
         st.session_state.current_backup_id = None
+    # Initialize backup data storage variables
+    if 'backup_data' not in st.session_state:
+        st.session_state.backup_data = None
+    if 'backup_metadata' not in st.session_state:
+        st.session_state.backup_metadata = None
 
 def er_login(username, password):
     """Simple login function"""
@@ -1679,76 +1684,162 @@ def main():
                 # Consolidate month data for download
                 backup_data = backup_data_by_month
             
-            # Create download regardless of mode
+            # Store backup data in session state to persist across downloads (for both modes)
             if backup_data:
-                st.subheader("📦 Download Backup")
-                
-                elapsed_time = datetime.now() - start_time
-                
-                # Show summary
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric("Total Records", f"{total_records:,}")
-                
-                with col2:
-                    if use_bulk_mode:
-                        st.metric("Mode", "Ultra-Fast R-Style")
+                # Convert any non-serializable objects before storing
+                serializable_backup_data = {}
+                for key, value in backup_data.items():
+                    if hasattr(value, 'to_dict'):
+                        # Convert DataFrame to dict for better serialization
+                        serializable_backup_data[key] = value.copy()
                     else:
-                        st.metric("Months Processed", f"{len(backup_data) if isinstance(backup_data, dict) else 1}")
+                        serializable_backup_data[key] = value
                 
-                with col3:
-                    st.metric("Total Time", f"{elapsed_time.total_seconds()/60:.1f} min")
+                st.session_state.backup_data = serializable_backup_data
+                st.session_state.backup_metadata = {
+                    'backup_id': backup_id,
+                    'total_records': total_records,
+                    'use_bulk_mode': use_bulk_mode,
+                    'start_time': start_time,
+                    'end_time': datetime.now()
+                }
                 
-                # Create download file
-                if use_bulk_mode:
-                    # Single master file download for ultra-fast mode
-                    if 'master_file' in backup_data and not backup_data['master_file'].empty:
-                        st.markdown("### 🎯 Master File Download")
-                        st.info("📊 Comprehensive file with all data joined and processed (like your R workflow)")
-                        
-                        master_csv = backup_data['master_file'].to_csv(index=False)
-                        st.download_button(
-                            label="🎯 Download Master Comprehensive File",
-                            data=master_csv,
-                            file_name=f"{backup_id}_MASTER_COMPREHENSIVE.csv",
-                            mime="text/csv",
-                            help="Single comprehensive file with all data joined (like your R ER_dataPull.R output)"
-                        )
-                    else:
-                        st.warning("⚠️ No master file was created.")
-                    
-                    # Add events download if available
-                    if 'events' in backup_data and not backup_data['events'].empty:
-                        events_csv = backup_data['events'].to_csv(index=False)
-                        st.download_button(
-                            label="📝 Download Events File",
-                            data=events_csv,
-                            file_name=f"{backup_id}_EVENTS.csv",
-                            mime="text/csv",
-                            help="Events and reports data"
-                        )
-                else:
-                    # Month-by-month mode - create individual files for each month
-                    st.markdown("### 📅 Monthly Files Download")
-                    for month_label, month_data in backup_data.items():
-                        st.markdown(f"**{month_label}:**")
-                        for data_type, df in month_data.items():
-                            if not df.empty:
-                                csv_data = df.to_csv(index=False)
-                                st.download_button(
-                                    label=f"📥 Download {data_type.title()} - {month_label}",
-                                    data=csv_data,
-                                    file_name=f"{backup_id}_{data_type}_{month_label}.csv",
-                                    mime="text/csv",
-                                    key=f"{month_label}_{data_type}"
-                                )
+                # Also save to a temporary file as backup
+                temp_backup_file = f"temp_backup_{backup_id}.pkl"
+                try:
+                    with open(temp_backup_file, 'wb') as f:
+                        pickle.dump({
+                            'backup_data': serializable_backup_data,
+                            'backup_metadata': st.session_state.backup_metadata
+                        }, f)
+                    st.session_state.temp_backup_file = temp_backup_file
+                except Exception as e:
+                    st.warning(f"Could not save temporary backup file: {e}")
+                
+                st.success("✅ Backup completed successfully!")
+                st.balloons()
             else:
                 st.warning("⚠️ No data was backed up.")
                 
         except Exception as e:
             st.error(f"❌ Backup failed: {str(e)}")
             st.exception(e)
+    
+    # Download section - moved outside backup execution to persist across streamlit reruns
+    # Check both session state and temporary backup file
+    backup_data_available = False
+    backup_data = None
+    metadata = None
+    
+    if 'backup_data' in st.session_state and st.session_state.backup_data:
+        backup_data_available = True
+        backup_data = st.session_state.backup_data
+        metadata = st.session_state.backup_metadata
+        st.write("🔍 Debug: Using session state backup data")
+    elif 'temp_backup_file' in st.session_state and os.path.exists(st.session_state.temp_backup_file):
+        # Fall back to temporary file if session state is lost
+        try:
+            with open(st.session_state.temp_backup_file, 'rb') as f:
+                temp_data = pickle.load(f)
+                backup_data = temp_data['backup_data']
+                metadata = temp_data['backup_metadata']
+                backup_data_available = True
+                st.write("🔍 Debug: Restored backup data from temporary file")
+                # Restore to session state
+                st.session_state.backup_data = backup_data
+                st.session_state.backup_metadata = metadata
+        except Exception as e:
+            st.error(f"Could not restore backup data: {e}")
+    
+    if backup_data_available:
+        st.subheader("📦 Download Backup Files")
+        
+        # Debug info
+        st.write(f"🔍 Debug: Backup data keys: {list(backup_data.keys()) if backup_data else 'None'}")
+        
+        backup_id = metadata['backup_id']
+        total_records = metadata['total_records']
+        use_bulk_mode = metadata['use_bulk_mode']
+        elapsed_time = metadata['end_time'] - metadata['start_time']
+        
+        # Show summary
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Records", f"{total_records:,}")
+        
+        with col2:
+            if use_bulk_mode:
+                st.metric("Mode", "Ultra-Fast R-Style")
+            else:
+                st.metric("Months Processed", f"{len(backup_data) if isinstance(backup_data, dict) else 1}")
+        
+        with col3:
+            st.metric("Total Time", f"{elapsed_time.total_seconds()/60:.1f} min")
+        
+        # Create download buttons
+        if use_bulk_mode:
+            # Single master file download for ultra-fast mode
+            if 'master_file' in backup_data and not backup_data['master_file'].empty:
+                st.markdown("### 🎯 Master File Download")
+                st.info("📊 Comprehensive file with all data joined and processed (like your R workflow)")
+                
+                master_csv = backup_data['master_file'].to_csv(index=False)
+                st.download_button(
+                    label="🎯 Download Master Comprehensive File",
+                    data=master_csv,
+                    file_name=f"{backup_id}_MASTER_COMPREHENSIVE.csv",
+                    mime="text/csv",
+                    help="Single comprehensive file with all data joined (like your R ER_dataPull.R output)",
+                    key="download_master"
+                )
+            else:
+                st.warning("⚠️ No master file was created.")
+            
+            # Add events download if available
+            if 'events' in backup_data and not backup_data['events'].empty:
+                st.markdown("### 📝 Events File Download")
+                events_csv = backup_data['events'].to_csv(index=False)
+                st.download_button(
+                    label="📝 Download Events File",
+                    data=events_csv,
+                    file_name=f"{backup_id}_EVENTS.csv",
+                    mime="text/csv",
+                    help="Events and reports data",
+                    key="download_events"
+                )
+        else:
+            # Month-by-month mode - create individual files for each month
+            st.markdown("### 📅 Monthly Files Download")
+            for month_label, month_data in backup_data.items():
+                st.markdown(f"**{month_label}:**")
+                for data_type, df in month_data.items():
+                    if not df.empty:
+                        csv_data = df.to_csv(index=False)
+                        st.download_button(
+                            label=f"📥 Download {data_type.title()} - {month_label}",
+                            data=csv_data,
+                            file_name=f"{backup_id}_{data_type}_{month_label}.csv",
+                            mime="text/csv",
+                            key=f"{month_label}_{data_type}"
+                        )
+        
+        # Clear backup data button
+        if st.button("🗑️ Clear Backup Data", help="Remove downloaded backup from memory"):
+            if 'backup_data' in st.session_state:
+                del st.session_state.backup_data
+            if 'backup_metadata' in st.session_state:
+                del st.session_state.backup_metadata
+            # Clean up temporary file
+            if 'temp_backup_file' in st.session_state:
+                try:
+                    if os.path.exists(st.session_state.temp_backup_file):
+                        os.remove(st.session_state.temp_backup_file)
+                except Exception as e:
+                    st.warning(f"Could not remove temporary file: {e}")
+                del st.session_state.temp_backup_file
+            st.success("✅ Backup data cleared from memory")
+            st.rerun()
 
 if __name__ == "__main__":
     main()
