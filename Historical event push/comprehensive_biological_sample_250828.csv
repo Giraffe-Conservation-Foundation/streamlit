@@ -1,0 +1,13 @@
+event_datetime,details_girsam_iso,details_girsam_site,details_girsam_origin,latitude,longitude,details_girsam_age,details_girsam_sex,details_girsam_type,details_girsam_smpid,details_girsam_subid,details_girsam_status,details_girsam_species,details_girsam_notes,details_girsam_smpid2
+2023-11-21T10:04:00,zaf,Wildehondskloof,biopsy,-33.41097182,21.96403001,ad,f,tissue,370,,shipped,southern_southafrican,"Western Cape, property ID A2",
+2023-11-21T10:04:00,zaf,Wildehondskloof,biopsy,-33.41097182,21.96403001,ad,f,tissue,371,,shipped,southern_southafrican,"Western Cape, property ID A2",
+2023-11-21T10:04:00,zaf,Wildehondskloof,biopsy,-33.41097182,21.96403001,ad,f,tissue,372,,shipped,southern_southafrican,"Western Cape, property ID A2",
+2023-11-20T16:40:00,zaf,Swartberg Wildlife Estate ,biopsy,-33.425616,21.938846,ad,f,tissue,361,,shipped,southern_southafrican,"Western Cape, property ID A3",
+2023-11-20T16:40:00,zaf,Swartberg Wildlife Estate ,biopsy,-33.425616,21.938846,ad,m,tissue,362,,shipped,southern_southafrican,"Western Cape, property ID A3",
+2023-11-20T16:40:00,zaf,Swartberg Wildlife Estate ,biopsy,-33.425616,21.938846,ad,f,tissue,363,,shipped,southern_southafrican,"Western Cape, property ID A3",
+2023-11-20T16:40:00,zaf,Swartberg Wildlife Estate ,biopsy,-33.425616,21.938846,ad,f,tissue,364,,shipped,southern_southafrican,"Western Cape, property ID A3",
+2023-11-20T16:40:00,zaf,Swartberg Wildlife Estate ,biopsy,-33.425616,21.938846,ad,f,tissue,365,,shipped,southern_southafrican,"Western Cape, property ID A3",
+2023-11-20T16:34:00,zaf,Swartberg Private Game Reserve ,biopsy,-33.425616,21.938846,ad,m,tissue,366,,shipped,southern_southafrican,property ID A4,
+2023-11-20T16:34:00,zaf,Swartberg Private Game Reserve ,biopsy,-33.425616,21.938846,ad,f,tissue,367,,shipped,southern_southafrican,property ID A4,
+2023-11-20T16:34:00,zaf,Swartberg Private Game Reserve ,biopsy,-33.425616,21.938846,ad,f,tissue,368,,shipped,southern_southafrican,property ID A4,
+2023-11-20T16:34:00,zaf,Swartberg Private Game Reserve ,carcass,-33.425616,21.938846,ca,u,tissue,369,,shipped,southern_southafrican,property ID A4,

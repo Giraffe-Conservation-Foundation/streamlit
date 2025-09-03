@@ -203,6 +203,18 @@ def main():
         with open(failed_file, 'w') as f:
             json.dump(failed_events, f, indent=2, default=str)
         print(f"💾 Failed events saved to: {failed_file}")
+        
+        # Show common error patterns
+        error_counts = {}
+        for event in failed_events:
+            error_msg = str(event.get('error', 'Unknown'))[:100]  # Truncate long errors
+            error_counts[error_msg] = error_counts.get(error_msg, 0) + 1
+        
+        print(f"\n🔍 ERROR ANALYSIS:")
+        for error, count in sorted(error_counts.items(), key=lambda x: x[1], reverse=True):
+            print(f"  • {error}: {count} occurrences")
+    
+    return successful, failed, failed_events
 
 if __name__ == "__main__":
     main()
