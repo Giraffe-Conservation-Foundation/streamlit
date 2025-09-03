@@ -7,8 +7,8 @@ from pandas import json_normalize, to_datetime
 import requests
 import os
 
-# Force deployment update - timestamp: Sep 3, 2025 - FIXED HERD COUNT BUG IN NANW
-# NANW Dashboard - Fixed double-counting issue in herd metrics
+# Force deployment update - timestamp: Sep 3, 2025 - SIMPLIFIED HERD COUNT FIX
+# NANW Dashboard - Fixed double-counting issue in herd metrics (simplified approach)
 
 # Try to load environment variables from .env file
 try:
@@ -155,12 +155,12 @@ def load_data():
     herd_df = json_normalize(giraffe_only["event_details.Herd"])
     events_final = pd.concat([giraffe_only.drop(columns="event_details.Herd"), herd_df], axis=1)
     
-    # Store herd-level data for metrics calculations
-    events_final.attrs['herd_level_data'] = herd_level_data
+    # Return both datasets
+    return events_final, herd_level_data
 
     return events_final
 
-df = load_data()
+df, herd_level_df = load_data()
 
 # Rename columns
 rename_map = {
@@ -243,47 +243,23 @@ with col2:
     st.metric("% of population seen", f"{math.ceil(percentage_seen)}%")
 with col3:
     # Use herd-level data for accurate herd count
-    if hasattr(df, 'attrs') and 'herd_level_data' in df.attrs:
-        # Filter herd-level data by date range
-        herd_level_df = df.attrs['herd_level_data']
-        herd_level_df["evt_dttm"] = pd.to_datetime(herd_level_df["time"], errors="coerce")
-        herd_level_df = herd_level_df.dropna(subset=["evt_dttm"])
-        
-        if len(date_range) == 2:
-            filtered_herd_df = herd_level_df[
-                (herd_level_df["evt_dttm"].dt.date >= date_range[0]) & 
-                (herd_level_df["evt_dttm"].dt.date <= date_range[1])
-            ]
-        else:
-            filtered_herd_df = herd_level_df
-        
-        herd_count = len(filtered_herd_df)
-    else:
-        # Fallback: count unique event IDs to approximate herd encounters
-        herd_count = filtered_df["event_id"].nunique() if "event_id" in filtered_df.columns else len(filtered_df)
+    # Process the herd-level data with same date filtering
+    herd_df_for_metrics = herd_level_df.copy()
+    herd_df_for_metrics["evt_dttm"] = pd.to_datetime(herd_df_for_metrics["time"], errors="coerce")
+    herd_df_for_metrics = herd_df_for_metrics.dropna(subset=["evt_dttm"])
     
+    if len(date_range) == 2:
+        herd_df_for_metrics = herd_df_for_metrics[
+            (herd_df_for_metrics["evt_dttm"].dt.date >= date_range[0]) & 
+            (herd_df_for_metrics["evt_dttm"].dt.date <= date_range[1])
+        ]
+    
+    herd_count = len(herd_df_for_metrics)
     st.metric("Herds seen", herd_count)
 with col4:
-    # For average herd size, we can use the herd-level data if available
-    if hasattr(df, 'attrs') and 'herd_level_data' in df.attrs:
-        herd_level_df = df.attrs['herd_level_data']
-        herd_level_df["evt_dttm"] = pd.to_datetime(herd_level_df["time"], errors="coerce")
-        herd_level_df = herd_level_df.dropna(subset=["evt_dttm"])
-        
-        if len(date_range) == 2:
-            filtered_herd_df = herd_level_df[
-                (herd_level_df["evt_dttm"].dt.date >= date_range[0]) & 
-                (herd_level_df["evt_dttm"].dt.date <= date_range[1])
-            ]
-        else:
-            filtered_herd_df = herd_level_df
-            
-        # Rename columns for herd-level data
-        filtered_herd_df = filtered_herd_df.rename(columns={"event_details.herd_size": "evt_herdSize"})
-        avg_herd_size = filtered_herd_df["evt_herdSize"].mean() if "evt_herdSize" in filtered_herd_df.columns else filtered_df["evt_herdSize"].mean()
-    else:
-        avg_herd_size = filtered_df["evt_herdSize"].mean()
-        
+    # Use herd-level data for average herd size calculation
+    herd_df_for_metrics = herd_df_for_metrics.rename(columns={"event_details.herd_size": "evt_herdSize"})
+    avg_herd_size = herd_df_for_metrics["evt_herdSize"].mean() if "evt_herdSize" in herd_df_for_metrics.columns else filtered_df["evt_herdSize"].mean()
     st.metric("Average herd size", f"{avg_herd_size:.1f}" if not pd.isna(avg_herd_size) else "N/A")
 
 #### Sighting map
