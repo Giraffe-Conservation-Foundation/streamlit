@@ -15,7 +15,7 @@ try:
 except ImportError:
     st.sidebar.warning("⚠️ python-dotenv not installed. Using default settings.")
     
-# Force deployment update - timestamp: Sep 3, 2025 - FINAL PUSH
+# Force deployment update - timestamp: Sep 3, 2025 - FIXED INDIVIDUAL COUNT BUG
 # ZAF Dashboard - Complete implementation with satellite mapping
 
 # Configuration - can be overridden by environment variables
@@ -140,11 +140,11 @@ def load_data():
                 st.info(f"💡 Available event types: {', '.join(available_types)}")
             return pd.DataFrame()
 
-        # Process herd data if available
+        # Process herd data if available - but keep one record per herd encounter
         if "event_details.Herd" in giraffe_only.columns:
-            giraffe_only = giraffe_only.explode("event_details.Herd").reset_index(drop=True)
-            herd_df = json_normalize(giraffe_only["event_details.Herd"])
-            events_final = pd.concat([giraffe_only.drop(columns="event_details.Herd"), herd_df], axis=1)
+            # For individual giraffe analysis later, we can explode
+            # But for metrics, we want to keep herd-level data
+            events_final = giraffe_only.copy()
         else:
             events_final = giraffe_only
 
@@ -242,7 +242,8 @@ with col1:
 with col2:
     st.metric("", "")  # Empty placeholder
 with col3:
-    herd_count = filtered_df["evt_herdSize"].count() if "evt_herdSize" in filtered_df.columns else 0
+    # Count unique encounters/herds (each row represents one herd encounter)
+    herd_count = len(filtered_df) if not filtered_df.empty else 0
     st.metric("Herds seen", herd_count)
 with col4:
     if "evt_herdSize" in filtered_df.columns:
@@ -312,7 +313,31 @@ else:
 
 #### Age/sex breakdown bar chart
 st.subheader("🧬 Age / sex breakdown")
-if not filtered_df.empty and "evt_girSex" in filtered_df.columns and "evt_girAge" in filtered_df.columns:
+
+# For age/sex breakdown, we need individual giraffe data
+# So we'll explode the herd data here if needed
+if not filtered_df.empty and "event_details.Herd" in df.columns:
+    # Explode herd data for individual analysis
+    individual_df = filtered_df.explode("event_details.Herd").reset_index(drop=True)
+    if not individual_df["event_details.Herd"].isna().all():
+        herd_details = json_normalize(individual_df["event_details.Herd"])
+        individual_df = pd.concat([individual_df.drop(columns="event_details.Herd"), herd_details], axis=1)
+        
+        # Map the individual giraffe columns
+        if "giraffe_sex" in individual_df.columns and "giraffe_age" in individual_df.columns:
+            breakdown = (
+                individual_df.groupby(["giraffe_sex", "giraffe_age"])
+                .size()
+                .reset_index(name="Count")
+            )
+            fig2 = px.bar(breakdown, x="giraffe_age", y="Count", color="giraffe_sex", barmode="group")
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("No individual giraffe age/sex data available in herd details")
+    else:
+        st.info("No herd detail data available for age/sex breakdown")
+elif not filtered_df.empty and "evt_girSex" in filtered_df.columns and "evt_girAge" in filtered_df.columns:
+    # Use direct event-level age/sex data if available
     breakdown = (
         filtered_df.groupby(["evt_girSex", "evt_girAge"])
         .size()
