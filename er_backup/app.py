@@ -68,6 +68,7 @@ def authenticate_earthranger():
     st.title("🔐 Login to ER Backup Tool - High Performance")
     st.info("**Server:** https://twiga.pamdas.org")
     
+    st.subheader("👤 Username/Password Authentication")
     username = st.text_input("EarthRanger Username")
     password = st.text_input("EarthRanger Password", type="password")
     
@@ -76,10 +77,11 @@ def authenticate_earthranger():
             st.session_state.authenticated = True
             st.session_state.username = username
             st.session_state.password = password
-            st.success("Login successful!")
+            st.success("✅ Login successful!")
             st.rerun()
         else:
-            st.error("Invalid credentials. Please try again.")
+            st.error("❌ Invalid credentials. Please try again.")
+    
     st.stop()
 
 def generate_month_ranges(start_date, end_date):
@@ -139,6 +141,8 @@ def get_sources_and_deployments(username, password, server_url):
         
         # Get authentication token safely
         auth_token = None
+        
+        # Get token from ecoscope-based authentication
         if hasattr(st.session_state.er_io, 'auth') and hasattr(st.session_state.er_io.auth, 'token'):
             auth_token = f"Bearer {st.session_state.er_io.auth.token}"
         elif hasattr(st.session_state.er_io, '_token'):
@@ -207,16 +211,190 @@ def get_sources_and_deployments(username, password, server_url):
         
         if response.status_code == 200:
             deployments_data = response.json()
+            
+            # Check for different response structures
+            raw_results = None
             if 'results' in deployments_data:
-                deployments_df = pd.DataFrame(deployments_data['results'])
+                raw_results = deployments_data['results']
+            elif 'data' in deployments_data:
+                # Check if data contains nested results (this is the correct structure!)
+                if isinstance(deployments_data['data'], dict) and 'results' in deployments_data['data']:
+                    raw_results = deployments_data['data']['results']
+                elif isinstance(deployments_data['data'], list):
+                    raw_results = deployments_data['data']
+            
+            if raw_results is not None:
+                deployments_df = pd.DataFrame(raw_results)
+                
                 # Process deployments like your R code
                 if not deployments_df.empty:
+                    try:
+                        deployments_df = deployments_df.rename(columns={
+                            'id': 'deployID',
+                            'source': 'sourceID',
+                            'subject': 'subjectID'
+                        })
+                        
+                        # Handle assigned_range like your R code
+                        if 'assigned_range' in deployments_df.columns:
+                            range_data = []
+                            for idx, row in deployments_df.iterrows():
+                                assigned_range = row.get('assigned_range', {})
+                                if isinstance(assigned_range, dict):
+                                    start = assigned_range.get('lower')
+                                    end = assigned_range.get('upper')
+                                else:
+                                    start = end = None
+                                range_data.append({
+                                    'deployStart': pd.to_datetime(start, errors='coerce') if start else None,
+                                    'deployEnd': pd.to_datetime(end, errors='coerce') if end else None
+                                })
+                            
+                            range_df = pd.DataFrame(range_data)
+                            deployments_df = pd.concat([deployments_df.reset_index(drop=True), range_df], axis=1)
+                        
+                        # Calculate deployment days like your R code
+                        if 'deployStart' in deployments_df.columns and 'deployEnd' in deployments_df.columns:
+                            deployments_df['deployDays'] = (deployments_df['deployEnd'] - deployments_df['deployStart']).dt.days
+                        
+                        # Handle additional comments (notes) - Enhanced for R-style processing
+                        if 'additional' in deployments_df.columns:
+                            notes_data = []
+                            for idx, row in deployments_df.iterrows():
+                                additional = row.get('additional', {})
+                                if isinstance(additional, dict):
+                                    notes = additional.get('comments', '')
+                                    # Extract additional deployment fields
+                                    collar_status = additional.get('collar_status', '')
+                                    deployment_status = additional.get('deployment_status', '')
+                                    deployment_type = additional.get('deployment_type', '')
+                                    end_reason = additional.get('end_reason', '')
+                                    mortality = additional.get('mortality', '')
+                                    mortality_date = additional.get('mortality_date', '')
+                                else:
+                                    notes = collar_status = deployment_status = deployment_type = end_reason = mortality = mortality_date = ''
+                                
+                                notes_data.append({
+                                    'notes': notes,
+                                    'collarStatus': collar_status,
+                                    'deploymentStatus': deployment_status,
+                                    'deploymentType': deployment_type,
+                                    'endReason': end_reason,
+                                    'mortality': mortality,
+                                    'mortalityDate': pd.to_datetime(mortality_date, errors='coerce') if mortality_date else None
+                                })
+                            
+                            notes_df = pd.DataFrame(notes_data)
+                            deployments_df = pd.concat([deployments_df.reset_index(drop=True), notes_df], axis=1)
+                        
+                        # Add more deployment metadata (like R dep processing)
+                        if 'created_at' in deployments_df.columns:
+                            deployments_df['deployCreated'] = pd.to_datetime(deployments_df['created_at'], errors='coerce')
+                        
+                        if 'updated_at' in deployments_df.columns:
+                            deployments_df['deployUpdated'] = pd.to_datetime(deployments_df['updated_at'], errors='coerce')
+                        
+                        # Calculate deployment period status
+                        current_date = pd.Timestamp.now(tz='UTC')  # Make timezone-aware
+                        
+                        # Ensure deployment dates are timezone-aware for comparison
+                        if 'deployStart' in deployments_df.columns and 'deployEnd' in deployments_df.columns:
+                            try:
+                                # Convert to UTC for consistent comparison
+                                deployments_df['deployStart'] = pd.to_datetime(deployments_df['deployStart'], errors='coerce', utc=True)
+                                deployments_df['deployEnd'] = pd.to_datetime(deployments_df['deployEnd'], errors='coerce', utc=True)
+                                
+                                deployments_df['deploymentActive'] = (
+                                    (deployments_df['deployStart'] <= current_date) & 
+                                    ((deployments_df['deployEnd'] >= current_date) | deployments_df['deployEnd'].isna())
+                                )
+                            except Exception as e:
+                                st.warning(f"⚠️ Could not calculate deployment active status: {str(e)}")
+                                deployments_df['deploymentActive'] = False
+                        
+                        # Remove duplicates like your R code
+                        deployments_df = deployments_df.drop_duplicates(subset=['sourceID'], keep='first')
+                        st.success(f"✅ Got {len(deployments_df):,} deployments with enhanced metadata")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error processing deployment data: {str(e)}")
+                        deployments_df = pd.DataFrame()
+                else:
+                    st.warning("⚠️ Deployment DataFrame is empty after processing")
+                    deployments_df = pd.DataFrame()
+            else:
+                st.warning(f"⚠️ Could not find deployment data in response. Available keys: {list(deployments_data.keys()) if isinstance(deployments_data, dict) else 'Response not a dict'}")
+                deployments_df = pd.DataFrame()
+        else:
+            st.error(f"❌ Failed to get deployments: {response.status_code}")
+            try:
+                error_text = response.text[:500]  # First 500 chars of error
+                st.error(f"Error details: {error_text}")
+            except:
+                st.error("Could not get error details")
+            deployments_df = pd.DataFrame()
+        
+        # Try alternative deployment endpoints if no data was found
+        if deployments_df.empty:
+            st.write("🔄 Trying alternative deployment endpoints...")
+            
+            alternative_urls = [
+                f"{server_url}/api/v1.0/subjectsources/",  # Without pagination
+                f"{server_url}/api/v1.0/subject_sources/",  # Alternative naming
+                f"{server_url}/api/v1.0/sources/subjectsources/",  # Nested endpoint
+            ]
+            
+            for alt_url in alternative_urls:
+                st.write(f"📡 Trying: {alt_url}")
+                try:
+                    alt_response = requests.get(alt_url, headers=headers)
+                    if alt_response.status_code == 200:
+                        alt_data = alt_response.json()
+                        st.write(f"📊 Alternative endpoint response keys: {list(alt_data.keys()) if isinstance(alt_data, dict) else 'Not a dict'}")
+                        
+                        # Check different possible data structures
+                        data_key = None
+                        if 'results' in alt_data and alt_data['results']:
+                            data_key = 'results'
+                        elif 'data' in alt_data and alt_data['data']:
+                            # Check if 'data' contains nested results
+                            if isinstance(alt_data['data'], dict) and 'results' in alt_data['data']:
+                                deployments_df = pd.DataFrame(alt_data['data']['results'])
+                                st.success(f"✅ Found deployment data at {alt_url} (nested data.results)")
+                                break
+                            elif isinstance(alt_data['data'], list) and alt_data['data']:
+                                deployments_df = pd.DataFrame(alt_data['data'])
+                                st.success(f"✅ Found deployment data at {alt_url} (data list)")
+                                break
+                            else:
+                                data_key = 'data'
+                        elif isinstance(alt_data, list) and alt_data:
+                            deployments_df = pd.DataFrame(alt_data)
+                            st.success(f"✅ Found deployment data at {alt_url} (direct list)")
+                            break
+                        
+                        if data_key and alt_data[data_key]:
+                            deployments_df = pd.DataFrame(alt_data[data_key])
+                            st.success(f"✅ Found deployment data at {alt_url} (key: {data_key})")
+                            break
+                    else:
+                        st.write(f"❌ {alt_url} returned {alt_response.status_code}")
+                except Exception as e:
+                    st.write(f"❌ Error with {alt_url}: {str(e)}")
+            
+            if not deployments_df.empty:
+                st.write(f"📊 Alternative endpoint found {len(deployments_df):,} deployment records")
+                st.write(f"📊 Deployment DataFrame columns: {list(deployments_df.columns)}")
+                
+                # Process the alternatively-sourced deployment data
+                if 'id' in deployments_df.columns:
                     deployments_df = deployments_df.rename(columns={
                         'id': 'deployID',
                         'source': 'sourceID',
                         'subject': 'subjectID'
                     })
                     
+                    # Add the same processing as the main deployment logic
                     # Handle assigned_range like your R code
                     if 'assigned_range' in deployments_df.columns:
                         range_data = []
@@ -235,52 +413,128 @@ def get_sources_and_deployments(username, password, server_url):
                         range_df = pd.DataFrame(range_data)
                         deployments_df = pd.concat([deployments_df.reset_index(drop=True), range_df], axis=1)
                     
-                    # Calculate deployment days like your R code
+                    # Calculate deployment days
                     if 'deployStart' in deployments_df.columns and 'deployEnd' in deployments_df.columns:
                         deployments_df['deployDays'] = (deployments_df['deployEnd'] - deployments_df['deployStart']).dt.days
                     
-                    # Handle additional comments (notes)
-                    if 'additional' in deployments_df.columns:
-                        notes_data = []
-                        for idx, row in deployments_df.iterrows():
-                            additional = row.get('additional', {})
-                            if isinstance(additional, dict):
-                                notes = additional.get('comments', '')
-                            else:
-                                notes = ''
-                            notes_data.append({'notes': notes})
-                        
-                        notes_df = pd.DataFrame(notes_data)
-                        deployments_df = pd.concat([deployments_df.reset_index(drop=True), notes_df], axis=1)
-                    
-                    # Remove duplicates like your R code
-                    deployments_df = deployments_df.drop_duplicates(subset=['sourceID'], keep='first')
-                    st.success(f"✅ Got {len(deployments_df):,} deployments")
-                else:
-                    deployments_df = pd.DataFrame()
-            else:
-                deployments_df = pd.DataFrame()
-        else:
-            st.error(f"Failed to get deployments: {response.status_code}")
-            deployments_df = pd.DataFrame()
+                    st.info("✅ Processed alternative deployment data with full metadata")
         
-        return sources_df, deployments_df
+        # Final fallback: try using ecoscope directly
+        if deployments_df.empty:
+            st.write("🔄 Final fallback: Using ecoscope to get deployment data...")
+            try:
+                if 'er_io' in st.session_state:
+                    ecoscope_deployments = st.session_state.er_io.get_subjectsources()
+                    if not ecoscope_deployments.empty:
+                        deployments_df = ecoscope_deployments.copy()
+                        st.success(f"✅ Got {len(deployments_df):,} deployments via ecoscope")
+                    else:
+                        st.warning("⚠️ Ecoscope also returned no deployment data")
+                else:
+                    st.warning("⚠️ No ecoscope connection available for fallback")
+            except Exception as e:
+                st.error(f"❌ Ecoscope fallback failed: {str(e)}")
+        
+        # Get subject groups (like your R grp query)
+        st.write("🏷️ Getting subject groups data...")
+        groups_url = f"{server_url}/api/v1.0/subjectgroups/?include_hidden=TRUE&include_inactive=TRUE&flat=flat"
+        response = requests.get(groups_url, headers=headers)
+        
+        if response.status_code == 200:
+            groups_data = response.json()
+            if 'data' in groups_data:
+                groups_df = pd.DataFrame(groups_data['data'])
+                # Process groups like your R code
+                if not groups_df.empty:
+                    # Unnest subjects (like R unnest)
+                    group_records = []
+                    for idx, row in groups_df.iterrows():
+                        group_id = row.get('id')
+                        group_name = row.get('name', '')
+                        subjects = row.get('subjects', [])
+                        
+                        # Handle empty subjects
+                        if not subjects:
+                            subjects = [{}]  # Keep empty to maintain group record
+                        
+                        for subject in subjects:
+                            record = {
+                                'groupID': group_id,
+                                'groupName': group_name,
+                                'subjectID': subject.get('id'),
+                                'subjName': subject.get('name'),
+                                'subjectType': subject.get('subject_subtype'),
+                                'subjectSpecies': subject.get('common_name'),
+                                'subjectSex': subject.get('sex')
+                            }
+                            group_records.append(record)
+                    
+                    if group_records:
+                        groups_processed_df = pd.DataFrame(group_records)
+                        
+                        # Parse group names like R separate() function
+                        name_parts = groups_processed_df['groupName'].str.split('_', expand=True, n=2)
+                        if name_parts.shape[1] >= 3:
+                            groups_processed_df['obsCountry'] = name_parts[0]
+                            groups_processed_df['obsRegion'] = name_parts[1] 
+                            groups_processed_df['obsSpecies'] = name_parts[2]
+                        elif name_parts.shape[1] >= 2:
+                            groups_processed_df['obsCountry'] = name_parts[0]
+                            groups_processed_df['obsRegion'] = name_parts[1]
+                            groups_processed_df['obsSpecies'] = None
+                        elif name_parts.shape[1] >= 1:
+                            groups_processed_df['obsCountry'] = name_parts[0]
+                            groups_processed_df['obsRegion'] = None
+                            groups_processed_df['obsSpecies'] = None
+                        else:
+                            groups_processed_df['obsCountry'] = None
+                            groups_processed_df['obsRegion'] = None
+                            groups_processed_df['obsSpecies'] = None
+                        
+                        # Filter out unwanted groups like your R code
+                        exclude_countries = ['AF', 'TwigaTracker', 'WildScapeVet', 'Donor', 'Movebank', 'White']
+                        exclude_group_id = 'bbe1967b-6a46-4a58-aca1-5e3f791933dd'
+                        
+                        groups_processed_df = groups_processed_df[
+                            (~groups_processed_df['obsCountry'].isin(exclude_countries)) &
+                            (groups_processed_df['groupID'] != exclude_group_id)
+                        ]
+                        
+                        st.success(f"✅ Got {len(groups_processed_df):,} group-subject relationships")
+                        groups_df = groups_processed_df
+                    else:
+                        groups_df = pd.DataFrame()
+                else:
+                    groups_df = pd.DataFrame()
+            else:
+                groups_df = pd.DataFrame()
+        else:
+            st.error(f"Failed to get groups: {response.status_code}")
+            groups_df = pd.DataFrame()
+        
+        return sources_df, deployments_df, groups_df
         
     except Exception as e:
-        st.error(f"Error getting sources/deployments: {str(e)}")
-        return pd.DataFrame(), pd.DataFrame()
+        st.error(f"Error getting sources/deployments/groups: {str(e)}")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 def process_deployment_notes(df):
     """Process deployment notes to extract tag placement info (like your R code)"""
     try:
-        if 'notes' not in df.columns:
+        # Check for both 'notes' and 'depNotes' columns
+        notes_column = None
+        if 'depNotes' in df.columns:
+            notes_column = 'depNotes'
+        elif 'notes' in df.columns:
+            notes_column = 'notes'
+        else:
             return df
         
         st.write("🏷️ Processing deployment notes for tag placement details...")
         
         # Split notes by pipe character like your R separate() function
         note_columns = ['note1', 'note2', 'note3', 'note4', 'note5', 'note6']
-        notes_split = df['notes'].str.split('|', expand=True, n=5)
+        notes_split = df[notes_column].str.split('|', expand=True, n=5)
         notes_split.columns = note_columns[:notes_split.shape[1]]
         
         # Fill missing columns
@@ -290,64 +544,107 @@ def process_deployment_notes(df):
         
         df = pd.concat([df.reset_index(drop=True), notes_split], axis=1)
         
-        # Extract tag placement like your R case_when logic
-        placement_conditions = ['ear', 'ossicone', 'tail', 'neck', 'ankle', 'head', 'collar']
+        # Parse key-value pairs from the pipe-separated notes
+        def parse_note_field(row, field_name):
+            """Extract value for a specific field from the notes"""
+            if notes_column in row:
+                note_text = str(row[notes_column])
+                # Split by | and look for field_name;
+                parts = note_text.split('|')
+                for part in parts:
+                    part = part.strip()
+                    if part.lower().startswith(field_name.lower() + ';'):
+                        # Extract value after the semicolon
+                        value = part.split(';', 1)[1].strip() if ';' in part else ''
+                        return value
+            return None
         
+        # Extract Tag information
         def extract_tag_place(row):
-            for col in note_columns:
-                note_text = str(row.get(col, '')).lower()
+            tag_value = parse_note_field(row, 'Tag')
+            if tag_value:
+                tag_value_lower = tag_value.lower()
+                # Look for placement keywords
+                placement_conditions = ['ear', 'ossicone', 'tail', 'neck', 'ankle', 'head', 'collar']
                 for placement in placement_conditions:
-                    if placement in note_text:
+                    if placement in tag_value_lower:
                         return placement
             return None
         
         df['tagPlace'] = df.apply(extract_tag_place, axis=1)
         
-        # Extract ear placement details
+        # Extract AltName
+        df['altName'] = df.apply(lambda row: parse_note_field(row, 'AltName'), axis=1)
+        
+        # Extract Age and convert to subAge categories
+        def extract_age(row):
+            age_value = parse_note_field(row, 'Age')
+            if age_value:
+                age_lower = age_value.lower()
+                if 'subadult' in age_lower:
+                    return 'subadult'
+                elif any(word in age_lower for word in ['adult', 'year']):
+                    return 'adult'
+            return 'adult'  # default
+        
+        df['subAge'] = df.apply(extract_age, axis=1)
+        
+        # Extract ear placement details from Tag and Comments fields
         def extract_ear_inside_outside(row):
-            for col in note_columns:
-                note_text = str(row.get(col, '')).lower()
-                if 'inside' in note_text:
+            # Check Tag field first
+            tag_value = parse_note_field(row, 'Tag')
+            if tag_value and ('inside' in tag_value.lower() or 'outside' in tag_value.lower()):
+                if 'inside' in tag_value.lower():
                     return 'inside'
-                elif 'outside' in note_text:
+                elif 'outside' in tag_value.lower():
+                    return 'outside'
+            
+            # Check Comments field
+            comments_value = parse_note_field(row, 'Comments')
+            if comments_value:
+                comments_lower = comments_value.lower()
+                if 'inside' in comments_lower:
+                    return 'inside'
+                elif 'outside' in comments_lower:
                     return 'outside'
             return None
         
         def extract_ear_left_right(row):
-            for col in note_columns:
-                note_text = str(row.get(col, '')).lower()
-                if 'right' in note_text:
+            # Check Tag field first
+            tag_value = parse_note_field(row, 'Tag')
+            if tag_value and ('left' in tag_value.lower() or 'right' in tag_value.lower()):
+                if 'right' in tag_value.lower():
                     return 'right'
-                elif 'left' in note_text:
+                elif 'left' in tag_value.lower():
+                    return 'left'
+            
+            # Check Comments field for "right [code], left [code]" pattern
+            comments_value = parse_note_field(row, 'Comments')
+            if comments_value:
+                comments_lower = comments_value.lower()
+                # Look for patterns like "right 0120D3AE, left 0120BAE4"
+                if 'right' in comments_lower and 'left' in comments_lower:
+                    return 'both'
+                elif 'right' in comments_lower:
+                    return 'right'
+                elif 'left' in comments_lower:
                     return 'left'
             return None
         
         df['tagPlaceEar1'] = df.apply(extract_ear_inside_outside, axis=1)
         df['tagPlaceEar2'] = df.apply(extract_ear_left_right, axis=1)
         
-        # Extract age information
-        def extract_age(row):
-            for col in note_columns:
-                note_text = str(row.get(col, '')).lower()
-                if 'subadult' in note_text:
-                    return 'subadult'
-            return 'adult'
-        
-        df['subAge'] = df.apply(extract_age, axis=1)
-        
-        # Extract deployment end cause
+        # Extract deployment end cause from Unit field
         def extract_end_cause(row):
-            for col in note_columns:
-                note_text = str(row.get(col, '')).lower()
-                if 'failed' in note_text:
-                    return 'failed'
-                elif 'fell off' in note_text:
-                    return 'fell off'
-                elif 'death' in note_text:
-                    return 'death'
+            unit_value = parse_note_field(row, 'Unit')
+            if unit_value:
+                return unit_value.strip()  # Return the full Unit value
             return 'unknown'
         
         df['depEndCause'] = df.apply(extract_end_cause, axis=1)
+        
+        # Extract Comments field as separate column
+        df['depComments'] = df.apply(lambda row: parse_note_field(row, 'Comments'), axis=1)
         
         # Extract additional species information
         def extract_species_additional(row):
@@ -369,7 +666,7 @@ def process_deployment_notes(df):
         st.warning(f"⚠️ Error processing deployment notes: {str(e)}")
         return df
 
-def create_master_file(obs_df, sources_df, deployments_df, subjects_df, groups_df):
+def create_master_file(obs_df, sources_df, deployments_df, subjects_df, groups_df, filter_giraffes_only=True):
     """Create master file with all joins like your R code lines 1-140"""
     try:
         st.write("🔗 Creating master file with all data joins...")
@@ -384,8 +681,20 @@ def create_master_file(obs_df, sources_df, deployments_df, subjects_df, groups_d
         
         # Join with deployments (like your R left_join(dep1))
         if not deployments_df.empty and 'source_id' in master_df.columns:
-            master_df = master_df.merge(deployments_df, left_on='source_id', right_on='sourceID', how='left', suffixes=('', '_dep'))
-            st.info("✅ Joined deployments data")
+            # Ensure we have the key columns for joining
+            if 'sourceID' in deployments_df.columns:
+                master_df = master_df.merge(deployments_df, left_on='source_id', right_on='sourceID', how='left', suffixes=('', '_dep'))
+                
+                # Check how many records got deployment data
+                deployment_data_filled = master_df['deployID'].notna().sum() if 'deployID' in master_df.columns else 0
+                st.info(f"✅ Joined deployments data: {deployment_data_filled:,} records have deployment info")
+            else:
+                st.warning("⚠️ No 'sourceID' column found in deployments data for joining")
+        else:
+            if deployments_df.empty:
+                st.warning("⚠️ No deployment data available")
+            elif 'source_id' not in master_df.columns:
+                st.warning("⚠️ No 'source_id' column in observations for deployment join")
         
         # Join with subjects (like your R left_join(sub1))
         if not subjects_df.empty and 'subject_id' in master_df.columns:
@@ -406,7 +715,8 @@ def create_master_file(obs_df, sources_df, deployments_df, subjects_df, groups_d
         
         # Join with groups (like your R left_join(grp1))
         if not groups_df.empty and 'subject_id' in master_df.columns:
-            master_df = master_df.merge(groups_df, on='subject_id', how='left', suffixes=('', '_grp'))
+            # Group data includes: groupID, groupName, subjectID, obsCountry, obsRegion, obsSpecies
+            master_df = master_df.merge(groups_df, left_on='subject_id', right_on='subjectID', how='left', suffixes=('', '_grp'))
             st.info("✅ Joined groups data")
         
         # Filter records within deployment period (like your R filter)
@@ -437,7 +747,7 @@ def create_master_file(obs_df, sources_df, deployments_df, subjects_df, groups_d
         master_df = process_deployment_notes(master_df)
         
         # Clean up and standardize column names (like your R data3 section)
-        master_df = standardize_master_columns(master_df)
+        master_df = standardize_master_columns(master_df, filter_giraffes_only)
         
         st.success(f"✅ Master file created with {len(master_df):,} records")
         return master_df
@@ -446,32 +756,71 @@ def create_master_file(obs_df, sources_df, deployments_df, subjects_df, groups_d
         st.error(f"Error creating master file: {str(e)}")
         return obs_df
 
-def standardize_master_columns(df):
+def standardize_master_columns(df, filter_giraffes_only=True):
     """Standardize column names and clean data like your R data3 section"""
     try:
-        st.write("🧹 Standardizing column names and cleaning data...")
+        st.write("🔧 Standardizing column names and cleaning data...")
         
-        # Remove unwanted columns (like your R select(-"created_at", ...))
+        # 0. Check for and handle duplicate columns first
+        duplicate_cols = df.columns[df.columns.duplicated()].tolist()
+        if duplicate_cols:
+            st.warning(f"⚠️ Found duplicate columns: {duplicate_cols}")
+            # Remove duplicate columns by keeping only the first occurrence
+            df = df.loc[:, ~df.columns.duplicated()]
+            st.info(f"✅ Removed duplicate columns, now have {len(df.columns)} unique columns")
+        
+        # 1. Remove specific unwanted columns
         columns_to_remove = [
             'created_at', 'exclusion_flags', 'accuracy', 'locationAccuracy',
             'activity1', 'activity2', 'activity3', 'activity4', 'charge_status',
             'orientation', 'activity', 'activity_label', 'location_accuracy',
             'location_accuracy_label', 'GPS activity count', 'heading',
             'gps_hdop', 'event_id', 'sourceCreated', 'subjectLastDate',
-            'location', 'device_status_properties',  # Remove these unwanted columns
+            'location', 'device_status_properties',
             'additional', 'content_type', 'created_at_sub', 'device_status_properties_sub',
             'hex', 'image_url', 'last_position', 'last_position_status', 'source_id',
-            'subjectActive', 'subjectName', 'subjectID', 'subjectSex', 'subjectSpecies',
-            'subjectType', 'tracks_available', 'user', 'updated_at'
+            'subjectActive', 'subjectName', 'subjectType', 'tracks_available', 'user', 'updated_at',
+            # New columns to remove as requested
+            'additional_sub', 'sourceID', 'subjectID_sub'
         ]
         
         for col in columns_to_remove:
             if col in df.columns:
                 df = df.drop(columns=[col])
+                
+        # 2. Handle assigned_range expansion - only if we don't have deployment dates already
+        if 'assigned_range' in df.columns:
+            # Check if we already have deployment dates from actual deployment data
+            has_deploy_dates = 'deployStart' in df.columns and 'deployEnd' in df.columns
+            
+            if has_deploy_dates:
+                pass  # Skip assigned_range expansion
+            else:
+                # Expand assigned_range only if we don't have deployment dates
+                range_data = []
+                for idx, row in df.iterrows():
+                    assigned_range = row.get('assigned_range', {})
+                    if isinstance(assigned_range, dict):
+                        start = assigned_range.get('lower')
+                        end = assigned_range.get('upper')
+                    else:
+                        start = end = None
+                    range_data.append({
+                        'deployStart': pd.to_datetime(start, errors='coerce') if start else None,
+                        'deployEnd': pd.to_datetime(end, errors='coerce') if end else None
+                    })
+                
+                range_df = pd.DataFrame(range_data)
+                df = pd.concat([df.reset_index(drop=True), range_df], axis=1)
+            
+            # Always remove the original assigned_range column
+            df = df.drop(columns=['assigned_range'], errors='ignore')
         
-        # Filter out rangers and mobile devices (like your R filter)
-        if 'subjectType' in df.columns:
-            df = df[~df['subjectType'].isin(['ranger', 'er_mobile'])]
+        # 3. Skip further processing until after column renaming
+        
+        # 4. Skip giraffe filtering for now - will do it after column renaming
+        
+        # Note: Ranger filtering is now handled in the giraffe filtering section
         
         # Consolidate battery voltage columns (like your R coalesce)
         battery_voltage_cols = ['battery_volts', 'batt', 'voltage', 'tag_voltage']
@@ -508,6 +857,7 @@ def standardize_master_columns(df):
             'tag_id': 'movebank_tagID',
             'latitude': 'obsLat',
             'longitude': 'obsLon',
+            'url': 'obsUrl',  # renamed from url
             'subject_id': 'subID',
             'subject_name': 'subName',
             'subject_type': 'subType',
@@ -517,7 +867,19 @@ def standardize_master_columns(df):
             'subject_active': 'subActive',
             'case_temperature_c': 'srcTemp_case_c',
             'device_temperature_c': 'srcTemp_unit_c',
-            'temperature': 'srcTemp'
+            'temperature': 'srcTemp',
+            'tagPlace': 'srcPlace',  # renamed from tagPlace
+            'tagPlaceEar1': 'srcPlaceEar1',  # renamed 
+            'tagPlaceEar2': 'srcPlaceEar2',  # renamed
+            'altName': 'subName2',  # renamed from altName
+            # Deployment-specific columns (matching R conventions) - removing unneeded ones
+            'deployID': 'depID',
+            'deployStart': 'depStart',
+            'deployEnd': 'depEnd',
+            'deploymentActive': 'depActive',
+            'deployCreated': 'depCreated',
+            'deployUpdated': 'depUpdated'
+            # Removed: depDays, depNotes, depCollarStatus, depStatus, depType, depMortality, depMortalityDate
         }
         
         # Apply column renaming
@@ -525,11 +887,126 @@ def standardize_master_columns(df):
             if old_name in df.columns:
                 df = df.rename(columns={old_name: new_name})
         
+        # Remove duplicate/unneeded columns
+        duplicate_cols_to_remove = [
+            'obsSpecies', 'subject_type_sub', 'subjectSpecies', 'subjectID_grp', 
+            'subjName', 'subjectType_grp', 'subjectSpecies_grp', 'subjectSex_grp', 
+            'subjectID', 'subjectSex', 'depDays', 'depNotes', 'depCollarStatus', 
+            'depStatus', 'depType', 'depMortality', 'depMortalityDate'
+        ]
+        
+        existing_duplicates = [col for col in duplicate_cols_to_remove if col in df.columns]
+        if existing_duplicates:
+            df = df.drop(columns=existing_duplicates)
+        
+        # Fix deployment end reason - use depEndCause over depEndReason if available
+        if 'depEndCause' in df.columns and 'depEndReason' in df.columns:
+            # Use depEndCause values where available, otherwise use depEndReason
+            df['depEndReason'] = df['depEndCause'].fillna(df['depEndReason'])
+            df = df.drop(columns=['depEndCause'])
+        elif 'depEndCause' in df.columns:
+            # Rename depEndCause to depEndReason
+            df = df.rename(columns={'depEndCause': 'depEndReason'})
+        
+        # Fix obsCountry column AFTER all other processing - extract from groupName
+        if 'groupName' in df.columns:
+            # Always recreate obsCountry from groupName to ensure it's correct (e.g., NAM_Mudumu_giraffe → NAM)
+            df['obsCountry'] = df['groupName'].str.split('_').str[0]
+        
         # Ensure proper data types
-        datetime_cols = ['obsDatetime', 'depStart', 'depEnd']
+        datetime_cols = ['obsDatetime', 'depStart', 'depEnd', 'depCreated', 'depUpdated']
         for col in datetime_cols:
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors='coerce')
+        
+        # Convert obsDatetime to UTC and rename for clarity
+        if 'obsDatetime' in df.columns:
+            # Convert to UTC if not already
+            if df['obsDatetime'].dt.tz is None:
+                # If no timezone info, assume UTC
+                df['obsDatetime'] = df['obsDatetime'].dt.tz_localize('UTC')
+            else:
+                # Convert to UTC if timezone-aware
+                df['obsDatetime'] = df['obsDatetime'].dt.tz_convert('UTC')
+            
+            # Rename to indicate UTC timezone
+            df = df.rename(columns={'obsDatetime': 'obsDatetime_UTC'})
+        
+        # Filter to giraffes only (if requested) - after column renaming
+        if filter_giraffes_only:
+            # Try multiple columns that might contain the animal type
+            filtered = False
+            
+            # First try subType column
+            if 'subType' in df.columns and not df['subType'].isna().all():
+                initial_count = len(df)
+                
+                # Filter out rangers first
+                df = df[~df['subType'].isin(['ranger', 'er_mobile'])]
+                
+                # Then filter for giraffes
+                giraffe_mask = (
+                    (df['subType'].str.lower().str.contains('giraffe', na=False)) |
+                    (df['subType'] == 'giraffe') |
+                    (df['subType'].str.lower() == 'giraffe')
+                )
+                df = df[giraffe_mask]
+                filtered_count = len(df)
+                st.info(f"🦒 Filtered by subType: {initial_count:,} → {filtered_count:,} records")
+                filtered = True
+                
+            # If subType didn't work, try subSpecies
+            elif 'subSpecies' in df.columns and not df['subSpecies'].isna().all():
+                initial_count = len(df)
+                
+                # All subspecies with these patterns are giraffes
+                giraffe_subspecies_patterns = ['Southern_', 'Northern_', 'Masai_', 'Rothschild', 'Reticulated', 'Angolan', 'Kordofan', 'Nubian', 'SouthAfrican']
+                giraffe_mask = df['subSpecies'].str.contains('|'.join(giraffe_subspecies_patterns), na=False, case=False)
+                
+                # Also filter out rangers
+                ranger_mask = ~df['subSpecies'].str.contains('ranger|er_mobile', na=False, case=False)
+                df = df[giraffe_mask & ranger_mask]
+                
+                filtered_count = len(df)
+                st.info(f"🦒 Filtered by subSpecies: {initial_count:,} → {filtered_count:,} records")
+                filtered = True
+                
+            if not filtered:
+                st.warning("⚠️ No suitable column found for giraffe filtering. Keeping all records.")
+        else:
+            st.info("🐾 Keeping all animal types (giraffe filtering disabled)")
+        
+        # 5. Order columns in specific custom order
+        
+        # Check for any remaining duplicate columns before ordering
+        if df.columns.duplicated().any():
+            st.warning("⚠️ Found duplicate columns after processing, removing them...")
+            df = df.loc[:, ~df.columns.duplicated()]
+        
+        current_columns = list(df.columns)
+        
+        # Define the specific column order you want
+        desired_order = [
+            'obsID', 'obsDatetime_UTC', 'obsLat', 'obsLon', 'obsRegion', 'obsSpecies', 
+            'groupID', 'groupName', 'obsCountry', 
+            'srcID', 'srcPlace', 'srcPlaceEar1', 'srcPlaceEar2', 'srcTemp_unit_c', 'srcBatt_v', 'srcBatt_p',
+            'subID', 'subName', 'subName2', 'subType', 'subSpecies', 'subSex', 'subActive', 'subAge',
+            'depID', 'depStart', 'depEnd', 'depCreated', 'depUpdated', 'depActive', 'depEndReason',
+            'speed', 'srcTemp_case_c', 'srcTemp', 'movebank_depID', 'tagID', 'movebank_tagID', 
+            'location_dep', 'obsLandscape', 'obsUrl', 'depComments', 'species_additional'
+        ]
+        
+        # Get columns that exist in the dataframe from the desired order
+        existing_ordered_cols = [col for col in desired_order if col in current_columns]
+        
+        # Get any remaining columns not in the desired order
+        remaining_cols = [col for col in current_columns if col not in desired_order]
+        
+        # Final column order: desired order first, then any remaining columns
+        final_order = existing_ordered_cols + remaining_cols
+        
+        # Reorder DataFrame
+        df = df[final_order]
         
         st.success("✅ Standardized column names and cleaned data")
         return df
@@ -554,6 +1031,8 @@ def get_all_subjects(username, password, server_url):
         
         # Get authentication token safely
         auth_token = None
+        
+        # Get token from ecoscope-based authentication
         if hasattr(st.session_state.er_io, 'auth') and hasattr(st.session_state.er_io.auth, 'token'):
             auth_token = f"Bearer {st.session_state.er_io.auth.token}"
         elif hasattr(st.session_state.er_io, '_token'):
@@ -666,7 +1145,7 @@ def get_subject_groups(username, password, server_url):
         st.error(f"Error getting subject groups: {str(e)}")
         return pd.DataFrame()
 
-def backup_all_observations_r_style(username, password, server_url, start_date, end_date, include_subject_details=True):
+def backup_all_observations_r_style(username, password, server_url, start_date, end_date, include_subject_details=True, filter_giraffes_only=True):
     """Backup all observations using direct API calls (R-style approach) - MUCH FASTER"""
     try:
         import requests
@@ -901,10 +1380,9 @@ def backup_all_observations_r_style(username, password, server_url, start_date, 
                 source_df = pd.DataFrame(source_data)
                 df = pd.concat([df.reset_index(drop=True), source_df], axis=1)
                 
-                # Debug: Check extracted IDs
+                # Check extracted IDs
                 valid_subject_ids = source_df['subject_id'].notna().sum()
                 valid_source_ids = source_df['source_id'].notna().sum()
-                st.info(f"📊 Debug: Extracted {valid_subject_ids:,} subject IDs and {valid_source_ids:,} source IDs")
                 
                 # If we have source IDs but no subject IDs, try to get subjects from subjectsources
                 if valid_source_ids > 0 and valid_subject_ids == 0:
@@ -930,17 +1408,12 @@ def backup_all_observations_r_style(username, password, server_url, start_date, 
                         df['subject_id'] = df['source_id'].map(source_to_subject).fillna(df['subject_id'])
                         
                         updated_subject_ids = df['subject_id'].notna().sum()
-                        st.info(f"📊 Debug: Updated to {updated_subject_ids:,} subject IDs from subjectsources")
                     else:
                         st.warning("⚠️ No subjectsources data available")
             
             # Join with subject details (like your R left_join)
             if include_subject_details and 'subjects_df' in st.session_state and 'subject_id' in df.columns:
                 st.write("👥 Joining subject details (R-style left_join)...")
-                
-                # Debug: Check what we have
-                st.info(f"📊 Debug: Found {len(st.session_state.subjects_df):,} subjects in cache")
-                st.info(f"📊 Debug: Unique subject_ids in observations: {df['subject_id'].nunique():,}")
                 
                 subject_cols = ['id', 'name', 'subject_subtype', 'common_name', 'sex', 'is_active']
                 available_subject_cols = [col for col in subject_cols if col in st.session_state.subjects_df.columns]
@@ -950,7 +1423,6 @@ def backup_all_observations_r_style(username, password, server_url, start_date, 
                     obs_subject_ids = set(df['subject_id'].dropna().unique())
                     subj_ids = set(st.session_state.subjects_df['id'].unique())
                     matching_ids = obs_subject_ids.intersection(subj_ids)
-                    st.info(f"📊 Debug: {len(matching_ids):,} matching subject IDs found")
                     
                     subjects_renamed = st.session_state.subjects_df[available_subject_cols].rename(columns={
                         'id': 'subject_id',
@@ -1003,14 +1475,13 @@ def backup_all_observations_r_style(username, password, server_url, start_date, 
             st.write("🔗 Creating comprehensive master file with all data joins...")
             
             # Get additional data for master file creation
-            sources_df, deployments_df = get_sources_and_deployments(username, password, server_url)
+            sources_df, deployments_df, groups_df = get_sources_and_deployments(username, password, server_url)
             
-            # Use cached subjects and groups data
+            # Use cached subjects data (groups are now fetched above)
             subjects_df = st.session_state.get('subjects_df', pd.DataFrame())
-            groups_df = st.session_state.get('groups_df', pd.DataFrame())
             
             # Create master file with all joins
-            master_df = create_master_file(df, sources_df, deployments_df, subjects_df, groups_df)
+            master_df = create_master_file(df, sources_df, deployments_df, subjects_df, groups_df, filter_giraffes_only)
             
             # Return only the master file, not the raw observations
             return master_df, len(df)
@@ -1358,6 +1829,7 @@ def main():
     
     # Show authentication status
     st.sidebar.markdown("### 🔐 Authentication ✅")
+    st.sidebar.write("**Method:** Username/Password")
     st.sidebar.write(f"**User:** {st.session_state.username}")
     
     if st.sidebar.button("🔓 Logout"):
@@ -1369,59 +1841,29 @@ def main():
     st.sidebar.markdown("---")
     
     # Main interface
-    st.markdown("""
-    ## 🚀 High Performance Backup for Large Date Ranges
-    
-    **Two Speed Options:**
-    - 🚀 **Ultra-Fast Mode**: Direct API calls with cursor pagination (like your R code) - MAXIMUM SPEED!
-    - 📅 **Month-by-Month Mode**: Incremental processing for memory efficiency
-    
-    **Features:**
-    - ⚡ **R-Style Performance**: Uses same direct API approach as your fast R code
-    - 💾 **Resume capability** (month-by-month mode only)
-    - 🔄 **Progress persistence** (saves state between sessions)
-    - 📊 **Complete data joins** (animals, groups, device status)
-    """)
-    
-    # Performance comparison
-    st.info("""
-    🚀 **Ultra-Fast Mode** is recommended for most use cases - it mimics your R code's approach:
-    - Uses direct API calls with cursor pagination
-    - Downloads all data in one continuous stream
-    - Handles device status properties like your R code
-    - Much faster than ecoscope's wrapper functions
-    """)
-    
+  
     # Backup configuration
     st.subheader("🛠️ Backup Configuration")
     
-    col1, col2, col3 = st.columns(3)
+    # Set defaults - deployment info and subject info always included
+    backup_subjectsource_obs_enabled = True  # Always include deployment information
+    join_subject_details = True  # Always include subject information
+    
+    col1, col2 = st.columns(2)
     
     with col1:
-        backup_subjectsource_obs_enabled = st.checkbox("🔗 Include SubjectSource Observations", value=True, 
-                                                       help="GPS data with animal details")
-        backup_events_enabled = st.checkbox("📝 Include Events/Reports", value=True,
+        backup_events_enabled = st.checkbox("📝 Include Events", value=True,
                                            help="Field observations and incidents")
     
     with col2:
-        join_subject_details = st.checkbox("📋 Include Animal Details", value=True,
-                                          help="Join subject and group info",
-                                          disabled=not backup_subjectsource_obs_enabled)
+        filter_giraffes_only = st.checkbox("🦒 Filter to Giraffe Subtype Only", value=True,
+                                          help="Only include data for animals with subType = 'giraffe'")
     
-    with col3:
-        # Speed optimization option
-        use_bulk_mode = st.checkbox("🚀 Ultra-Fast Mode", value=True,
-                                   help="Use direct API calls like R code (much faster!)")
-        if not use_bulk_mode:
-            st.warning("⚠️ Month-by-month mode is slower but more memory efficient")
+    # Speed optimization - ultrafast mode is now default and only option
+    use_bulk_mode = True  # Always use ultrafast mode
     
-    if use_bulk_mode:
-        st.info("🚀 **Ultra-Fast Mode**: Uses direct API calls with cursor pagination (like your R code) - much faster than ecoscope!")
-    
-    # Date range selection
-    st.subheader("📅 Date Range")
-    
-    col1, col2, col3 = st.columns(3)
+    # Date range selection (part of backup configuration)
+    col1, col2 = st.columns(2)
     
     with col1:
         start_date = st.date_input(
@@ -1438,18 +1880,6 @@ def main():
             help="End date for backup"
         )
     
-    with col3:
-        # Quick date range buttons
-        if st.button("📅 Last Year"):
-            start_date = date.today().replace(year=date.today().year - 1, month=1, day=1)
-            end_date = date.today().replace(year=date.today().year - 1, month=12, day=31)
-            st.rerun()
-        
-        if st.button("📅 Since 2016"):
-            start_date = date(2016, 1, 1)
-            end_date = date.today()
-            st.rerun()
-    
     if start_date > end_date:
         st.error("❌ Start date cannot be after end date")
         return
@@ -1462,33 +1892,16 @@ def main():
     **Backup Scope:**
     - 📅 **Date Range**: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}
     - 📊 **Total Months**: {total_months}
-    - ⏱️ **Estimated Time**: {total_months * 1:.0f}-{total_months * 3:.0f} minutes (BULK MODE)
-    - 💾 **Strategy**: Month-by-month bulk processing
+    - ⏱️ **Estimated Time**: {total_months * 1:.0f}-{total_months * 3:.0f} minutes
     """)
     
-    # Resume previous backup
-    st.subheader("🔄 Resume Previous Backup")
-    
-    progress_dir = Path("backup_progress")
-    if progress_dir.exists():
-        existing_backups = [f.stem for f in progress_dir.glob("*.json")]
-        if existing_backups:
-            selected_backup = st.selectbox("Select backup to resume:", ["New Backup"] + existing_backups)
-            if st.button("📂 Load Backup Progress") and selected_backup != "New Backup":
-                progress = load_backup_progress(selected_backup)
-                if progress:
-                    st.success(f"Loaded backup: {selected_backup}")
-                    st.json(progress)
-    
+
     # Backup execution
     st.subheader("🚀 Execute Backup")
     
-    if use_bulk_mode:
-        st.info("🚀 **Ultra-Fast Mode Selected**: Will download all data at once using R-style direct API calls")
-    else:
-        st.info("📅 **Month-by-Month Mode**: Will process data incrementally month by month")
+    # Since ultrafast mode is now default, skip the mode selection info
     
-    if st.button("🔄 Start High Performance Backup", type="primary"):
+    if st.button("🔄 Start backup", type="primary"):
         if not backup_subjectsource_obs_enabled and not backup_events_enabled:
             st.error("❌ Please select at least one backup option")
             return
@@ -1513,7 +1926,8 @@ def main():
                         server_url=st.session_state.server_url,
                         start_date=start_date,
                         end_date=end_date,
-                        include_subject_details=join_subject_details
+                        include_subject_details=join_subject_details,
+                        filter_giraffes_only=filter_giraffes_only
                     )
                     
                     if not master_df.empty:
@@ -1529,7 +1943,7 @@ def main():
                             st.write("- 🏷️ Source/tag information (ID, manufacturer, model)")
                             st.write("- 📅 Deployment details (start/end dates, duration)")
                             st.write("- 🐘 Subject details (name, species, sex)")
-                            st.write("- 🏞️ Group/landscape information")
+                            st.write("- 🏞️ Group/landscape information (country, region, species)")
                             st.write("- 📍 Tag placement details (extracted from notes)")
                             st.write("- 🔋 Device status and battery information")
                             st.write("- 🧹 Filtered to deployment periods only")
@@ -1538,6 +1952,35 @@ def main():
                             cols = master_df.columns.tolist()
                             st.write(f"**Total columns:** {len(cols)}")
                             st.write(f"**Key columns:** {', '.join(cols[:10])}{'...' if len(cols) > 10 else ''}")
+                            
+                            # Show group information if available
+                            if 'obsCountry' in master_df.columns:
+                                try:
+                                    # Handle potential multi-dimensional data
+                                    country_series = master_df['obsCountry'].dropna()
+                                    if len(country_series) > 0:
+                                        countries = country_series.value_counts().head(5)
+                                        st.write(f"**Top countries:** {dict(countries)}")
+                                except Exception as e:
+                                    st.write(f"**Countries:** Available but complex structure")
+                            
+                            if 'obsRegion' in master_df.columns:
+                                try:
+                                    region_series = master_df['obsRegion'].dropna()
+                                    if len(region_series) > 0:
+                                        regions = region_series.value_counts().head(5)
+                                        st.write(f"**Top regions:** {dict(regions)}")
+                                except Exception as e:
+                                    st.write(f"**Regions:** Available but complex structure")
+                            
+                            if 'deployDays' in master_df.columns:
+                                try:
+                                    deploy_days = pd.to_numeric(master_df['deployDays'], errors='coerce')
+                                    avg_deploy_days = deploy_days.mean()
+                                    if not pd.isna(avg_deploy_days):
+                                        st.write(f"**Average deployment days:** {avg_deploy_days:.1f}")
+                                except Exception as e:
+                                    st.write(f"**Deployment days:** Available but needs processing")
                 
                 if backup_events_enabled:
                     # Use ecoscope for events (usually smaller dataset)
@@ -1735,7 +2178,6 @@ def main():
         backup_data_available = True
         backup_data = st.session_state.backup_data
         metadata = st.session_state.backup_metadata
-        st.write("🔍 Debug: Using session state backup data")
     elif 'temp_backup_file' in st.session_state and os.path.exists(st.session_state.temp_backup_file):
         # Fall back to temporary file if session state is lost
         try:
@@ -1744,7 +2186,6 @@ def main():
                 backup_data = temp_data['backup_data']
                 metadata = temp_data['backup_metadata']
                 backup_data_available = True
-                st.write("🔍 Debug: Restored backup data from temporary file")
                 # Restore to session state
                 st.session_state.backup_data = backup_data
                 st.session_state.backup_metadata = metadata
@@ -1753,9 +2194,6 @@ def main():
     
     if backup_data_available:
         st.subheader("📦 Download Backup Files")
-        
-        # Debug info
-        st.write(f"🔍 Debug: Backup data keys: {list(backup_data.keys()) if backup_data else 'None'}")
         
         backup_id = metadata['backup_id']
         total_records = metadata['total_records']
