@@ -80,9 +80,12 @@ def _main_implementation():
     st.sidebar.subheader("🔧 Options")
     
     if st.sidebar.button("🔄 Refresh Data"):
-        # Force refresh by clearing session state
+        # Force refresh by clearing cached data
+        st.cache_data.clear()  # Clear all cached data
         if 'events_data' in st.session_state:
             del st.session_state['events_data']
+        if 'er_connection' in st.session_state:
+            del st.session_state['er_connection']
         st.rerun()
     
     if st.sidebar.button("🔓 Logout"):
@@ -100,24 +103,33 @@ def main():
 # Custom CSS for better styling and widescreen layout
 st.markdown("""
 <style>
-    /* Widescreen layout - reduce margins and padding */
+    /* Widescreen layout - remove all margins and padding for full width */
     .main .block-container {
         padding-top: 1rem;
         padding-bottom: 0rem;
-        padding-left: 1rem;
-        padding-right: 1rem;
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
         max-width: none;
+        width: 100%;
     }
     
     /* Remove default Streamlit margins */
     .main > div {
         padding-top: 0rem;
+        width: 100%;
     }
     
     /* Full width content */
     .stApp > div:first-child {
         margin: 0;
         padding: 0;
+        width: 100%;
+    }
+    
+    /* Make sidebar narrower to give more space to content */
+    .css-1d391kg {
+        padding-top: 1rem;
+        width: 250px;
     }
     
     /* Logo and header styling */
@@ -157,9 +169,20 @@ st.markdown("""
         width: 100%;
     }
     
-    /* Sidebar adjustments for widescreen */
-    .css-1d391kg {
-        padding-top: 1rem;
+    /* Ensure tables use full container width */
+    .stDataFrame > div {
+        width: 100%;
+        overflow-x: auto;
+    }
+    
+    /* Full width for plotly charts */
+    .js-plotly-plot {
+        width: 100% !important;
+    }
+    
+    /* Reduce column spacing for more compact layout */
+    .row-widget {
+        margin-bottom: 0.5rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -174,9 +197,12 @@ def init_session_state():
         st.session_state.password = ""
     if 'server_url' not in st.session_state:
         st.session_state.server_url = "https://twiga.pamdas.org"
+    # Add connection caching for performance
+    if 'er_connection' not in st.session_state:
+        st.session_state.er_connection = None
 
 def er_login(username, password):
-    """Simple login function like NANW dashboard with enhanced cloud compatibility"""
+    """Optimized login function with faster credential verification"""
     try:
         # Try with explicit SSL settings for cloud compatibility
         import ssl
@@ -187,41 +213,24 @@ def er_login(username, password):
             server=st.session_state.server_url,
             username=username,
             password=password,
-            verify_ssl=True  # Ensure SSL verification is explicit
+            verify_ssl=True
         )
-        # Try a simple call to check credentials but handle geospatial errors
+        
+        # Use a much faster authentication test - just get user info instead of events
         try:
-            er.get_events(limit=1)
+            # This is much faster than get_events() - just checks if we can authenticate
+            er.get_sources(limit=1)  # Much faster than get_events
             return True
-        except Exception as geo_error:
-            # If it's a geospatial error but authentication worked, consider it success
-            if "geospatial method" in str(geo_error) or "geometry column" in str(geo_error):
-                return True  # Authentication worked, just a geometry issue
+        except Exception as auth_error:
+            # Check if it's a geometry/processing error but auth worked
+            if any(keyword in str(auth_error).lower() for keyword in 
+                   ["geospatial", "geometry", "column", "copy keyword"]):
+                return True  # Authentication worked
             else:
-                raise geo_error  # Re-raise if it's a real auth error
+                raise auth_error
+                
     except Exception as e:
-        # Write detailed error info to Desktop for debugging
-        try:
-            desktop_path = os.path.expanduser(r"C:\Users\court\Desktop\er_login_error.txt")
-            with open(desktop_path, "a") as f:
-                f.write(f"[{datetime.now()}] Username: {username}\n")
-                f.write(f"Server: {st.session_state.server_url}\n")
-                f.write(f"Environment: {'DEPLOYED' if 'STREAMLIT_SHARING' in os.environ or 'STREAMLIT_CLOUD' in os.environ else 'LOCAL'}\n")
-                f.write(f"Error Type: {type(e).__name__}\n")
-                f.write(f"Error Message: {str(e)}\n")
-                if hasattr(e, 'response') and e.response is not None:
-                    f.write(f"HTTP Status: {e.response.status_code}\n")
-                    f.write(f"Response Text: {e.response.text}\n")
-                f.write("="*50 + "\n\n")
-        except Exception as file_error:
-            print(f"Failed to write error log: {file_error}")
-        
-        # Display error in UI for better debugging
         st.error(f"🚫 Authentication Failed: {str(e)}")
-        if hasattr(e, 'response') and e.response is not None:
-            st.error(f"📊 HTTP Status: {e.response.status_code}")
-            st.error(f"📝 Response: {e.response.text[:200]}...")
-        
         return False
 
 def authenticate_earthranger():
@@ -243,19 +252,21 @@ def authenticate_earthranger():
     password = st.text_input("EarthRanger Password", type="password")
     
     if st.button("Login"):
-        if er_login(username, password):
-            st.session_state.authenticated = True
-            st.session_state.username = username
-            st.session_state.password = password
-            st.success("Login successful!")
-            st.rerun()
-        else:
-            st.error("Invalid credentials. Please try again.")
+        with st.spinner("🔐 Authenticating with EarthRanger..."):
+            if er_login(username, password):
+                st.session_state.authenticated = True
+                st.session_state.username = username
+                st.session_state.password = password
+                st.success("✅ Login successful!")
+                st.rerun()
+            else:
+                st.error("❌ Invalid credentials. Please try again.")
     st.stop()
 
-# @st.cache_data(ttl=3600)  # Cache disabled to ensure fresh data
-def get_biological_sample_events(start_date=None, end_date=None, max_results=200):
-    """Fetch biological sample events from EarthRanger using ecoscope"""
+# Enable caching with 1-hour TTL to dramatically improve performance
+@st.cache_data(ttl=3600, show_spinner="🔄 Fetching biological sample data from EarthRanger...")
+def get_biological_sample_events(start_date=None, end_date=None, max_results=500):
+    """Fetch biological sample events from EarthRanger using ecoscope - OPTIMIZED for speed"""
     if not ECOSCOPE_AVAILABLE:
         st.error("❌ Ecoscope package is required but not available.")
         return pd.DataFrame()
@@ -271,15 +282,13 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
             password=st.session_state.password
         )
         
-        # Build parameters for ecoscope get_events
-        # Note: Don't pass event_type to get_events as it expects UUIDs, 
-        # we'll filter by event_type string after getting the data
+        # Build parameters for ecoscope get_events - OPTIMIZED
         kwargs = {
             'event_category': 'veterinary',
             'include_details': True,
-            'include_notes': True,
-            'max_results': max_results,  # Use the parameter
-            'drop_null_geometry': False  # Keep events without geometry for now
+            'include_notes': False,  # Disabled notes to speed up fetching
+            'max_results': max_results,
+            'drop_null_geometry': True  # Drop null geometry to speed up processing
         }
         
         # Add date filters if provided
@@ -288,274 +297,168 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=200
         if end_date:
             kwargs['until'] = end_date.strftime('%Y-%m-%dT23:59:59Z')
         
-        # Get events using ecoscope (all veterinary events)
-        # Handle NumPy 2.x compatibility issue
+        # Get events using ecoscope with optimized settings
         import warnings
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message=".*copy keyword.*")
-            warnings.filterwarnings("ignore", message=".*np.array.*")
+            warnings.filterwarnings("ignore")  # Suppress all warnings for speed
             gdf_events = er_io.get_events(**kwargs)
         
         if gdf_events.empty:
             return pd.DataFrame()
         
-        # Convert GeoDataFrame to regular DataFrame for easier handling in Streamlit
-        # Handle potential NumPy compatibility issues during conversion
-        try:
-            df = pd.DataFrame(gdf_events.drop(columns='geometry', errors='ignore'))
-        except Exception as conversion_error:
-            st.warning(f"Geometry conversion warning: {str(conversion_error)}")
-            # Fallback: convert without geometry handling
-            df = pd.DataFrame(gdf_events)
-            if 'geometry' in df.columns:
-                df = df.drop(columns='geometry', errors='ignore')
+        # FAST conversion - minimal processing
+        df = pd.DataFrame(gdf_events.drop(columns='geometry', errors='ignore'))
         
-        # Filter by event_type after getting the data (avoiding UUID requirement)
+        # Quick filter by event_type - do this early to reduce processing
         if 'event_type' in df.columns:
             df = df[df['event_type'] == 'biological_sample']
+            
+            if df.empty:
+                st.warning("⚠️ No biological_sample events found after filtering veterinary events")
+                return pd.DataFrame()
         
-        if df.empty:
-            return pd.DataFrame()
-        
-        # Process the data
+        # Essential datetime processing only
         if 'time' in df.columns:
             df['time'] = pd.to_datetime(df['time'])
             df['date'] = df['time'].dt.date
             df['year'] = df['time'].dt.year
-            df['month'] = df['time'].dt.month
-            df['month_name'] = df['time'].dt.strftime('%B')
         
-        # Add location information if geometry was available, but preserve CSV coordinates if they exist
-        if not gdf_events.empty and 'geometry' in gdf_events.columns:
-            # Extract coordinates from geometry with error handling
-            try:
-                geo_latitude = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
-                geo_longitude = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
-                
-
-                
-                # Only use geometry coordinates where CSV coordinates are missing/zero
-                if 'latitude' not in df.columns:
-                    df['latitude'] = geo_latitude
-                else:
-                    # Fill missing or zero values with geometry coordinates
-                    df['latitude'] = df['latitude'].fillna(geo_latitude)
-                    df.loc[(df['latitude'] == 0) & (geo_latitude.notna()), 'latitude'] = geo_latitude
-                
-                if 'longitude' not in df.columns:
-                    df['longitude'] = geo_longitude
-                else:
-                    # Fill missing or zero values with geometry coordinates
-                    df['longitude'] = df['longitude'].fillna(geo_longitude)
-                    df.loc[(df['longitude'] == 0) & (geo_longitude.notna()), 'longitude'] = geo_longitude
-                    
-            except Exception as geo_error:
-                st.warning(f"Geometry processing warning: {str(geo_error)}")
-                # Continue without geometry data
-                pass
-        
-        # Extract country and site information from event_details and check for coordinate data
+        # IMPROVED country/site extraction - more thorough but still fast
         if 'event_details' in df.columns:
             countries = []
             sites = []
-            csv_latitudes = []
-            csv_longitudes = []
             
-            for _, row in df.iterrows():
-                event_details = row.get('event_details', {})
-                serial_number = row.get('serial_number', 'Unknown')
+            for idx, row in df.iterrows():
+                details = row.get('event_details', {})
                 
-                # Extract country (iso) and site from event_details
-                country = None
-                site = None
-                csv_lat = None
-                csv_lng = None
+                country = "Unknown"
+                site = "Unknown"
                 
-                if isinstance(event_details, dict):
-                    # Direct access to country and site fields - check girsam_ prefixed fields first
-                    country = event_details.get('girsam_iso') or event_details.get('country') or event_details.get('iso')
-                    site = event_details.get('girsam_site') or event_details.get('site')
+                if isinstance(details, dict):
+                    # Check multiple possible locations for country data
+                    raw_country = (details.get('girsam_iso') or 
+                                  details.get('country') or 
+                                  details.get('iso'))
                     
-                    # Check for coordinate data from the original CSV upload
-                    if 'latitude' in event_details:
-                        try:
-                            csv_lat = float(event_details['latitude'])
-                        except (ValueError, TypeError):
-                            csv_lat = None
-                    if 'longitude' in event_details:
-                        try:
-                            csv_lng = float(event_details['longitude'])
-                        except (ValueError, TypeError):
-                            csv_lng = None
-                
-                # CRITICAL: Also check the 'location' field for correct coordinates
-                if csv_lat is None or csv_lng is None:
-                    location = row.get('location', {})
-                    if isinstance(location, dict):
-                        if csv_lat is None and 'latitude' in location:
-                            try:
-                                csv_lat = float(location['latitude'])
-                            except (ValueError, TypeError):
-                                pass
-                        if csv_lng is None and 'longitude' in location:
-                            try:
-                                csv_lng = float(location['longitude'])
-                            except (ValueError, TypeError):
-                                pass
+                    country = raw_country
                     
-                    # Also check nested structures (girsam) as fallback - prioritize iso field
-                    if not country and 'girsam' in event_details:
-                        girsam_data = event_details.get('girsam', {})
+                    site = (details.get('girsam_site') or 
+                           details.get('site'))
+                    
+                    # Also check nested girsam structure if direct fields are empty
+                    if not country and 'girsam' in details:
+                        girsam_data = details.get('girsam', {})
                         if isinstance(girsam_data, dict):
-                            # Try iso first, then country as fallback
-                            country = girsam_data.get('iso') or girsam_data.get('country')
-                    if not site and 'girsam' in event_details:
-                        girsam_data = event_details.get('girsam', {})
+                            nested_country = girsam_data.get('iso') or girsam_data.get('country')
+                            if nested_country:
+                                country = nested_country
+                    
+                    if not site and 'girsam' in details:
+                        girsam_data = details.get('girsam', {})
                         if isinstance(girsam_data, dict):
                             site = girsam_data.get('site')
                             
-                elif isinstance(event_details, str):
-                    # Try to parse JSON string
+                elif isinstance(details, str):
+                    # Handle JSON string format
                     try:
-                        parsed_details = json.loads(event_details)
-                        if isinstance(parsed_details, dict):
-                            country = parsed_details.get('girsam_iso') or parsed_details.get('country') or parsed_details.get('iso')
-                            site = parsed_details.get('girsam_site') or parsed_details.get('site')
+                        import json
+                        parsed = json.loads(details)
+                        if isinstance(parsed, dict):
+                            raw_country = (parsed.get('girsam_iso') or 
+                                          parsed.get('country') or 
+                                          parsed.get('iso'))
+                            country = raw_country
                             
-                            # Check for coordinate data
-                            if 'latitude' in parsed_details:
-                                try:
-                                    csv_lat = float(parsed_details['latitude'])
-                                except (ValueError, TypeError):
-                                    csv_lat = None
-                            if 'longitude' in parsed_details:
-                                try:
-                                    csv_lng = float(parsed_details['longitude'])
-                                except (ValueError, TypeError):
-                                    csv_lng = None
-                            
-                            # Check nested structures - prioritize iso field
-                            if not country and 'girsam' in parsed_details:
-                                girsam_data = parsed_details.get('girsam', {})
-                                if isinstance(girsam_data, dict):
-                                    country = girsam_data.get('iso') or girsam_data.get('country')
-                            if not site and 'girsam' in parsed_details:
-                                girsam_data = parsed_details.get('girsam', {})
-                                if isinstance(girsam_data, dict):
-                                    site = girsam_data.get('site')
-                    except json.JSONDecodeError:
-                        pass
+                            site = (parsed.get('girsam_site') or 
+                                   parsed.get('site'))
+                    except:
+                        pass  # Keep defaults if parsing fails
                 
-                # Clean and append values
-                countries.append(str(country).strip() if country and str(country).strip() not in ['None', 'null', '', 'nan'] else "Unknown")
-                sites.append(str(site).strip() if site and str(site).strip() not in ['None', 'null', '', 'nan'] else "Unknown")
-                csv_latitudes.append(csv_lat)
-                csv_longitudes.append(csv_lng)
+                # Clean up the values
+                final_country = str(country).strip() if country and str(country).strip() not in ['None', 'null', '', 'nan'] else "Unknown"
+                site = str(site).strip() if site and str(site).strip() not in ['None', 'null', '', 'nan'] else "Unknown"
+                
+                countries.append(final_country)
+                sites.append(site)
             
             df['country'] = countries
             df['site'] = sites
             
-            # Prioritize CSV coordinates from event_details over any other source
-            csv_coords_found = any(lat is not None for lat in csv_latitudes)
-            if csv_coords_found:
-                
-                # Initialize coordinate columns if they don't exist
-                if 'latitude' not in df.columns:
-                    df['latitude'] = [None] * len(df)
-                if 'longitude' not in df.columns:
-                    df['longitude'] = [None] * len(df)
-                
-                # Set coordinates from CSV data, OVERRIDING any geometry coordinates
-                for i, (lat, lng) in enumerate(zip(csv_latitudes, csv_longitudes)):
-                    if lat is not None and lng is not None:
-                        # Force CSV coordinates to override any existing coordinates (including geometry)
-                        df.iloc[i, df.columns.get_loc('latitude')] = lat
-                        df.iloc[i, df.columns.get_loc('longitude')] = lng
-                    elif 'latitude' in df.columns and 'longitude' in df.columns:
-                        # If CSV coordinates are missing, but we have columns, ensure they're not left as zero
-                        if pd.isna(df.iloc[i, df.columns.get_loc('latitude')]) or df.iloc[i, df.columns.get_loc('latitude')] == 0:
-                            df.iloc[i, df.columns.get_loc('latitude')] = None
-                        if pd.isna(df.iloc[i, df.columns.get_loc('longitude')]) or df.iloc[i, df.columns.get_loc('longitude')] == 0:
-                            df.iloc[i, df.columns.get_loc('longitude')] = None
-            else:
-                pass
-        else:
-            df['country'] = "Unknown"
-            df['site'] = "Unknown"
+            # Create flattened detail fields for consistency with table display
+            df['details_girsam_iso'] = countries
+            df['details_girsam_site'] = sites
         
-        # Also create flattened detail fields for display (this ensures both approaches work)
-        try:
-            if 'event_details' in df.columns:
-                # Quick flattening for key fields to ensure we have the flattened columns too
-                girsam_iso_values = []
-                girsam_site_values = []
+        # SIMPLIFIED coordinate handling - prioritize CSV coordinates from event_details
+        if 'event_details' in df.columns:
+            latitudes = []
+            longitudes = []
+            
+            for _, row in df.iterrows():
+                event_details = row.get('event_details', {})
+                lat = None
+                lng = None
                 
-                for _, row in df.iterrows():
-                    event_details = row.get('event_details', {})
-                    iso_val = None
-                    site_val = None
-                    
-                    if isinstance(event_details, dict):
-                        # Check girsam_ prefixed fields first (root level)
-                        iso_val = event_details.get('girsam_iso')
-                        site_val = event_details.get('girsam_site')
-                        
-                        # Fallback: Check girsam nested structure - prioritize iso field
-                        if not iso_val and 'girsam' in event_details:
-                            girsam_data = event_details.get('girsam', {})
-                            if isinstance(girsam_data, dict):
-                                iso_val = girsam_data.get('iso') or girsam_data.get('country')
-                        if not site_val and 'girsam' in event_details:
-                            girsam_data = event_details.get('girsam', {})
-                            if isinstance(girsam_data, dict):
-                                site_val = girsam_data.get('site')
-                    elif isinstance(event_details, str):
+                # Extract coordinates from event_details (CSV data)
+                if isinstance(event_details, dict):
+                    if 'latitude' in event_details:
                         try:
-                            parsed_details = json.loads(event_details)
-                            if isinstance(parsed_details, dict):
-                                # Check girsam_ prefixed fields first
-                                iso_val = parsed_details.get('girsam_iso')
-                                site_val = parsed_details.get('girsam_site')
-                                
-                                # Fallback: check nested girsam structure
-                                if not iso_val and 'girsam' in parsed_details:
-                                    girsam_data = parsed_details.get('girsam', {})
-                                    if isinstance(girsam_data, dict):
-                                        iso_val = girsam_data.get('iso') or girsam_data.get('country')
-                                if not site_val and 'girsam' in parsed_details:
-                                    girsam_data = parsed_details.get('girsam', {})
-                                    if isinstance(girsam_data, dict):
-                                        site_val = girsam_data.get('site')
-                        except json.JSONDecodeError:
-                            pass
-                    
-                    girsam_iso_values.append(str(iso_val).strip() if iso_val and str(iso_val).strip() not in ['None', 'null', '', 'nan'] else "Unknown")
-                    girsam_site_values.append(str(site_val).strip() if site_val and str(site_val).strip() not in ['None', 'null', '', 'nan'] else "Unknown")
+                            lat = float(event_details['latitude'])
+                        except (ValueError, TypeError):
+                            lat = None
+                    if 'longitude' in event_details:
+                        try:
+                            lng = float(event_details['longitude'])
+                        except (ValueError, TypeError):
+                            lng = None
+                elif isinstance(event_details, str):
+                    try:
+                        parsed_details = json.loads(event_details)
+                        if isinstance(parsed_details, dict):
+                            if 'latitude' in parsed_details:
+                                try:
+                                    lat = float(parsed_details['latitude'])
+                                except (ValueError, TypeError):
+                                    lat = None
+                            if 'longitude' in parsed_details:
+                                try:
+                                    lng = float(parsed_details['longitude'])
+                                except (ValueError, TypeError):
+                                    lng = None
+                    except json.JSONDecodeError:
+                        pass
                 
-                # Add the flattened columns
-                df['details_girsam_iso'] = girsam_iso_values
-                df['details_girsam_site'] = girsam_site_values
-        except Exception as flatten_error:
-            st.warning(f"Field flattening warning: {str(flatten_error)}")
-            # Continue without flattened fields
-            pass
-        
-        # Debug: Check coordinate sources
-        if 'latitude' in df.columns and 'longitude' in df.columns:
-            # Check for mismatched coordinates (Namibian sites with non-Namibian coordinates)
-            namibian_events = df[df['country'].str.upper() == 'NAM'] if 'country' in df.columns else df
-            if not namibian_events.empty:
-                # Namibia longitude should be roughly 12°E to 25°E
-                suspicious_coords = namibian_events[
-                    (namibian_events['longitude'] < 10) | (namibian_events['longitude'] > 26)
-                ]
-                if not suspicious_coords.empty:
-                    pass
+                # Only use EarthRanger location as fallback if CSV coordinates are missing
+                if lat is None or lng is None:
+                    location = row.get('location', {})
+                    if isinstance(location, dict):
+                        if lat is None and 'latitude' in location:
+                            try:
+                                fallback_lat = float(location['latitude'])
+                                # Only use if it's not a default/placeholder coordinate
+                                if fallback_lat != 0 and abs(fallback_lat) > 0.001:
+                                    lat = fallback_lat
+                            except (ValueError, TypeError):
+                                pass
+                        if lng is None and 'longitude' in location:
+                            try:
+                                fallback_lng = float(location['longitude'])
+                                # Only use if it's not a default/placeholder coordinate
+                                if fallback_lng != 0 and abs(fallback_lng) > 0.001:
+                                    lng = fallback_lng
+                            except (ValueError, TypeError):
+                                pass
+                
+                latitudes.append(lat)
+                longitudes.append(lng)
+            
+            # Set the coordinate columns
+            df['latitude'] = latitudes
+            df['longitude'] = longitudes
         
         return df
         
     except Exception as e:
-        st.error(f"Error fetching biological sample events: {str(e)}")
+        st.error(f"❌ Error fetching biological sample events: {str(e)}")
         return pd.DataFrame()
 
 def display_event_details_table(df_events):
@@ -740,17 +643,29 @@ def display_events_map(df_events):
     if df_events.empty:
         return
     
-    # Check if we have location data
-    if 'latitude' not in df_events.columns or 'longitude' not in df_events.columns:
+    # Check if we have location data - handle both column naming conventions
+    lat_col = None
+    lon_col = None
+    
+    # Check for original latitude/longitude columns first
+    if 'latitude' in df_events.columns and 'longitude' in df_events.columns:
+        lat_col = 'latitude'
+        lon_col = 'longitude'
+    # Check for flattened details columns as fallback
+    elif 'details_latitude' in df_events.columns and 'details_longitude' in df_events.columns:
+        lat_col = 'details_latitude'
+        lon_col = 'details_longitude'
+    
+    if lat_col is None or lon_col is None:
         st.warning("No location data available for mapping.")
         return
     
     # Filter events with valid coordinates
     df_map = df_events[
-        (df_events['latitude'].notna()) & 
-        (df_events['longitude'].notna()) &
-        (df_events['latitude'] != 0) &
-        (df_events['longitude'] != 0)
+        (df_events[lat_col].notna()) & 
+        (df_events[lon_col].notna()) &
+        (df_events[lat_col] != 0) &
+        (df_events[lon_col] != 0)
     ].copy()
     
     if df_map.empty:
@@ -792,12 +707,12 @@ def display_events_map(df_events):
         # Create the map with sample status coloring using custom color mapping
         fig = px.scatter_mapbox(
             df_map,
-            lat='latitude',
-            lon='longitude',
+            lat=lat_col,
+            lon=lon_col,
             hover_name='serial_number',
             hover_data={
-                'latitude': ':.6f',
-                'longitude': ':.6f',
+                lat_col: ':.6f',
+                lon_col: ':.6f',
                 'time': True,
                 'details_girsam_smpid': True,
                 'details_girsam_species': True,
@@ -816,12 +731,12 @@ def display_events_map(df_events):
         # Fallback if processing status column doesn't exist
         fig = px.scatter_mapbox(
             df_map,
-            lat='latitude',
-            lon='longitude',
+            lat=lat_col,
+            lon=lon_col,
             hover_name='serial_number',
             hover_data={
-                'latitude': ':.6f',
-                'longitude': ':.6f',
+                lat_col: ':.6f',
+                lon_col: ':.6f',
                 'time': True,
                 'details_girsam_smpid': True,
                 'details_girsam_species': True,
@@ -930,9 +845,9 @@ def genetic_dashboard():
             help="Limit the number of events to fetch (higher numbers may be slower)"
         )
 
-    # Default date values for initial data fetch - cover 2024 data
-    start_date_temp = date(2024, 1, 1)  # Start of 2024
-    end_date_temp = date(2024, 12, 31)  # End of 2024
+    # Default date values for initial data fetch - EXPANDED to catch all data including zmb
+    start_date_temp = date(2022, 1, 1)  # Start from 2022 to capture more data
+    end_date_temp = date.today()        # Up to today to include 2025 data
 
     # Fetch biological sample events with the selected max_results for initial display
     with st.spinner("Fetching biological sample events..."):
@@ -944,13 +859,33 @@ def genetic_dashboard():
         df_events = pd.DataFrame()  # Continue with empty dataframe    # Filter section - always show, even if initial data is empty
     st.subheader("🔍 Filters")
     
-    # Get unique countries from the data (if any)
-    if not df_events.empty and 'country' in df_events.columns:
-        available_countries = sorted([c for c in df_events['country'].unique() if c not in ['Unknown', 'Other', None] and str(c).strip() != ''])
-        if 'Other' in df_events['country'].values:
+    # Get unique countries from the data (if any) - FIXED to match table data
+    if not df_events.empty:
+        # Use the same logic as the table display to ensure consistency
+        # First, check if details_girsam_iso exists (this is what the table shows)
+        if 'details_girsam_iso' in df_events.columns:
+            # Use the ISO country codes from the detailed data
+            all_countries = df_events['details_girsam_iso'].unique()
+        elif 'country' in df_events.columns:
+            # Fallback to the country column
+            all_countries = df_events['country'].unique()
+        else:
+            all_countries = []
+        
+        # Filter out only truly empty/invalid values but keep all valid country codes
+        available_countries = sorted([
+            c for c in all_countries 
+            if c is not None 
+            and str(c).strip() != '' 
+            and str(c).strip().lower() not in ['none', 'null', 'nan']
+        ])
+        
+        # Add back 'Other' and 'Unknown' if they exist in the data
+        if 'Other' in all_countries:
             available_countries.append('Other')
-        if 'Unknown' in df_events['country'].values:
+        if 'Unknown' in all_countries:
             available_countries.append('Unknown')
+            
     else:
         available_countries = []
     
@@ -1148,9 +1083,12 @@ def genetic_dashboard():
     
     with col4:
         if st.button("🔄 Refresh Data", type="primary"):
-            # Force refresh by clearing session state
+            # Force refresh by clearing cached data
+            st.cache_data.clear()  # Clear all cached data
             if 'events_data' in st.session_state:
                 del st.session_state['events_data']
+            if 'er_connection' in st.session_state:
+                del st.session_state['er_connection']
             st.rerun()
     
     # Validate date range and refetch data if dates are different
@@ -1171,9 +1109,14 @@ def genetic_dashboard():
     df_filtered = df_events.copy()
     filter_info = []
     
-    # Apply country filter
+    # Apply country filter - FIXED to use the same column source as dropdown
     if selected_country != "All Countries":
-        df_filtered = df_filtered[df_filtered['country'] == selected_country]
+        # Use the same column that was used to populate the dropdown options
+        if 'details_girsam_iso' in df_filtered.columns:
+            df_filtered = df_filtered[df_filtered['details_girsam_iso'] == selected_country]
+        elif 'country' in df_filtered.columns:
+            df_filtered = df_filtered[df_filtered['country'] == selected_country]
+        
         filter_info.append(f"Country: {selected_country}")
     
     # Apply site filter
