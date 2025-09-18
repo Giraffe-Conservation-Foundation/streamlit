@@ -164,7 +164,7 @@ def get_translocation_events(start_date=None, end_date=None):
         
         # Filter by event_type after getting the data (avoiding UUID requirement)
         if 'event_type' in df.columns:
-            df = df[df['event_type'] == 'giraffe_translocation']
+            df = df[df['event_type'] == 'giraffe_translocation_2']
         
         if df.empty:
             return pd.DataFrame()
