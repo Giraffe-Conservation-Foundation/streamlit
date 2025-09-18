@@ -97,15 +97,15 @@ def authenticate_earthranger():
         
         try:
             with st.spinner("🔐 Authenticating with EarthRanger..."):
-                # Test the connection by creating EarthRangerIO and trying a simple call
+                # Test the connection by creating EarthRangerIO - this validates credentials
                 er_io = EarthRangerIO(
                     server=st.session_state.server_url,
                     username=username,
                     password=password
                 )
                 
-                # Test the connection with a minimal request for faster authentication
-                er_io.get_events(max_results=1)
+                # Just test the connection without fetching data for faster authentication
+                # The EarthRangerIO initialization already validates the connection
                 
                 st.success("✅ Successfully authenticated with EarthRanger!")
                 st.session_state.authenticated = True
