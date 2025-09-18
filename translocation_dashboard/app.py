@@ -96,7 +96,7 @@ def authenticate_earthranger():
             return
         
         try:
-            with st.spinner("Connecting to EarthRanger..."):
+            with st.spinner("🔐 Authenticating with EarthRanger..."):
                 # Test the connection by creating EarthRangerIO and trying a simple call
                 er_io = EarthRangerIO(
                     server=st.session_state.server_url,
@@ -104,7 +104,7 @@ def authenticate_earthranger():
                     password=password
                 )
                 
-                # Test the connection with a small request
+                # Test the connection with a minimal request for faster authentication
                 er_io.get_events(max_results=1)
                 
                 st.success("✅ Successfully authenticated with EarthRanger!")
@@ -273,7 +273,7 @@ def translocation_dashboard():
         return
     
     # Fetch translocation events
-    with st.spinner("Fetching translocation events..."):
+    with st.spinner("🔄 Fetching translocation events from EarthRanger..."):
         df_events = get_translocation_events(start_date, end_date)
     
     if df_events.empty:
