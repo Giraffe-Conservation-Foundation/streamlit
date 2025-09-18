@@ -19,6 +19,12 @@ except ImportError:
 LOCATION_AREAS = {
     'Iona National Park': 15200,
     'Cuatir': 400,
+    'Majete Wildlife Reserve': 700,
+    'Gadabedji': 760,
+    'Murchison Falls National Park (South)': 3893,
+    'Pian Upe Wildlife Reserve': 2275,
+    'Ongongo': 501,
+    'Mnjoli Game Reserve': 4,
     # Add more locations and their areas as needed
 }
 
@@ -556,11 +562,27 @@ def translocation_dashboard():
         
         # Show pie chart only (table removed)
         if len(species_df) > 0:
+            # Custom color palette based on organization colors
+            org_colors = [
+                '#DB580F',  # Primary orange
+                '#3E0000',  # Primary dark red
+                '#CCCCCC',  # Light gray
+                '#999999',  # Medium gray
+                '#FF7F3F',  # Lighter orange variant
+                '#5D1010',  # Lighter dark red variant
+                '#E6E6E6',  # Very light gray
+                '#B8860B',  # Golden brown (complementary)
+                '#8B4513',  # Saddle brown (earth tone)
+                '#A0522D'   # Sienna (earth tone)
+            ]
+            
             fig_species = px.pie(
                 species_df,
                 values='Individuals',
                 names='Species',
-                title="Individuals by Species"
+                title="Individuals by Species",
+                color_discrete_sequence=org_colors,
+                height=400  # Set consistent height
             )
             st.plotly_chart(fig_species, use_container_width=True)
     
