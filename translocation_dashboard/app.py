@@ -18,6 +18,7 @@ except ImportError:
 # Location area data for range calculations (in km²)
 LOCATION_AREAS = {
     'Iona National Park': 15200,
+    'Cuatir': 400,
     # Add more locations and their areas as needed
 }
 
@@ -197,6 +198,102 @@ def get_translocation_events(start_date=None, end_date=None):
         st.error(f"Error fetching translocation events: {str(e)}")
         return pd.DataFrame()
 
+@st.cache_data(ttl=1800)  # Cache for 30 minutes
+def get_subject_details(subject_ids):
+    """Fetch subject details from EarthRanger using ecoscope"""
+    if not ECOSCOPE_AVAILABLE or not subject_ids:
+        return pd.DataFrame()
+        
+    if not st.session_state.get('username') or not st.session_state.get('password'):
+        return pd.DataFrame()
+    
+    try:
+        # Create EarthRanger connection using stored credentials
+        er_io = EarthRangerIO(
+            server=st.session_state.server_url,
+            username=st.session_state.username,
+            password=st.session_state.password
+        )
+        
+        # Get subjects data
+        subjects_gdf = er_io.get_subjects()
+        
+        if subjects_gdf.empty:
+            return pd.DataFrame()
+        
+        # Convert to DataFrame and filter for our subject IDs
+        subjects_df = pd.DataFrame(subjects_gdf.drop(columns='geometry', errors='ignore'))
+        
+        # Filter for the subjects we're interested in
+        if 'id' in subjects_df.columns:
+            filtered_subjects = subjects_df[subjects_df['id'].isin(subject_ids)]
+        else:
+            return pd.DataFrame()
+        
+        # Get subject tracks/deployments for deployment dates
+        subject_details = []
+        
+        for subject_id in subject_ids:
+            subject_info = filtered_subjects[filtered_subjects['id'] == subject_id]
+            if not subject_info.empty:
+                subject_row = subject_info.iloc[0]
+                
+                # Try to get deployment information
+                try:
+                    # Get subject tracks to find deployment dates
+                    tracks_gdf = er_io.get_subjecttracks(subject_ids=[subject_id])
+                    
+                    deployment_start = None
+                    deployment_end = None
+                    
+                    if not tracks_gdf.empty:
+                        tracks_df = pd.DataFrame(tracks_gdf.drop(columns='geometry', errors='ignore'))
+                        if 'recorded_at' in tracks_df.columns:
+                            tracks_df['recorded_at'] = pd.to_datetime(tracks_df['recorded_at'])
+                            deployment_start = tracks_df['recorded_at'].min()
+                            deployment_end = tracks_df['recorded_at'].max()
+                    
+                    # Determine status based on last location time
+                    status = "Unknown"
+                    if deployment_end:
+                        days_since_last = (pd.Timestamp.now() - deployment_end).days
+                        if days_since_last <= 7:
+                            status = "Active"
+                        elif days_since_last <= 30:
+                            status = "Recent"
+                        else:
+                            status = "Inactive"
+                    
+                    subject_details.append({
+                        'subject_id': subject_id,
+                        'name': subject_row.get('name', 'Unknown'),
+                        'subject_type': subject_row.get('subject_type', 'Unknown'),
+                        'sex': subject_row.get('sex', 'Unknown'),
+                        'deployment_start': deployment_start.strftime('%Y-%m-%d') if deployment_start else 'Unknown',
+                        'deployment_end': deployment_end.strftime('%Y-%m-%d') if deployment_end else 'Unknown',
+                        'last_location_days': (pd.Timestamp.now() - deployment_end).days if deployment_end else None,
+                        'status': status
+                    })
+                    
+                except Exception as e:
+                    # If we can't get deployment info, just add basic subject info
+                    subject_details.append({
+                        'subject_id': subject_id,
+                        'name': subject_row.get('name', 'Unknown'),
+                        'subject_type': subject_row.get('subject_type', 'Unknown'),
+                        'sex': subject_row.get('sex', 'Unknown'),
+                        'deployment_start': 'Unknown',
+                        'deployment_end': 'Unknown',
+                        'last_location_days': None,
+                        'status': 'Unknown'
+                    })
+        
+        return pd.DataFrame(subject_details)
+        
+    except Exception as e:
+        st.error(f"Error fetching subject details: {str(e)}")
+        return pd.DataFrame()
+
 def display_event_details(event):
     """Display detailed information for a single translocation event"""
     with st.expander(f"📅 {event['time'].strftime('%Y-%m-%d %H:%M')} - Event ID: {event.get('id', 'Unknown')}", expanded=False):
@@ -246,8 +343,6 @@ def display_event_details(event):
 
 def translocation_dashboard():
     """Main translocation dashboard interface"""
-    st.header("🚁 Translocation Dashboard")
-    st.markdown("Monitor and analyze giraffe translocation events from EarthRanger")
     
     # Date filter controls
     st.subheader("📅 Filters")
@@ -278,8 +373,19 @@ def translocation_dashboard():
             event_details = event.get('event_details', {})
             if isinstance(event_details, dict):
                 dest_country = event_details.get('destination_country') or event_details.get('country')
-                if dest_country and dest_country not in all_countries:
-                    all_countries.append(dest_country)
+                
+                # Ensure dest_country is a string, not a dict or other type
+                if dest_country:
+                    if isinstance(dest_country, dict):
+                        # If it's a dict, try to extract a meaningful country name
+                        dest_country = (dest_country.get('name') or 
+                                      dest_country.get('country') or 
+                                      dest_country.get('code'))
+                    elif not isinstance(dest_country, str):
+                        dest_country = str(dest_country)
+                    
+                    if dest_country and dest_country not in all_countries:
+                        all_countries.append(dest_country)
     
     with col3:
         selected_country = st.selectbox(
@@ -311,8 +417,18 @@ def translocation_dashboard():
             event_details = event.get('event_details', {})
             if isinstance(event_details, dict):
                 dest_country = event_details.get('destination_country') or event_details.get('country')
-                if dest_country == selected_country:
-                    filtered_events.append(event)
+                
+                # Ensure dest_country is a string for comparison
+                if dest_country:
+                    if isinstance(dest_country, dict):
+                        dest_country = (dest_country.get('name') or 
+                                      dest_country.get('country') or 
+                                      dest_country.get('code'))
+                    elif not isinstance(dest_country, str):
+                        dest_country = str(dest_country)
+                    
+                    if dest_country == selected_country:
+                        filtered_events.append(event)
         
         if filtered_events:
             df_events = pd.DataFrame(filtered_events)
@@ -380,18 +496,30 @@ def translocation_dashboard():
     # Summary metrics
     st.subheader("📊 Summary Statistics")
     
-    # Calculate total individuals translocated using the correct field
+    # Calculate total individuals translocated and species breakdown
     total_individuals = 0
+    species_counts = {}
+    
     for idx, event in df_events.iterrows():
         event_details = event.get('event_details', {})
         if isinstance(event_details, dict):
-            # Use the specific field "total_individuals"
+            # Extract species information
+            species = event_details.get('species') or event_details.get('animal_species') or 'Unknown'
+            if isinstance(species, dict):
+                species = species.get('name') or species.get('species') or 'Unknown'
+            elif not isinstance(species, str):
+                species = str(species) if species else 'Unknown'
+            
+            # Count individuals for this species
             individuals = event_details.get('total_individuals')
             if individuals is not None:
                 try:
-                    total_individuals += int(individuals)
+                    count = int(individuals)
+                    total_individuals += count
+                    species_counts[species] = species_counts.get(species, 0) + count
                 except (ValueError, TypeError):
                     total_individuals += 1  # Default to 1 if can't parse
+                    species_counts[species] = species_counts.get(species, 0) + 1
             else:
                 # Fallback to other possible field names if total_individuals is not available
                 individuals = (event_details.get('number_of_individuals') or 
@@ -399,13 +527,17 @@ def translocation_dashboard():
                              event_details.get('animal_count'))
                 if individuals is not None:
                     try:
-                        total_individuals += int(individuals)
+                        count = int(individuals)
+                        total_individuals += count
+                        species_counts[species] = species_counts.get(species, 0) + count
                     except (ValueError, TypeError):
                         total_individuals += 1
+                        species_counts[species] = species_counts.get(species, 0) + 1
                 else:
                     total_individuals += 1  # Default to 1 if no count field found
+                    species_counts[species] = species_counts.get(species, 0) + 1
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         st.metric("Total Translocation Events", len(df_events))
@@ -413,30 +545,88 @@ def translocation_dashboard():
     with col2:
         st.metric("Total Individuals Translocated", total_individuals)
     
+    with col3:
+        st.metric("Species Types", len(species_counts))
+    
+    # Show species breakdown
+    if species_counts:
+        st.write("**Species Breakdown:**")
+        species_df = pd.DataFrame(list(species_counts.items()), columns=['Species', 'Individuals'])
+        species_df = species_df.sort_values('Individuals', ascending=False)
+        
+        # Show pie chart only (table removed)
+        if len(species_df) > 0:
+            fig_species = px.pie(
+                species_df,
+                values='Individuals',
+                names='Species',
+                title="Individuals by Species"
+            )
+            st.plotly_chart(fig_species, use_container_width=True)
+    
     # Calculate range secured for founder translocations
     st.subheader("🌍 Giraffe Range Secured")
     
     total_range_secured = 0
     founder_locations = []
+    species_range_secured = {}
     
     for idx, event in df_events.iterrows():
         event_details = event.get('event_details', {})
         if isinstance(event_details, dict):
             trans_type = event_details.get('trans_type')
+            
             if trans_type and trans_type.lower() == 'founder':
-                # Get destination location
-                dest_location = (event_details.get('destination_location') or 
-                               event_details.get('dest_location') or 
-                               event_details.get('to_location'))
+                # Extract species information
+                species = event_details.get('species') or event_details.get('animal_species') or 'Unknown'
+                if isinstance(species, dict):
+                    species = species.get('name') or species.get('species') or 'Unknown'
+                elif not isinstance(species, str):
+                    species = str(species) if species else 'Unknown'
                 
+                # Get destination location - ensure it's a string
+                dest_location = (event_details.get('destination_site') or
+                               event_details.get('destination_location') or 
+                               event_details.get('dest_location') or 
+                               event_details.get('to_location') or
+                               event_details.get('Destination Location') or
+                               event_details.get('destination_location_name') or
+                               event_details.get('dest_location_name'))
+                
+                # Ensure dest_location is a string, not a dict or other type
                 if dest_location:
-                    # Look up the area for this location
-                    area_km2 = LOCATION_AREAS.get(dest_location, 0)
+                    if isinstance(dest_location, dict):
+                        # If it's a dict, try to extract a meaningful location name
+                        dest_location = (dest_location.get('name') or 
+                                       dest_location.get('location') or 
+                                       dest_location.get('place') or
+                                       str(dest_location))  # Fallback to string representation
+                    elif not isinstance(dest_location, str):
+                        dest_location = str(dest_location)  # Convert to string
+                    
+                    # Hard-code Iona National Park and Cuatir detection
+                    area_km2 = 0
+                    if dest_location and 'iona' in dest_location.lower():
+                        area_km2 = 15200
+                        dest_location = "Iona National Park"  # Standardize the name
+                    elif dest_location and 'cuatir' in dest_location.lower():
+                        area_km2 = 400
+                        dest_location = "Cuatir"  # Standardize the name
+                    else:
+                        # Look up the area for this location in the dictionary
+                        area_km2 = LOCATION_AREAS.get(dest_location, 0)
+                    
                     if area_km2 > 0:
                         total_range_secured += area_km2
+                        # Track range by species
+                        if species not in species_range_secured:
+                            species_range_secured[species] = set()
+                        species_range_secured[species].add((dest_location, area_km2))
+                        
                         founder_locations.append({
                             'location': dest_location,
                             'area_km2': area_km2,
+                            'species': species,
                             'date': event['time'].strftime('%Y-%m-%d')
                         })
     
@@ -456,17 +646,18 @@ def translocation_dashboard():
         st.write("**Founder Translocation Locations:**")
         founder_df = pd.DataFrame(founder_locations)
         # Group by location to avoid duplicates
-        location_summary = founder_df.groupby('location').agg({
+        location_summary = founder_df.groupby(['location', 'species']).agg({
             'area_km2': 'first',  # Take first value (should be same for all)
             'date': 'count'  # Count number of events
         }).reset_index()
-        location_summary.columns = ['Location', 'Area (km²)', 'Number of Events']
+        location_summary.columns = ['Location', 'Species', 'Area (km²)', 'Number of Events']
         
         st.dataframe(
             location_summary,
             use_container_width=True,
             column_config={
                 'Location': 'Destination Location',
+                'Species': 'Species',
                 'Area (km²)': st.column_config.NumberColumn(
                     'Area (km²)',
                     format="%d"
@@ -475,40 +666,114 @@ def translocation_dashboard():
             }
         )
         
-        # Note about range calculation
-        st.info("""
-        **Range Calculation Notes:**
-        - Only translocations with trans_type = "founder" contribute to range secured
-        - Area calculations are based on destination locations with known protected area sizes
-        - Each location is counted once regardless of multiple founder events
-        """)
-    else:
-        st.info("No founder translocations found in the current selection.")
+        # Show range secured by species
+        if species_range_secured:
+            st.write("**Range Secured by Species:**")
+            # Show as summary metrics instead of table
+            for species, locations in species_range_secured.items():
+                total_species_range = sum(area for _, area in locations)
+                locations_list = list(set(loc for loc, _ in locations))
+                st.metric(
+                    f"{species} Range Secured",
+                    f"{total_species_range:,} km²",
+                    delta=f"{len(locations_list)} location(s): {', '.join(locations_list)}"
+                )
     
-    # Destination country analysis
-    st.subheader("🌍 Destination Country Breakdown")
+    # Analytics sections
+    st.subheader("🌍 Breakdown Analysis")
     
-    destination_countries = []
+    col1, col2 = st.columns(2)
     
-    for idx, event in df_events.iterrows():
-        event_details = event.get('event_details', {})
-        if isinstance(event_details, dict):
-            # Extract destination country
-            dest_country = event_details.get('destination_country') or event_details.get('country') or 'Unknown'
-            destination_countries.append(dest_country)
-    
-    if destination_countries:
-        country_counts = pd.Series(destination_countries).value_counts().reset_index()
-        country_counts.columns = ['country', 'count']
+    with col1:
+        destination_countries = []
         
-        if len(country_counts) > 0:
-            fig_countries = px.pie(
-                country_counts,
-                values='count',
-                names='country',
-                title="Translocation Events by Destination Country"
-            )
-            st.plotly_chart(fig_countries, use_container_width=True)
+        for idx, event in df_events.iterrows():
+            event_details = event.get('event_details', {})
+            if isinstance(event_details, dict):
+                # Extract destination country - ensure it's a string
+                dest_country = event_details.get('destination_country') or event_details.get('country') or 'Unknown'
+                
+                # Ensure dest_country is a string, not a dict or other type
+                if isinstance(dest_country, dict):
+                    # If it's a dict, try to extract a meaningful country name
+                    dest_country = (dest_country.get('name') or 
+                                  dest_country.get('country') or 
+                                  dest_country.get('code') or
+                                  'Unknown')
+                elif not isinstance(dest_country, str):
+                    dest_country = str(dest_country) if dest_country else 'Unknown'
+                
+                destination_countries.append(dest_country)
+        
+        if destination_countries:
+            country_counts = pd.Series(destination_countries).value_counts().reset_index()
+            country_counts.columns = ['country', 'count']
+            
+            if len(country_counts) > 0:
+                # Custom color palette based on organization colors
+                org_colors = [
+                    '#DB580F',  # Primary orange
+                    '#3E0000',  # Primary dark red
+                    '#CCCCCC',  # Light gray
+                    '#999999',  # Medium gray
+                    '#FF7F3F',  # Lighter orange variant
+                    '#5D1010',  # Lighter dark red variant
+                    '#E6E6E6',  # Very light gray
+                    '#B8860B',  # Golden brown (complementary)
+                    '#8B4513',  # Saddle brown (earth tone)
+                    '#A0522D'   # Sienna (earth tone)
+                ]
+                
+                fig_countries = px.pie(
+                    country_counts,
+                    values='count',
+                    names='country',
+                    title="Events by Destination Country",
+                    color_discrete_sequence=org_colors,
+                    height=400  # Set consistent height
+                )
+                st.plotly_chart(fig_countries, use_container_width=True)
+    
+    with col2:
+        trans_types = []
+        
+        for idx, event in df_events.iterrows():
+            event_details = event.get('event_details', {})
+            if isinstance(event_details, dict):
+                # Extract trans_type
+                trans_type = event_details.get('trans_type') or 'Unknown'
+                
+                # Ensure trans_type is a string
+                if isinstance(trans_type, dict):
+                    trans_type = (trans_type.get('name') or 
+                                trans_type.get('type') or 
+                                'Unknown')
+                elif not isinstance(trans_type, str):
+                    trans_type = str(trans_type) if trans_type else 'Unknown'
+                
+                trans_types.append(trans_type)
+        
+        if trans_types:
+            type_counts = pd.Series(trans_types).value_counts().reset_index()
+            type_counts.columns = ['type', 'count']
+            
+            if len(type_counts) > 0:
+                # Custom colors for translocation types
+                color_map = {
+                    'founder': '#DB580F',
+                    'augmentation': '#3E0000'
+                }
+                colors = [color_map.get(t.lower(), '#1f77b4') for t in type_counts['type']]
+                
+                fig_types = px.pie(
+                    type_counts,
+                    values='count',
+                    names='type',
+                    title="Events by Translocation Type",
+                    color_discrete_sequence=colors,
+                    height=400  # Set consistent height
+                )
+                st.plotly_chart(fig_types, use_container_width=True)
     
     # Map visualization if location data is available
     if 'latitude' in df_events.columns and 'longitude' in df_events.columns:
@@ -525,37 +790,54 @@ def translocation_dashboard():
             for idx, event in events_with_location.iterrows():
                 event_details = event.get('event_details', {})
                 if isinstance(event_details, dict):
-                    # Extract origin and destination coordinates - try multiple field variations
-                    origin_lat = (event_details.get('origin_latitude') or 
-                                event_details.get('origin_lat') or 
-                                event_details.get('source_latitude') or 
-                                event_details.get('source_lat'))
-                    origin_lon = (event_details.get('origin_longitude') or 
-                                event_details.get('origin_lon') or 
-                                event_details.get('source_longitude') or 
-                                event_details.get('source_lon'))
+                    # Extract origin and destination coordinates - handle nested location objects
+                    origin_location_obj = event_details.get('Origin Location') or event_details.get('origin_location')
+                    dest_location_obj = event_details.get('Destination Location') or event_details.get('destination_location')
                     
-                    # Destination coordinates (from main event or event_details)
-                    dest_lat = (event.get('latitude') or 
-                              event_details.get('destination_latitude') or 
-                              event_details.get('destination_lat') or
-                              event_details.get('dest_latitude') or
-                              event_details.get('dest_lat'))
-                    dest_lon = (event.get('longitude') or 
-                              event_details.get('destination_longitude') or 
-                              event_details.get('destination_lon') or
-                              event_details.get('dest_longitude') or
-                              event_details.get('dest_lon'))
+                    # Initialize coordinates
+                    origin_lat = origin_lon = dest_lat = dest_lon = None
+                    
+                    # Extract origin coordinates from nested object or direct fields
+                    if isinstance(origin_location_obj, dict):
+                        origin_lat = origin_location_obj.get('latitude')
+                        origin_lon = origin_location_obj.get('longitude')
+                    else:
+                        # Fallback to direct coordinate fields
+                        origin_lat = (event_details.get('origin_latitude') or 
+                                    event_details.get('origin_lat') or 
+                                    event_details.get('source_latitude') or 
+                                    event_details.get('source_lat'))
+                        origin_lon = (event_details.get('origin_longitude') or 
+                                    event_details.get('origin_lon') or 
+                                    event_details.get('source_longitude') or 
+                                    event_details.get('source_lon'))
+                    
+                    # Extract destination coordinates from nested object or direct fields
+                    if isinstance(dest_location_obj, dict):
+                        dest_lat = dest_location_obj.get('latitude')
+                        dest_lon = dest_location_obj.get('longitude')
+                    else:
+                        # Fallback to main event coordinates or direct fields
+                        dest_lat = (event.get('latitude') or 
+                                  event_details.get('destination_latitude') or 
+                                  event_details.get('destination_lat') or
+                                  event_details.get('dest_latitude') or
+                                  event_details.get('dest_lat'))
+                        dest_lon = (event.get('longitude') or 
+                                  event_details.get('destination_longitude') or 
+                                  event_details.get('destination_lon') or
+                                  event_details.get('dest_longitude') or
+                                  event_details.get('dest_lon'))
                     
                     # Location names
-                    origin_location = (event_details.get('origin_location') or 
-                                     event_details.get('source_location') or 
-                                     event_details.get('from_location') or 
-                                     'Unknown Origin')
-                    destination_location = (event_details.get('destination_location') or 
-                                          event_details.get('dest_location') or 
-                                          event_details.get('to_location') or 
-                                          'Unknown Destination')
+                    origin_location_name = (event_details.get('origin_location_name') or 
+                                          event_details.get('source_location') or 
+                                          event_details.get('from_location') or 
+                                          'Unknown Origin')
+                    destination_location_name = (event_details.get('destination_location_name') or 
+                                               event_details.get('dest_location') or 
+                                               event_details.get('to_location') or 
+                                               'Unknown Destination')
                     
                     # Add origin point if coordinates available
                     if origin_lat and origin_lon:
@@ -566,8 +848,8 @@ def translocation_dashboard():
                                 lat=[origin_lat_float],
                                 lon=[origin_lon_float],
                                 mode='markers',
-                                marker=dict(size=15, color='red', symbol='circle'),
-                                text=f"Origin: {origin_location}",
+                                marker=dict(size=15, color='#3E0000', symbol='circle'),  # Dark red for origin (augmentation color)
+                                text=f"Origin: {origin_location_name}",
                                 name='Origin',
                                 showlegend=(idx == events_with_location.index[0]),  # Only show legend for first item
                                 hovertemplate="<b>Origin:</b> %{text}<br>" +
@@ -586,8 +868,8 @@ def translocation_dashboard():
                                 lat=[dest_lat_float],
                                 lon=[dest_lon_float],
                                 mode='markers',
-                                marker=dict(size=15, color='green', symbol='circle'),
-                                text=f"Destination: {destination_location}",
+                                marker=dict(size=15, color='#DB580F', symbol='circle'),  # Orange for destination
+                                text=f"Destination: {destination_location_name}",
                                 name='Destination',
                                 showlegend=(idx == events_with_location.index[0]),  # Only show legend for first item
                                 hovertemplate="<b>Destination:</b> %{text}<br>" +
@@ -635,10 +917,10 @@ def translocation_dashboard():
                                 lat=curve_lats,
                                 lon=curve_lons,
                                 mode='lines',
-                                line=dict(width=3, color='blue'),
+                                line=dict(width=4, color='#666666'),  # Solid gray line, slightly thicker
                                 name='Route',
                                 showlegend=(idx == events_with_location.index[0]),  # Only show legend for first item
-                                hovertemplate=f"<b>Route:</b> {origin_location} → {destination_location}<br>" +
+                                hovertemplate=f"<b>Route:</b> {origin_location_name} → {destination_location_name}<br>" +
                                             f"<b>Date:</b> {event['time'].strftime('%Y-%m-%d')}<extra></extra>"
                             ))
                             
@@ -652,7 +934,7 @@ def translocation_dashboard():
                                 lat=[arrow_lat, dest_lat_float],
                                 lon=[arrow_lon, dest_lon_float],
                                 mode='lines',
-                                line=dict(width=5, color='darkblue'),
+                                line=dict(width=5, color='#2a2a2a'),
                                 name='Direction',
                                 showlegend=False,
                                 hoverinfo='skip'
@@ -664,20 +946,120 @@ def translocation_dashboard():
             fig_map.update_layout(
                 mapbox=dict(
                     style="open-street-map",
-                    zoom=5,
+                    zoom=3,  # Africa-wide zoom level
                     center=dict(
-                        lat=events_with_location['latitude'].mean() if 'latitude' in events_with_location else 0,
-                        lon=events_with_location['longitude'].mean() if 'longitude' in events_with_location else 0
+                        lat=0,   # Center on equator for Africa-wide view
+                        lon=20   # Center on Africa longitude
                     )
                 ),
                 height=600,
-                title="Translocation Routes (Red=Origin, Green=Destination, Blue=Route)",
+                title="Translocation Routes (Dark Red=Origin, Orange=Destination, Gray=Route)",
                 showlegend=True
             )
             
             st.plotly_chart(fig_map, use_container_width=True)
         else:
             st.info("No location data available for the current events.")
+    
+    # Associated Subjects Section
+    st.subheader("🦒 Associated Subjects")
+    
+    # Collect all subject IDs from events
+    all_subject_ids = set()
+    event_subject_mapping = {}
+    
+    for idx, event in df_events.iterrows():
+        event_details = event.get('event_details', {})
+        if isinstance(event_details, dict):
+            subject_names = event_details.get('Subject Names', [])
+            if isinstance(subject_names, list):
+                event_subjects = []
+                for subject_entry in subject_names:
+                    if isinstance(subject_entry, dict):
+                        subject_id = subject_entry.get('giraffe_er_id')
+                        if subject_id:
+                            all_subject_ids.add(subject_id)
+                            event_subjects.append(subject_id)
+                
+                if event_subjects:
+                    event_subject_mapping[event['time'].strftime('%Y-%m-%d')] = event_subjects
+    
+    if all_subject_ids:
+        with st.spinner("🔄 Fetching subject details..."):
+            subjects_df = get_subject_details(list(all_subject_ids))
+        
+        if not subjects_df.empty:
+            # Add status styling
+            def style_status(status):
+                if status == "Active":
+                    return "🟢 Active"
+                elif status == "Recent":
+                    return "🟡 Recent"
+                elif status == "Inactive":
+                    return "🔴 Inactive"
+                else:
+                    return "⚪ Unknown"
+            
+            # Create display dataframe
+            display_df = subjects_df.copy()
+            display_df['status_display'] = display_df['status'].apply(style_status)
+            
+            # Format the table for display
+            st.dataframe(
+                display_df[['name', 'subject_type', 'sex', 'deployment_start', 'deployment_end', 'last_location_days', 'status_display']],
+                use_container_width=True,
+                column_config={
+                    'name': 'Subject Name',
+                    'subject_type': 'Type',
+                    'sex': 'Sex',
+                    'deployment_start': 'Deployment Start',
+                    'deployment_end': 'Last Location',
+                    'last_location_days': st.column_config.NumberColumn(
+                        'Days Since Last Location',
+                        format="%d"
+                    ),
+                    'status_display': 'Status'
+                }
+            )
+            
+            # Summary statistics for subjects
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Total Subjects", len(subjects_df))
+            
+            with col2:
+                active_count = len(subjects_df[subjects_df['status'] == 'Active'])
+                st.metric("Currently Active", active_count)
+            
+            with col3:
+                inactive_count = len(subjects_df[subjects_df['status'] == 'Inactive'])
+                st.metric("Inactive", inactive_count)
+            
+            # Show which subjects were involved in which events
+            st.write("**Subject-Event Associations:**")
+            for event_date, subject_ids in event_subject_mapping.items():
+                subject_names = []
+                for sid in subject_ids:
+                    subject_info = subjects_df[subjects_df['subject_id'] == sid]
+                    if not subject_info.empty:
+                        subject_names.append(subject_info.iloc[0]['name'])
+                    else:
+                        subject_names.append(f"ID: {sid}")
+                
+                st.write(f"**{event_date}:** {', '.join(subject_names)}")
+            
+            st.info("""
+            **Status Definitions:**
+            - 🟢 **Active**: Last location within 7 days
+            - 🟡 **Recent**: Last location within 30 days  
+            - 🔴 **Inactive**: Last location over 30 days ago
+            - ⚪ **Unknown**: No location data available
+            """)
+        else:
+            st.warning("Could not retrieve subject details from EarthRanger.")
+    else:
+        st.info("No subjects found in the current translocation events.")
     
     # Detailed event list
     st.subheader("📋 Detailed Event List")
