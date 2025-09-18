@@ -15,6 +15,12 @@ except ImportError:
     ECOSCOPE_AVAILABLE = False
     st.warning("⚠️ Ecoscope package not available. Please install ecoscope to use this dashboard.")
 
+# Location area data for range calculations (in km²)
+LOCATION_AREAS = {
+    'Iona National Park': 15200,
+    # Add more locations and their areas as needed
+}
+
 # Make main available at module level for import
 def main():
     """Main application entry point - delegates to _main_implementation"""
@@ -244,8 +250,8 @@ def translocation_dashboard():
     st.markdown("Monitor and analyze giraffe translocation events from EarthRanger")
     
     # Date filter controls
-    st.subheader("📅 Date Filters")
-    col1, col2, col3 = st.columns(3)
+    st.subheader("📅 Filters")
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         start_date = st.date_input(
@@ -261,7 +267,29 @@ def translocation_dashboard():
             help="Select the latest date for translocation events"
         )
     
+    # First fetch all events to get available countries
+    with st.spinner("🔄 Loading available countries..."):
+        all_events = get_translocation_events(start_date, end_date)
+    
+    # Extract unique destination countries
+    all_countries = ['All Countries']
+    if not all_events.empty:
+        for idx, event in all_events.iterrows():
+            event_details = event.get('event_details', {})
+            if isinstance(event_details, dict):
+                dest_country = event_details.get('destination_country') or event_details.get('country')
+                if dest_country and dest_country not in all_countries:
+                    all_countries.append(dest_country)
+    
     with col3:
+        selected_country = st.selectbox(
+            "Destination Country",
+            options=all_countries,
+            index=0,
+            help="Filter by destination country"
+        )
+    
+    with col4:
         if st.button("🔄 Refresh Data", type="primary"):
             # Clear cache to force refresh
             get_translocation_events.clear()
@@ -275,6 +303,21 @@ def translocation_dashboard():
     # Fetch translocation events
     with st.spinner("🔄 Fetching translocation events from EarthRanger..."):
         df_events = get_translocation_events(start_date, end_date)
+    
+    # Apply country filter if not "All Countries"
+    if selected_country != 'All Countries' and not df_events.empty:
+        filtered_events = []
+        for idx, event in df_events.iterrows():
+            event_details = event.get('event_details', {})
+            if isinstance(event_details, dict):
+                dest_country = event_details.get('destination_country') or event_details.get('country')
+                if dest_country == selected_country:
+                    filtered_events.append(event)
+        
+        if filtered_events:
+            df_events = pd.DataFrame(filtered_events)
+        else:
+            df_events = pd.DataFrame()
     
     if df_events.empty:
         st.warning("No translocation events found for the selected date range.")
@@ -337,21 +380,32 @@ def translocation_dashboard():
     # Summary metrics
     st.subheader("📊 Summary Statistics")
     
-    # Calculate total individuals translocated
+    # Calculate total individuals translocated using the correct field
     total_individuals = 0
     for idx, event in df_events.iterrows():
         event_details = event.get('event_details', {})
         if isinstance(event_details, dict):
-            # Count individuals translocated (try different field names)
-            individuals = (event_details.get('number_of_individuals') or 
-                         event_details.get('individuals_count') or 
-                         event_details.get('animal_count') or 1)  # Default to 1 if not specified
-            try:
-                total_individuals += int(individuals)
-            except (ValueError, TypeError):
-                total_individuals += 1
+            # Use the specific field "total_individuals"
+            individuals = event_details.get('total_individuals')
+            if individuals is not None:
+                try:
+                    total_individuals += int(individuals)
+                except (ValueError, TypeError):
+                    total_individuals += 1  # Default to 1 if can't parse
+            else:
+                # Fallback to other possible field names if total_individuals is not available
+                individuals = (event_details.get('number_of_individuals') or 
+                             event_details.get('individuals_count') or 
+                             event_details.get('animal_count'))
+                if individuals is not None:
+                    try:
+                        total_individuals += int(individuals)
+                    except (ValueError, TypeError):
+                        total_individuals += 1
+                else:
+                    total_individuals += 1  # Default to 1 if no count field found
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
         st.metric("Total Translocation Events", len(df_events))
@@ -359,9 +413,77 @@ def translocation_dashboard():
     with col2:
         st.metric("Total Individuals Translocated", total_individuals)
     
-    with col3:
-        date_range_days = (end_date - start_date).days + 1
-        st.metric("Date Range (Days)", date_range_days)
+    # Calculate range secured for founder translocations
+    st.subheader("🌍 Giraffe Range Secured")
+    
+    total_range_secured = 0
+    founder_locations = []
+    
+    for idx, event in df_events.iterrows():
+        event_details = event.get('event_details', {})
+        if isinstance(event_details, dict):
+            trans_type = event_details.get('trans_type')
+            if trans_type and trans_type.lower() == 'founder':
+                # Get destination location
+                dest_location = (event_details.get('destination_location') or 
+                               event_details.get('dest_location') or 
+                               event_details.get('to_location'))
+                
+                if dest_location:
+                    # Look up the area for this location
+                    area_km2 = LOCATION_AREAS.get(dest_location, 0)
+                    if area_km2 > 0:
+                        total_range_secured += area_km2
+                        founder_locations.append({
+                            'location': dest_location,
+                            'area_km2': area_km2,
+                            'date': event['time'].strftime('%Y-%m-%d')
+                        })
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.metric("Total Range Secured (km²)", f"{total_range_secured:,}")
+    
+    with col2:
+        founder_count = len([event for event in df_events.iterrows() 
+                           if isinstance(event[1].get('event_details', {}), dict) and 
+                           event[1].get('event_details', {}).get('trans_type', '').lower() == 'founder'])
+        st.metric("Founder Translocations", founder_count)
+    
+    # Show breakdown of founder locations if any exist
+    if founder_locations:
+        st.write("**Founder Translocation Locations:**")
+        founder_df = pd.DataFrame(founder_locations)
+        # Group by location to avoid duplicates
+        location_summary = founder_df.groupby('location').agg({
+            'area_km2': 'first',  # Take first value (should be same for all)
+            'date': 'count'  # Count number of events
+        }).reset_index()
+        location_summary.columns = ['Location', 'Area (km²)', 'Number of Events']
+        
+        st.dataframe(
+            location_summary,
+            use_container_width=True,
+            column_config={
+                'Location': 'Destination Location',
+                'Area (km²)': st.column_config.NumberColumn(
+                    'Area (km²)',
+                    format="%d"
+                ),
+                'Number of Events': 'Founder Events'
+            }
+        )
+        
+        # Note about range calculation
+        st.info("""
+        **Range Calculation Notes:**
+        - Only translocations with trans_type = "founder" contribute to range secured
+        - Area calculations are based on destination locations with known protected area sizes
+        - Each location is counted once regardless of multiple founder events
+        """)
+    else:
+        st.info("No founder translocations found in the current selection.")
     
     # Destination country analysis
     st.subheader("🌍 Destination Country Breakdown")
@@ -403,105 +525,140 @@ def translocation_dashboard():
             for idx, event in events_with_location.iterrows():
                 event_details = event.get('event_details', {})
                 if isinstance(event_details, dict):
-                    # Extract origin and destination coordinates
-                    origin_lat = event_details.get('origin_latitude') or event_details.get('origin_lat')
-                    origin_lon = event_details.get('origin_longitude') or event_details.get('origin_lon')
-                    dest_lat = event.get('latitude') or event_details.get('destination_latitude') or event_details.get('destination_lat')
-                    dest_lon = event.get('longitude') or event_details.get('destination_longitude') or event_details.get('destination_lon')
+                    # Extract origin and destination coordinates - try multiple field variations
+                    origin_lat = (event_details.get('origin_latitude') or 
+                                event_details.get('origin_lat') or 
+                                event_details.get('source_latitude') or 
+                                event_details.get('source_lat'))
+                    origin_lon = (event_details.get('origin_longitude') or 
+                                event_details.get('origin_lon') or 
+                                event_details.get('source_longitude') or 
+                                event_details.get('source_lon'))
                     
-                    # Origin location names
-                    origin_location = event_details.get('origin_location', 'Unknown Origin')
-                    destination_location = event_details.get('destination_location', 'Unknown Destination')
+                    # Destination coordinates (from main event or event_details)
+                    dest_lat = (event.get('latitude') or 
+                              event_details.get('destination_latitude') or 
+                              event_details.get('destination_lat') or
+                              event_details.get('dest_latitude') or
+                              event_details.get('dest_lat'))
+                    dest_lon = (event.get('longitude') or 
+                              event_details.get('destination_longitude') or 
+                              event_details.get('destination_lon') or
+                              event_details.get('dest_longitude') or
+                              event_details.get('dest_lon'))
+                    
+                    # Location names
+                    origin_location = (event_details.get('origin_location') or 
+                                     event_details.get('source_location') or 
+                                     event_details.get('from_location') or 
+                                     'Unknown Origin')
+                    destination_location = (event_details.get('destination_location') or 
+                                          event_details.get('dest_location') or 
+                                          event_details.get('to_location') or 
+                                          'Unknown Destination')
                     
                     # Add origin point if coordinates available
                     if origin_lat and origin_lon:
-                        fig_map.add_trace(go.Scattermapbox(
-                            lat=[float(origin_lat)],
-                            lon=[float(origin_lon)],
-                            mode='markers',
-                            marker=dict(size=12, color='red', symbol='circle'),
-                            text=f"Origin: {origin_location}",
-                            name='Origin',
-                            showlegend=idx == 0,  # Only show legend for first item
-                            hovertemplate="<b>Origin:</b> %{text}<br>" +
-                                        "<b>Date:</b> " + event['time'].strftime('%Y-%m-%d') + "<br>" +
-                                        "<b>Coordinates:</b> %{lat:.4f}, %{lon:.4f}<extra></extra>"
-                        ))
+                        try:
+                            origin_lat_float = float(origin_lat)
+                            origin_lon_float = float(origin_lon)
+                            fig_map.add_trace(go.Scattermapbox(
+                                lat=[origin_lat_float],
+                                lon=[origin_lon_float],
+                                mode='markers',
+                                marker=dict(size=15, color='red', symbol='circle'),
+                                text=f"Origin: {origin_location}",
+                                name='Origin',
+                                showlegend=(idx == events_with_location.index[0]),  # Only show legend for first item
+                                hovertemplate="<b>Origin:</b> %{text}<br>" +
+                                            "<b>Date:</b> " + event['time'].strftime('%Y-%m-%d') + "<br>" +
+                                            "<b>Coordinates:</b> %{lat:.4f}, %{lon:.4f}<extra></extra>"
+                            ))
+                        except (ValueError, TypeError):
+                            pass  # Skip if coordinates can't be converted to float
                     
                     # Add destination point if coordinates available
                     if dest_lat and dest_lon:
-                        fig_map.add_trace(go.Scattermapbox(
-                            lat=[float(dest_lat)],
-                            lon=[float(dest_lon)],
-                            mode='markers',
-                            marker=dict(size=12, color='green', symbol='circle'),
-                            text=f"Destination: {destination_location}",
-                            name='Destination',
-                            showlegend=idx == 0,  # Only show legend for first item
-                            hovertemplate="<b>Destination:</b> %{text}<br>" +
-                                        "<b>Date:</b> " + event['time'].strftime('%Y-%m-%d') + "<br>" +
-                                        "<b>Coordinates:</b> %{lat:.4f}, %{lon:.4f}<extra></extra>"
-                        ))
+                        try:
+                            dest_lat_float = float(dest_lat)
+                            dest_lon_float = float(dest_lon)
+                            fig_map.add_trace(go.Scattermapbox(
+                                lat=[dest_lat_float],
+                                lon=[dest_lon_float],
+                                mode='markers',
+                                marker=dict(size=15, color='green', symbol='circle'),
+                                text=f"Destination: {destination_location}",
+                                name='Destination',
+                                showlegend=(idx == events_with_location.index[0]),  # Only show legend for first item
+                                hovertemplate="<b>Destination:</b> %{text}<br>" +
+                                            "<b>Date:</b> " + event['time'].strftime('%Y-%m-%d') + "<br>" +
+                                            "<b>Coordinates:</b> %{lat:.4f}, %{lon:.4f}<extra></extra>"
+                            ))
+                        except (ValueError, TypeError):
+                            pass  # Skip if coordinates can't be converted to float
                     
                     # Add curved arrow/line between origin and destination
                     if all([origin_lat, origin_lon, dest_lat, dest_lon]):
-                        # Create curved path points
-                        import numpy as np
-                        origin_lat, origin_lon = float(origin_lat), float(origin_lon)
-                        dest_lat, dest_lon = float(dest_lat), float(dest_lon)
-                        
-                        # Calculate midpoint and add curvature
-                        mid_lat = (origin_lat + dest_lat) / 2
-                        mid_lon = (origin_lon + dest_lon) / 2
-                        
-                        # Add curvature offset (perpendicular to the line)
-                        dx = dest_lon - origin_lon
-                        dy = dest_lat - origin_lat
-                        curve_offset = 0.1  # Adjust curve intensity
-                        
-                        # Perpendicular offset for curve
-                        perp_x = -dy * curve_offset
-                        perp_y = dx * curve_offset
-                        
-                        # Create curved path with multiple points
-                        t = np.linspace(0, 1, 20)
-                        curve_lats = []
-                        curve_lons = []
-                        
-                        for point in t:
-                            # Quadratic Bezier curve
-                            lat = (1-point)**2 * origin_lat + 2*(1-point)*point * (mid_lat + perp_y) + point**2 * dest_lat
-                            lon = (1-point)**2 * origin_lon + 2*(1-point)*point * (mid_lon + perp_x) + point**2 * dest_lon
-                            curve_lats.append(lat)
-                            curve_lons.append(lon)
-                        
-                        # Add curved line
-                        fig_map.add_trace(go.Scattermapbox(
-                            lat=curve_lats,
-                            lon=curve_lons,
-                            mode='lines',
-                            line=dict(width=3, color='blue'),
-                            name='Route',
-                            showlegend=idx == 0,  # Only show legend for first item
-                            hovertemplate=f"<b>Route:</b> {origin_location} → {destination_location}<br>" +
-                                        f"<b>Date:</b> {event['time'].strftime('%Y-%m-%d')}<extra></extra>"
-                        ))
-                        
-                        # Add arrow at destination
-                        arrow_size = 0.02
-                        # Calculate arrow direction
-                        arrow_lat = dest_lat - arrow_size * np.cos(np.arctan2(dy, dx))
-                        arrow_lon = dest_lon - arrow_size * np.sin(np.arctan2(dy, dx))
-                        
-                        fig_map.add_trace(go.Scattermapbox(
-                            lat=[arrow_lat, dest_lat],
-                            lon=[arrow_lon, dest_lon],
-                            mode='lines',
-                            line=dict(width=5, color='darkblue'),
-                            name='Direction',
-                            showlegend=False,
-                            hoverinfo='skip'
-                        ))
+                        try:
+                            # Create curved path points
+                            import numpy as np
+                            origin_lat_float, origin_lon_float = float(origin_lat), float(origin_lon)
+                            dest_lat_float, dest_lon_float = float(dest_lat), float(dest_lon)
+                            
+                            # Calculate midpoint and add curvature
+                            mid_lat = (origin_lat_float + dest_lat_float) / 2
+                            mid_lon = (origin_lon_float + dest_lon_float) / 2
+                            
+                            # Add curvature offset (perpendicular to the line)
+                            dx = dest_lon_float - origin_lon_float
+                            dy = dest_lat_float - origin_lat_float
+                            curve_offset = 0.1  # Adjust curve intensity
+                            
+                            # Perpendicular offset for curve
+                            perp_x = -dy * curve_offset
+                            perp_y = dx * curve_offset
+                            
+                            # Create curved path with multiple points
+                            t = np.linspace(0, 1, 20)
+                            curve_lats = []
+                            curve_lons = []
+                            
+                            for point in t:
+                                # Quadratic Bezier curve
+                                lat = (1-point)**2 * origin_lat_float + 2*(1-point)*point * (mid_lat + perp_y) + point**2 * dest_lat_float
+                                lon = (1-point)**2 * origin_lon_float + 2*(1-point)*point * (mid_lon + perp_x) + point**2 * dest_lon_float
+                                curve_lats.append(lat)
+                                curve_lons.append(lon)
+                            
+                            # Add curved line
+                            fig_map.add_trace(go.Scattermapbox(
+                                lat=curve_lats,
+                                lon=curve_lons,
+                                mode='lines',
+                                line=dict(width=3, color='blue'),
+                                name='Route',
+                                showlegend=(idx == events_with_location.index[0]),  # Only show legend for first item
+                                hovertemplate=f"<b>Route:</b> {origin_location} → {destination_location}<br>" +
+                                            f"<b>Date:</b> {event['time'].strftime('%Y-%m-%d')}<extra></extra>"
+                            ))
+                            
+                            # Add arrow at destination
+                            arrow_size = 0.02
+                            # Calculate arrow direction
+                            arrow_lat = dest_lat_float - arrow_size * np.cos(np.arctan2(dy, dx))
+                            arrow_lon = dest_lon_float - arrow_size * np.sin(np.arctan2(dy, dx))
+                            
+                            fig_map.add_trace(go.Scattermapbox(
+                                lat=[arrow_lat, dest_lat_float],
+                                lon=[arrow_lon, dest_lon_float],
+                                mode='lines',
+                                line=dict(width=5, color='darkblue'),
+                                name='Direction',
+                                showlegend=False,
+                                hoverinfo='skip'
+                            ))
+                        except (ValueError, TypeError):
+                            pass  # Skip if coordinates can't be converted to float
             
             # Update map layout
             fig_map.update_layout(
