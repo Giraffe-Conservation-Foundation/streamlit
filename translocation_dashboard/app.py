@@ -337,87 +337,56 @@ def translocation_dashboard():
     # Summary metrics
     st.subheader("📊 Summary Statistics")
     
-    col1, col2, col3, col4 = st.columns(4)
+    # Calculate total individuals translocated
+    total_individuals = 0
+    for idx, event in df_events.iterrows():
+        event_details = event.get('event_details', {})
+        if isinstance(event_details, dict):
+            # Count individuals translocated (try different field names)
+            individuals = (event_details.get('number_of_individuals') or 
+                         event_details.get('individuals_count') or 
+                         event_details.get('animal_count') or 1)  # Default to 1 if not specified
+            try:
+                total_individuals += int(individuals)
+            except (ValueError, TypeError):
+                total_individuals += 1
+    
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         st.metric("Total Translocation Events", len(df_events))
     
     with col2:
-        if 'latitude' in df_events.columns and 'longitude' in df_events.columns:
-            unique_locations = (df_events['latitude'].notna() & df_events['longitude'].notna()).sum()
-        else:
-            unique_locations = 0
-        st.metric("Events with Location Data", unique_locations)
+        st.metric("Total Individuals Translocated", total_individuals)
     
     with col3:
         date_range_days = (end_date - start_date).days + 1
         st.metric("Date Range (Days)", date_range_days)
     
-    with col4:
-        if len(df_events) > 0:
-            avg_per_month = len(df_events) / max(1, date_range_days / 30.44)  # Average days per month
-            st.metric("Average Events/Month", f"{avg_per_month:.1f}")
+    # Destination country analysis
+    st.subheader("🌍 Destination Country Breakdown")
     
-    # Time-based analysis
-    st.subheader("📈 Translocation Events Over Time")
+    destination_countries = []
     
-    # Monthly aggregation
-    monthly_counts = df_events.groupby(['year', 'month_name']).size().reset_index(name='count')
-    monthly_counts['date_label'] = monthly_counts['year'].astype(str) + '-' + monthly_counts['month_name']
+    for idx, event in df_events.iterrows():
+        event_details = event.get('event_details', {})
+        if isinstance(event_details, dict):
+            # Extract destination country
+            dest_country = event_details.get('destination_country') or event_details.get('country') or 'Unknown'
+            destination_countries.append(dest_country)
     
-    if len(monthly_counts) > 0:
-        fig_monthly = px.bar(
-            monthly_counts,
-            x='date_label',
-            y='count',
-            title="Translocation Events by Month",
-            labels={'date_label': 'Month', 'count': 'Number of Events'},
-            color='count',
-            color_continuous_scale='Blues'
-        )
-        fig_monthly.update_layout(
-            xaxis_tickangle=-45,
-            height=400
-        )
-        st.plotly_chart(fig_monthly, use_container_width=True)
-    
-    # Yearly summary if we have multiple years
-    if df_events['year'].nunique() > 1:
-        yearly_counts = df_events.groupby('year').size().reset_index(name='count')
+    if destination_countries:
+        country_counts = pd.Series(destination_countries).value_counts().reset_index()
+        country_counts.columns = ['country', 'count']
         
-        col1, col2 = st.columns(2)
-        with col1:
-            fig_yearly = px.pie(
-                yearly_counts,
+        if len(country_counts) > 0:
+            fig_countries = px.pie(
+                country_counts,
                 values='count',
-                names='year',
-                title="Translocation Events by Year"
+                names='country',
+                title="Translocation Events by Destination Country"
             )
-            st.plotly_chart(fig_yearly, use_container_width=True)
-        
-        with col2:
-            fig_yearly_bar = px.bar(
-                yearly_counts,
-                x='year',
-                y='count',
-                title="Translocation Events by Year",
-                labels={'year': 'Year', 'count': 'Number of Events'}
-            )
-            st.plotly_chart(fig_yearly_bar, use_container_width=True)
-    
-    # Event state analysis
-    if 'state' in df_events.columns and df_events['state'].notna().any():
-        st.subheader("🔍 Event Status Analysis")
-        state_counts = df_events['state'].value_counts().reset_index()
-        state_counts.columns = ['state', 'count']
-        
-        fig_states = px.pie(
-            state_counts,
-            values='count',
-            names='state',
-            title="Translocation Events by Status"
-        )
-        st.plotly_chart(fig_states, use_container_width=True)
+            st.plotly_chart(fig_countries, use_container_width=True)
     
     # Map visualization if location data is available
     if 'latitude' in df_events.columns and 'longitude' in df_events.columns:
@@ -426,35 +395,130 @@ def translocation_dashboard():
         ].copy()
         
         if len(events_with_location) > 0:
-            st.subheader("🗺️ Translocation Event Locations")
+            st.subheader("🗺️ Translocation Routes")
             
-            # Prepare map data
-            map_data = []
+            # Create map with origin and destination points
+            fig_map = go.Figure()
+            
             for idx, event in events_with_location.iterrows():
-                map_data.append({
-                    'latitude': event['latitude'],
-                    'longitude': event['longitude'],
-                    'event_id': event.get('id', 'Unknown'),
-                    'date': event['time'].strftime('%Y-%m-%d'),
-                    'state': event.get('state', 'Unknown')
-                })
+                event_details = event.get('event_details', {})
+                if isinstance(event_details, dict):
+                    # Extract origin and destination coordinates
+                    origin_lat = event_details.get('origin_latitude') or event_details.get('origin_lat')
+                    origin_lon = event_details.get('origin_longitude') or event_details.get('origin_lon')
+                    dest_lat = event.get('latitude') or event_details.get('destination_latitude') or event_details.get('destination_lat')
+                    dest_lon = event.get('longitude') or event_details.get('destination_longitude') or event_details.get('destination_lon')
+                    
+                    # Origin location names
+                    origin_location = event_details.get('origin_location', 'Unknown Origin')
+                    destination_location = event_details.get('destination_location', 'Unknown Destination')
+                    
+                    # Add origin point if coordinates available
+                    if origin_lat and origin_lon:
+                        fig_map.add_trace(go.Scattermapbox(
+                            lat=[float(origin_lat)],
+                            lon=[float(origin_lon)],
+                            mode='markers',
+                            marker=dict(size=12, color='red', symbol='circle'),
+                            text=f"Origin: {origin_location}",
+                            name='Origin',
+                            showlegend=idx == 0,  # Only show legend for first item
+                            hovertemplate="<b>Origin:</b> %{text}<br>" +
+                                        "<b>Date:</b> " + event['time'].strftime('%Y-%m-%d') + "<br>" +
+                                        "<b>Coordinates:</b> %{lat:.4f}, %{lon:.4f}<extra></extra>"
+                        ))
+                    
+                    # Add destination point if coordinates available
+                    if dest_lat and dest_lon:
+                        fig_map.add_trace(go.Scattermapbox(
+                            lat=[float(dest_lat)],
+                            lon=[float(dest_lon)],
+                            mode='markers',
+                            marker=dict(size=12, color='green', symbol='circle'),
+                            text=f"Destination: {destination_location}",
+                            name='Destination',
+                            showlegend=idx == 0,  # Only show legend for first item
+                            hovertemplate="<b>Destination:</b> %{text}<br>" +
+                                        "<b>Date:</b> " + event['time'].strftime('%Y-%m-%d') + "<br>" +
+                                        "<b>Coordinates:</b> %{lat:.4f}, %{lon:.4f}<extra></extra>"
+                        ))
+                    
+                    # Add curved arrow/line between origin and destination
+                    if all([origin_lat, origin_lon, dest_lat, dest_lon]):
+                        # Create curved path points
+                        import numpy as np
+                        origin_lat, origin_lon = float(origin_lat), float(origin_lon)
+                        dest_lat, dest_lon = float(dest_lat), float(dest_lon)
+                        
+                        # Calculate midpoint and add curvature
+                        mid_lat = (origin_lat + dest_lat) / 2
+                        mid_lon = (origin_lon + dest_lon) / 2
+                        
+                        # Add curvature offset (perpendicular to the line)
+                        dx = dest_lon - origin_lon
+                        dy = dest_lat - origin_lat
+                        curve_offset = 0.1  # Adjust curve intensity
+                        
+                        # Perpendicular offset for curve
+                        perp_x = -dy * curve_offset
+                        perp_y = dx * curve_offset
+                        
+                        # Create curved path with multiple points
+                        t = np.linspace(0, 1, 20)
+                        curve_lats = []
+                        curve_lons = []
+                        
+                        for point in t:
+                            # Quadratic Bezier curve
+                            lat = (1-point)**2 * origin_lat + 2*(1-point)*point * (mid_lat + perp_y) + point**2 * dest_lat
+                            lon = (1-point)**2 * origin_lon + 2*(1-point)*point * (mid_lon + perp_x) + point**2 * dest_lon
+                            curve_lats.append(lat)
+                            curve_lons.append(lon)
+                        
+                        # Add curved line
+                        fig_map.add_trace(go.Scattermapbox(
+                            lat=curve_lats,
+                            lon=curve_lons,
+                            mode='lines',
+                            line=dict(width=3, color='blue'),
+                            name='Route',
+                            showlegend=idx == 0,  # Only show legend for first item
+                            hovertemplate=f"<b>Route:</b> {origin_location} → {destination_location}<br>" +
+                                        f"<b>Date:</b> {event['time'].strftime('%Y-%m-%d')}<extra></extra>"
+                        ))
+                        
+                        # Add arrow at destination
+                        arrow_size = 0.02
+                        # Calculate arrow direction
+                        arrow_lat = dest_lat - arrow_size * np.cos(np.arctan2(dy, dx))
+                        arrow_lon = dest_lon - arrow_size * np.sin(np.arctan2(dy, dx))
+                        
+                        fig_map.add_trace(go.Scattermapbox(
+                            lat=[arrow_lat, dest_lat],
+                            lon=[arrow_lon, dest_lon],
+                            mode='lines',
+                            line=dict(width=5, color='darkblue'),
+                            name='Direction',
+                            showlegend=False,
+                            hoverinfo='skip'
+                        ))
             
-            if map_data:
-                map_df = pd.DataFrame(map_data)
-                
-                fig_map = px.scatter_mapbox(
-                    map_df,
-                    lat="latitude",
-                    lon="longitude",
-                    color="state",
-                    hover_name="event_id",
-                    hover_data=["date"],
-                    zoom=6,
-                    height=500,
-                    title="Translocation Event Locations"
-                )
-                fig_map.update_layout(mapbox_style="open-street-map")
-                st.plotly_chart(fig_map, use_container_width=True)
+            # Update map layout
+            fig_map.update_layout(
+                mapbox=dict(
+                    style="open-street-map",
+                    zoom=5,
+                    center=dict(
+                        lat=events_with_location['latitude'].mean() if 'latitude' in events_with_location else 0,
+                        lon=events_with_location['longitude'].mean() if 'longitude' in events_with_location else 0
+                    )
+                ),
+                height=600,
+                title="Translocation Routes (Red=Origin, Green=Destination, Blue=Route)",
+                showlegend=True
+            )
+            
+            st.plotly_chart(fig_map, use_container_width=True)
         else:
             st.info("No location data available for the current events.")
     
