@@ -589,8 +589,8 @@ def create_movement_map(movement_data, subjects_info):
     
     return fig
 
-def main():
-    """Main application function"""
+def main_dashboard():
+    """Main dashboard application function"""
     st.markdown('<h1 class="logo-title">🏷️ 6-Month Post-Tagging Dashboard</h1>', unsafe_allow_html=True)
     st.markdown('<p class="logo-subtitle">Monitor tagged giraffe subjects 6 months after deployment</p>', unsafe_allow_html=True)
     
@@ -876,6 +876,21 @@ def main():
                 st.dataframe(summary_df, use_container_width=True)
         else:
             st.warning("No movement data found for the selected subjects and date range.")
+
+def main():
+    """Main function with error handling for deployment compatibility"""
+    try:
+        if not ECOSCOPE_AVAILABLE:
+            st.error("⚠️ Ecoscope package not available. Cannot load 6-Month Post-Tagging Dashboard.")
+            st.info("Please ensure ecoscope is properly installed in the deployment environment.")
+            return
+        
+        # Run the main dashboard
+        main_dashboard()
+        
+    except Exception as e:
+        st.error(f"Error loading 6-Month Post-Tagging Dashboard: {str(e)}")
+        st.info("This dashboard requires EarthRanger connectivity. Please check your deployment configuration.")
 
 if __name__ == "__main__":
     main()
