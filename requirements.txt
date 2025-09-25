@@ -22,7 +22,7 @@ google-auth>=2.23.0
 Pillow>=10.0.0
 
 # EarthRanger Integration (for NANW Dashboard)
-ecoscope
+ecoscope>=1.8.0
 
 # Environment Variables
 python-dotenv>=1.0.0
