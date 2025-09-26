@@ -6,6 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import json
 import os
+from ecoscope.io.earthranger import EarthRangerIO
 
 # Make main available at module level for import
 def main():
@@ -69,42 +70,29 @@ def authenticate_earthranger():
         
         try:
             with st.spinner("Logging in to EarthRanger..."):
-                # Use EarthRanger login API
-                login_url = "https://twiga.pamdas.org/api/v1.0/login"
-                login_data = {"username": username, "password": password}
+                # Use EarthRangerIO for authentication
+                er = EarthRangerIO(
+                    server="https://twiga.pamdas.org",
+                    username=username,
+                    password=password
+                )
                 
-                response = requests.post(login_url, json=login_data)
-                response.raise_for_status()
+                # Test the connection by getting a small amount of data
+                er.get_sources(limit=1)
                 
-                # Get the token from response
-                login_result = response.json()
-                api_token = login_result.get('token')
+                # If we get here, authentication was successful
+                # Get the token from the EarthRangerIO instance
+                api_token = er.auth.token
                 
-                if not api_token:
-                    st.error("❌ Login failed: No token received")
-                    return
-                
-                # Test the token
                 st.session_state.api_token = api_token
                 st.session_state.base_url = "https://twiga.pamdas.org/api/v1.0"
-                headers = {"Authorization": f"Bearer {api_token}"}
-                
-                test_url = f"{st.session_state.base_url}/sources/?page_size=1"
-                test_response = requests.get(test_url, headers=headers)
-                test_response.raise_for_status()
+                st.session_state.headers = {"Authorization": f"Bearer {api_token}"}
+                st.session_state.username = username
+                st.session_state.authenticated = True
                 
                 st.success("✅ Successfully logged in to EarthRanger!")
-                st.session_state.authenticated = True
-                st.session_state.headers = headers
-                st.session_state.username = username
-                
                 st.rerun()
                 
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                st.error("❌ Authentication failed: Invalid username or password")
-            else:
-                st.error(f"❌ HTTP Error: {e}")
         except Exception as e:
             st.error(f"❌ Login failed: {str(e)}")
             st.info("💡 Please check your username and password")
