@@ -1,72 +1,78 @@
-# Tagging Dashboard
+# Post-Tagging Dashboard
 
-Monitor newly tagged giraffes by month and country, including their initial movement patterns and veterinary records.
+Monitor giraffe locations during the first 2 days after collar deployment/tagging to verify successful activation and track initial movement patterns.
 
 ## Features
 
-### 🏷️ Tagged Giraffe Tracking
-- Select month and country to view giraffes tagged during that period
-- Automatic parsing of subject groups in format: `COUNTRY_sitename`
-- Display list of subjects with tagging dates and sites
+### 📡 Deployment Verification
+- Select date range when collars were deployed
+- Automatically identifies subjects with collar deployments (via assigned_range)
+- Tracks first 48 hours of location data post-deployment
 
-### 📍 Movement Analysis
-- Track movement patterns for the first week after tagging
-- Interactive map showing movement tracks for each tagged giraffe
-- Movement statistics including:
-  - Total number of location points
-  - Estimated total distance traveled
-  - Maximum single movement distance
-  - First and last location timestamps
+### 📍 2-Day Location Tracking
+- Interactive map showing deployment locations and movement tracks
+- Color-coded tracks for each deployed giraffe
+- Deployment start markers with timestamps
+- Real-time verification of collar activation
 
-### 💉 Veterinary Records
-- View immobilization events (event_category=veterinary, event_type=immob)
-- Detailed event information including:
-  - Date and time of immobilization
-  - Subject information
-  - Event notes and details
-  - Drug administration records
-  - Reported by information
+### ⏱️ Timeline Visualization
+- Data collection timeline over 48-hour period
+- Hours since deployment tracking
+- Visual indicators for 24 and 48-hour marks
+- Identify data transmission patterns
 
-### 🗺️ Interactive Visualizations
-- Color-coded movement tracks for each giraffe
-- Hover information with timestamps and coordinates
-- Zoom and pan capabilities for detailed examination
+### � Movement Analysis
+- Summary statistics for first 2 days:
+  - Number of locations recorded
+  - Time span of data collection
+  - Approximate distance traveled
+  - Movement area estimation
+- Early detection of potential collar issues
+
+### 🗺️ Interactive Map Features
+- Deployment start locations marked with stars
+- Movement tracks with hover information
+- Auto-centering on deployment area
+- Coordinate details and timestamps
 
 ## Usage
 
-1. **Authentication**: Enter your EarthRanger API token
-2. **Select Period**: Choose the month when giraffes were tagged
-3. **Select Country**: Pick from available countries (extracted from subject group names)
-4. **View Results**: 
-   - See list of tagged giraffes
-   - Analyze movement patterns (click "Analyze Movement Patterns")
-   - View veterinary records (click "Load Veterinary Records")
+1. **Authentication**: Enter your EarthRanger username and password
+2. **Select Date Range**: Choose the period when collars were deployed (default: last 30 days)
+3. **View Deployments**: See summary of collar deployments in selected period
+4. **Analyze Movement**: 
+   - Interactive map with deployment locations and tracks
+   - Timeline showing data collection patterns
+   - Movement summary statistics
+   - Detailed location data export
 
-## Subject Group Format
+## How It Works
 
-The dashboard expects subject groups to be named in the format:
-```
-COUNTRYCODE_sitename
-```
+The dashboard:
+1. Queries subjects with `assigned_range` dates within selected period
+2. For each deployment, retrieves location data for 48 hours post-deployment
+3. Creates visualizations to verify collar activation and movement patterns
+4. Provides early warning for potential collar issues
 
-Examples:
-- `KE_Maasai_Mara`
-- `UG_Murchison`
-- `TZ_Ruaha`
+## Use Cases
 
-## API Requirements
+- **Deployment Verification**: Confirm collars activated successfully after deployment
+- **Movement Validation**: Verify giraffes are moving normally post-deployment
+- **Data Quality Check**: Identify transmission issues or collar malfunctions early
+- **Field Team Support**: Provide immediate feedback on deployment success
 
-- EarthRanger API access with Bearer token authentication
-- Access to the following endpoints:
-  - `/subjectgroups/` - For country/site information
-  - `/subjects/` - For giraffe subject data
-  - `/observations/` - For movement tracking
-  - `/events/` - For veterinary records
+## Authentication
+
+Uses EcoScope EarthRangerIO with username/password authentication to:
+- Access subject data and deployment information
+- Retrieve location observations for specified time periods
+- Ensure secure connection to EarthRanger API
 
 ## Dependencies
 
 - streamlit
-- pandas
-- requests
+- pandas  
+- ecoscope (EarthRangerIO)
 - plotly
-- python-dateutil
+- numpy
+- datetime
