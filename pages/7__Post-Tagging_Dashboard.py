@@ -1,6 +1,6 @@
 """
-Tagging Dashboard Page
-Monitor newly tagged giraffes by month and country
+Post-Tagging Dashboard Page
+Monitor giraffe locations during first 2 days after deployment/tagging
 """
 
 import streamlit as st
@@ -21,6 +21,6 @@ spec.loader.exec_module(tagging_app)
 # Get the main function
 main = tagging_app.main
 
-# Run the Tagging dashboard
+# Run the Post-Tagging dashboard
 if __name__ == "__main__":
     main()

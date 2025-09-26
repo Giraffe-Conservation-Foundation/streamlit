@@ -94,7 +94,7 @@ Navigate using the sidebar to access:
 - **Camera Trap Upload** - process and upload camera trap images to Google Cloud
 - **Survey Upload** - process and upload survey images to Google Cloud
 - **Unit Check** - monitor tracking device activity, battery, and locations over 7 days
-- **Tagging Dashboard** - monitor newly tagged giraffes by month and country
+- **Post-Tagging Dashboard** - monitor giraffe locations during first 2 days after collar deployment
 - **Translocation Dashboard** - monitor and analyze giraffe translocation events
 - **Genetic Dashboard** - monitor and analyze biological sample events
 - **ER Backup** - comprehensive backup of all EarthRanger data
