@@ -1,11 +1,8 @@
 import streamlit as st
 import pandas as pd
-import requests
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
-import json
-import os
 from ecoscope.io.earthranger import EarthRangerIO
 
 # Make main available at module level for import
@@ -43,12 +40,24 @@ def init_session_state():
     """Initialize session state variables"""
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
-    if 'api_token' not in st.session_state:
-        st.session_state.api_token = None
-    if 'base_url' not in st.session_state:
-        st.session_state.base_url = "https://twiga.pamdas.org/api/v1.0"
     if 'username' not in st.session_state:
-        st.session_state.username = None
+        st.session_state.username = ""
+    if 'password' not in st.session_state:
+        st.session_state.password = ""
+
+def er_login(username, password):
+    """Test EarthRanger login credentials"""
+    try:
+        er = EarthRangerIO(
+            server="https://twiga.pamdas.org",
+            username=username,
+            password=password
+        )
+        # Try a simple call to check credentials
+        er.get_sources(limit=1)
+        return True
+    except Exception:
+        return False
 
 def authenticate_earthranger():
     """Handle EarthRanger authentication with username/password"""
@@ -68,122 +77,87 @@ def authenticate_earthranger():
             st.error("❌ Username and password are required")
             return
         
-        try:
-            with st.spinner("Logging in to EarthRanger..."):
-                # Use EarthRangerIO for authentication
-                er = EarthRangerIO(
-                    server="https://twiga.pamdas.org",
-                    username=username,
-                    password=password
-                )
-                
-                # Test the connection by getting a small amount of data
-                er.get_sources(limit=1)
-                
-                # If we get here, authentication was successful
-                # Get the token from the EarthRangerIO instance
-                api_token = er.auth.token
-                
-                st.session_state.api_token = api_token
-                st.session_state.base_url = "https://twiga.pamdas.org/api/v1.0"
-                st.session_state.headers = {"Authorization": f"Bearer {api_token}"}
-                st.session_state.username = username
-                st.session_state.authenticated = True
-                
-                st.success("✅ Successfully logged in to EarthRanger!")
-                st.rerun()
-                
-        except Exception as e:
-            st.error(f"❌ Login failed: {str(e)}")
-            st.info("💡 Please check your username and password")
+        if er_login(username, password):
+            st.session_state.authenticated = True
+            st.session_state.username = username
+            st.session_state.password = password
+            st.success("✅ Successfully logged in to EarthRanger!")
+            st.rerun()
+        else:
+            st.error("❌ Invalid credentials. Please try again.")
 
 # --- Data fetching functions ---
 @st.cache_data(ttl=3600)
-def get_all_sources():
-    """Fetch all sources (cached for 1 hour)"""
-    if not st.session_state.get('api_token'):
-        return pd.DataFrame()
-    
-    # Use direct API calls
-    url = f"{st.session_state.base_url}/sources/?page_size=1000"
-    headers = st.session_state.headers
-    sources = []
-    
-    while url:
-        resp = requests.get(url, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-        sources.extend(data['data']['results'])
-        url = data['data']['next']
-    
-    return pd.DataFrame(sources)
+def get_all_sources(_username, _password):
+    """Fetch all sources using ecoscope (cached for 1 hour)"""
+    er = EarthRangerIO(
+        server="https://twiga.pamdas.org",
+        username=_username,
+        password=_password
+    )
+    sources_df = er.get_sources()
+    return sources_df
 
-def get_last_7_days(source_id):
-    """Fetch last 7 days of locations for a source"""
-    if not st.session_state.get('api_token'):
-        return pd.DataFrame()
-        
-    since = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT00:00:00.000Z")
-    url = f"{st.session_state.base_url}/observations/?source_id={source_id}&since={since}&page_size=1000&ordering=recorded_at"
-    resp = requests.get(url, headers=st.session_state.headers)
-    resp.raise_for_status()
-    data = resp.json()
+def get_last_7_days(source_id, username, password):
+    """Fetch last 7 days of locations for a source using ecoscope"""
+    er = EarthRangerIO(
+        server="https://twiga.pamdas.org",
+        username=username,
+        password=password
+    )
     
-    points = []
-    for result in data['data']['results']:
-        # Basic location data
-        point = {
-            'datetime': result['recorded_at'],
-            'latitude': result['location']['latitude'],
-            'longitude': result['location']['longitude']
-        }
+    since = datetime.utcnow() - timedelta(days=7)
+    
+    try:
+        # Use EarthRangerIO to get observations
+        obs_df = er.get_observations(
+            source_ids=[source_id],
+            since=since,
+            include_details=True
+        )
         
-        # Add additional data if available (check both locations)
-        battery_found = False
+        if obs_df.empty:
+            return pd.DataFrame()
         
-        # First check 'additional' field (some manufacturers use this)
-        if 'additional' in result:
-            additional = result['additional']
+        # Convert to the format we need
+        points = []
+        for _, row in obs_df.iterrows():
+            point = {
+                'datetime': row['recorded_at'],
+                'latitude': row['location_lat'],
+                'longitude': row['location_long']
+            }
             
-            # Try different battery field names used by different manufacturers
-            battery_fields = [
-                'battery_voltage', 'battery_level', 'battery', 'voltage', 'bat_voltage', 'batteryvoltage', 
-                'v', 'battery_volts',  # SpoorTrack
-                'battery_percentage',  # Mapipedia
-            ]
-            for field in battery_fields:
-                if field in additional:
-                    point['battery'] = additional[field]
-                    battery_found = True
-                    break
-        
-        # Check 'device_status_properties' field (SpoorTrack and others use this)
-        if 'device_status_properties' in result and not battery_found:
-            device_status_list = result['device_status_properties']
-            
-            # Handle list structure: each item has 'label' and 'value'
-            if device_status_list and isinstance(device_status_list, list):
-                # Look for battery-related labels and extract their values
-                battery_labels = ['battery', 'voltage', 'battery_voltage', 'battery_level', 'battery_percentage', 'v', 'bat_voltage']
-                
-                for item in device_status_list:
-                    if isinstance(item, dict) and 'label' in item and 'value' in item:
-                        label = item['label'].lower()  # Convert to lowercase for matching
-                        if any(battery_label in label for battery_label in battery_labels):
-                            point['battery'] = item['value']
-                            battery_found = True
+            # Try to extract battery info from additional fields
+            if 'additional' in row and pd.notna(row['additional']):
+                additional = row['additional']
+                if isinstance(additional, dict):
+                    battery_fields = [
+                        'battery_voltage', 'battery_level', 'battery', 'voltage', 'bat_voltage', 'batteryvoltage', 
+                        'v', 'battery_volts', 'battery_percentage'
+                    ]
+                    for field in battery_fields:
+                        if field in additional:
+                            point['battery'] = additional[field]
                             break
+            
+            points.append(point)
         
-        points.append(point)
-    
-    return pd.DataFrame(points)
+        return pd.DataFrame(points)
+        
+    except Exception as e:
+        st.error(f"Error fetching observations: {e}")
+        return pd.DataFrame()
 
 def unit_dashboard():
     """Main unit check dashboard interface"""
     st.header("🔍 Unit Check Dashboard")
     
+    username = st.session_state.username
+    password = st.session_state.password
+    
     with st.spinner("Loading all sources..."):
-        df_sources = get_all_sources()
+        df_sources = get_all_sources(username, password)
     
     if df_sources.empty:
         st.warning("No sources found.")
@@ -239,7 +213,7 @@ def unit_dashboard():
     with st.spinner("Fetching 7-day location data..."):
         for i, source_id in enumerate(selected_source_ids):
             source_label = selected_labels[i]
-            df_7 = get_last_7_days(source_id)
+            df_7 = get_last_7_days(source_id, username, password)
             
             if not df_7.empty:
                 df_7['date'] = pd.to_datetime(df_7['datetime']).dt.date
@@ -314,7 +288,7 @@ def unit_dashboard():
     with st.spinner("Getting last locations..."):
         for i, source_id in enumerate(selected_source_ids):
             source_label = selected_labels[i]
-            df_7 = get_last_7_days(source_id)
+            df_7 = get_last_7_days(source_id, username, password)
             
             if not df_7.empty and 'latitude' in df_7.columns and 'longitude' in df_7.columns:
                 # Sort by datetime and get the most recent location
@@ -414,6 +388,7 @@ def _main_implementation():
     st.sidebar.markdown("### 🔐 Authentication ✅")
     if st.session_state.get('username'):
         st.sidebar.write(f"**User:** {st.session_state.username}")
+        st.sidebar.write("**Server:** https://twiga.pamdas.org")
     
     # Show dashboard
     unit_dashboard()
@@ -429,7 +404,7 @@ def _main_implementation():
     
     if st.sidebar.button("🔓 Logout"):
         # Clear authentication
-        for key in ['authenticated', 'api_token', 'headers', 'username']:
+        for key in ['authenticated', 'username', 'password']:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
