@@ -106,27 +106,38 @@ def get_last_7_days(source_id, username, password):
         password=password
     )
     
-    since = datetime.utcnow() - timedelta(days=7)
+    since = (datetime.utcnow() - timedelta(days=7)).isoformat()
     
     try:
-        # Use EarthRangerIO to get observations - use source_id (singular)
-        obs_df = er.get_observations(
-            source_id=source_id,
+        # Use EarthRangerIO get_source_observations method with correct parameters
+        relocations = er.get_source_observations(
+            source_ids=[source_id],  # This method expects source_ids (plural) as a list
             since=since,
-            include_details=True
+            include_details=True,
+            relocations=False  # Get raw DataFrame instead of Relocations object
         )
         
-        if obs_df.empty:
+        if relocations.empty:
             return pd.DataFrame()
         
-        # Convert to the format we need
+        # Convert to the format we need - ecoscope uses different column names
         points = []
-        for _, row in obs_df.iterrows():
+        for _, row in relocations.iterrows():
             point = {
                 'datetime': row['recorded_at'],
-                'latitude': row['location_lat'],
-                'longitude': row['location_long']
+                'latitude': row.get('location_lat', row.get('latitude')),
+                'longitude': row.get('location_long', row.get('longitude'))
             }
+            
+            # Extract geometry coordinates if location_lat/long not available
+            if pd.isna(point['latitude']) and 'geometry' in row:
+                try:
+                    geom = row['geometry']
+                    if hasattr(geom, 'y') and hasattr(geom, 'x'):
+                        point['latitude'] = geom.y
+                        point['longitude'] = geom.x
+                except:
+                    pass
             
             # Try to extract battery info from additional fields
             if 'additional' in row and pd.notna(row['additional']):
