@@ -109,9 +109,9 @@ def get_last_7_days(source_id, username, password):
     since = datetime.utcnow() - timedelta(days=7)
     
     try:
-        # Use EarthRangerIO to get observations
+        # Use EarthRangerIO to get observations - use source_id (singular)
         obs_df = er.get_observations(
-            source_ids=[source_id],
+            source_id=source_id,
             since=since,
             include_details=True
         )
