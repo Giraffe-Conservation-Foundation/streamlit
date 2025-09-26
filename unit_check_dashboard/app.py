@@ -297,7 +297,7 @@ def unit_dashboard():
             
             # Determine manufacturer type based on selected manufacturer
             # Add reference lines for expected daily location counts
-            if selected_manufacturer.lower() in ['spoortrack', 'savannah tracking']:
+            if selected_manufacturer.lower() in ['spoortrack', 'savannah tracking', 'savannah_tracking_provider']:
                 # SpoorTrack and Savannah: good activity at 24 locations/day
                 fig.add_hline(
                     y=24, 
@@ -324,7 +324,7 @@ def unit_dashboard():
                 source_manufacturers = df_sources[df_sources['label'].isin(selected_labels)]['provider'].unique()
                 
                 # If all sources are voltage-type manufacturers, use 24
-                voltage_manufacturers = ['spoortrack', 'savannah tracking']
+                voltage_manufacturers = ['spoortrack', 'savannah tracking', 'savannah_tracking_provider']
                 percentage_manufacturers = ['gsatsolar', 'ceres']
                 
                 if all(mfg.lower() in voltage_manufacturers for mfg in source_manufacturers):
