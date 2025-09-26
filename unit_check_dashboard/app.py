@@ -46,55 +46,68 @@ def init_session_state():
         st.session_state.api_token = None
     if 'base_url' not in st.session_state:
         st.session_state.base_url = "https://twiga.pamdas.org/api/v1.0"
-    if 'password' not in st.session_state:
-        st.session_state.password = None
+    if 'username' not in st.session_state:
+        st.session_state.username = None
 
 def authenticate_earthranger():
-    """Handle EarthRanger authentication"""
+    """Handle EarthRanger authentication with username/password"""
     st.header("🔐 EarthRanger Authentication")
     
-    st.write("Enter your EarthRanger API token to access the unit check dashboard:")
+    st.write("Enter your EarthRanger credentials to access the unit check dashboard:")
     
     # Fixed server URL
     st.info("**Server:** https://twiga.pamdas.org")
     
-    # API Token (required)
-    api_token = st.text_input(
-        "API Token",
-        type="password",
-        help="Your EarthRanger API token from https://twiga.pamdas.org"
-    )
+    # Username and Password
+    username = st.text_input("Username", help="Your EarthRanger username")
+    password = st.text_input("Password", type="password", help="Your EarthRanger password")
     
-    if st.button("🔌 Connect to EarthRanger", type="primary"):
-        if not api_token:
-            st.error("❌ API token is required")
+    if st.button("🔌 Login to EarthRanger", type="primary"):
+        if not username or not password:
+            st.error("❌ Username and password are required")
             return
         
         try:
-            with st.spinner("Connecting to EarthRanger..."):
+            with st.spinner("Logging in to EarthRanger..."):
+                # Use EarthRanger login API
+                login_url = "https://twiga.pamdas.org/api/v1.0/login"
+                login_data = {"username": username, "password": password}
+                
+                response = requests.post(login_url, json=login_data)
+                response.raise_for_status()
+                
+                # Get the token from response
+                login_result = response.json()
+                api_token = login_result.get('token')
+                
+                if not api_token:
+                    st.error("❌ Login failed: No token received")
+                    return
+                
+                # Test the token
                 st.session_state.api_token = api_token
                 st.session_state.base_url = "https://twiga.pamdas.org/api/v1.0"
                 headers = {"Authorization": f"Bearer {api_token}"}
                 
-                # Test the API token
                 test_url = f"{st.session_state.base_url}/sources/?page_size=1"
-                response = requests.get(test_url, headers=headers)
-                response.raise_for_status()
+                test_response = requests.get(test_url, headers=headers)
+                test_response.raise_for_status()
                 
-                st.success("✅ Successfully authenticated with EarthRanger!")
+                st.success("✅ Successfully logged in to EarthRanger!")
                 st.session_state.authenticated = True
                 st.session_state.headers = headers
+                st.session_state.username = username
                 
                 st.rerun()
                 
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 401:
-                st.error("❌ Authentication failed: Invalid API token")
+                st.error("❌ Authentication failed: Invalid username or password")
             else:
                 st.error(f"❌ HTTP Error: {e}")
         except Exception as e:
-            st.error(f"❌ Connection failed: {str(e)}")
-            st.info("💡 Please check your API token")
+            st.error(f"❌ Login failed: {str(e)}")
+            st.info("💡 Please check your username and password")
 
 # --- Data fetching functions ---
 @st.cache_data(ttl=3600)
@@ -305,64 +318,75 @@ def unit_dashboard():
         else:
             st.info("No battery data available for selected sources.")
     
-    # Location map for all selected sources
-    st.subheader("🗺️ 7-Day Location Tracks")
+    # Last location map for all selected sources
+    st.subheader("🗺️ Last Known Locations")
     
-    all_map_data = []
+    last_locations = []
     
-    with st.spinner("Creating location map..."):
+    with st.spinner("Getting last locations..."):
         for i, source_id in enumerate(selected_source_ids):
             source_label = selected_labels[i]
             df_7 = get_last_7_days(source_id)
             
             if not df_7.empty and 'latitude' in df_7.columns and 'longitude' in df_7.columns:
-                map_data = df_7[['latitude', 'longitude', 'datetime']].copy()
-                map_data['source'] = source_label
-                map_data['color'] = color_map[source_label]
-                all_map_data.append(map_data)
+                # Sort by datetime and get the most recent location
+                df_sorted = df_7.sort_values('datetime', ascending=False)
+                last_location = df_sorted.iloc[0]
+                
+                location_data = {
+                    'source': source_label,
+                    'latitude': last_location['latitude'],
+                    'longitude': last_location['longitude'],
+                    'datetime': last_location['datetime'],
+                    'color': color_map[source_label]
+                }
+                
+                # Add battery info if available
+                if 'battery' in df_7.columns and pd.notna(last_location.get('battery')):
+                    location_data['battery'] = last_location['battery']
+                
+                last_locations.append(location_data)
     
-    if all_map_data:
-        combined_map_df = pd.concat(all_map_data, ignore_index=True)
+    if last_locations:
+        last_locations_df = pd.DataFrame(last_locations)
         
-        # Create map with tracks for all sources
+        # Create map with last locations only
         fig_map = px.scatter_mapbox(
-            combined_map_df,
+            last_locations_df,
             lat='latitude',
             lon='longitude',
             color='source',
-            hover_data={'datetime': True, 'latitude': ':.6f', 'longitude': ':.6f'},
-            title="7-Day Location Tracks",
+            hover_data={'datetime': True, 'latitude': ':.6f', 'longitude': ':.6f', 'battery': True},
+            title="Last Known Locations",
             mapbox_style='open-street-map',
-            height=500
+            height=500,
+            size_max=15
         )
         
-        # Add track lines for each source
-        for source_label in selected_labels:
-            source_data = combined_map_df[combined_map_df['source'] == source_label].sort_values('datetime')
-            if len(source_data) > 1:
-                fig_map.add_trace(
-                    go.Scattermapbox(
-                        lat=source_data['latitude'],
-                        lon=source_data['longitude'],
-                        mode='lines',
-                        line=dict(color=color_map[source_label], width=2),
-                        name=f'{source_label} track',
-                        showlegend=False
-                    )
-                )
+        # Make markers larger
+        fig_map.update_traces(marker=dict(size=12))
         
-        # Center map on all data
+        # Center map on all last locations
         fig_map.update_layout(
             mapbox=dict(
                 center=dict(
-                    lat=combined_map_df['latitude'].mean(),
-                    lon=combined_map_df['longitude'].mean()
+                    lat=last_locations_df['latitude'].mean(),
+                    lon=last_locations_df['longitude'].mean()
                 ),
                 zoom=8
             )
         )
         
         st.plotly_chart(fig_map, use_container_width=True)
+        
+        # Show last location details in a table
+        st.subheader("📍 Last Location Details")
+        display_df = last_locations_df[['source', 'datetime', 'latitude', 'longitude']].copy()
+        if 'battery' in last_locations_df.columns:
+            display_df['battery'] = last_locations_df['battery']
+        display_df['datetime'] = pd.to_datetime(display_df['datetime']).dt.strftime('%Y-%m-%d %H:%M:%S')
+        st.dataframe(display_df, use_container_width=True)
+        
     else:
         st.info("No location data available for mapping.")
     
@@ -400,8 +424,8 @@ def _main_implementation():
     
     # Authentication status
     st.sidebar.markdown("### 🔐 Authentication ✅")
-    if st.session_state.get('api_token'):
-        st.sidebar.write("**Method:** API Token")
+    if st.session_state.get('username'):
+        st.sidebar.write(f"**User:** {st.session_state.username}")
     
     # Show dashboard
     unit_dashboard()
@@ -417,7 +441,7 @@ def _main_implementation():
     
     if st.sidebar.button("🔓 Logout"):
         # Clear authentication
-        for key in ['authenticated', 'api_token', 'headers']:
+        for key in ['authenticated', 'api_token', 'headers', 'username']:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
