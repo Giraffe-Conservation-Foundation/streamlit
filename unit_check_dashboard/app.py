@@ -184,7 +184,7 @@ def get_last_7_days(source_id, username, password):
 
 def unit_dashboard():
     """Main unit check dashboard interface"""
-    st.header("🔍 Unit Check Dashboard")
+    #st.header("🔍 Unit Check Dashboard")
     
     username = st.session_state.username
     password = st.session_state.password
@@ -203,13 +203,22 @@ def unit_dashboard():
         st.warning("No tracking device sources found.")
         return
     
-    # First filter by manufacturer - default to SpoorTrack
+    # First filter by manufacturer - default to SpoorTrack (case insensitive)
     manufacturers = ['All'] + sorted(df_sources['provider'].dropna().unique().tolist())
     
-    # Set SpoorTrack as default if it exists
-    default_manufacturer = "SpoorTrack" if "SpoorTrack" in manufacturers else "All"
+    # Find SpoorTrack with case-insensitive search
+    spoortrack_match = None
+    for manufacturer in manufacturers:
+        if manufacturer.lower() == "spoortrack":
+            spoortrack_match = manufacturer
+            break
+    
+    # Set SpoorTrack as default if it exists (using the actual case from data)
+    default_manufacturer = spoortrack_match if spoortrack_match else "All"
+    default_index = manufacturers.index(default_manufacturer)
+    
     selected_manufacturer = st.selectbox("Select a manufacturer", manufacturers, 
-                                       index=manufacturers.index(default_manufacturer))
+                                       index=default_index)
     
     # Filter by manufacturer if not "All"
     if selected_manufacturer != 'All':
@@ -237,8 +246,11 @@ def unit_dashboard():
     colors = px.colors.qualitative.Set1
     color_map = {label: colors[i % len(colors)] for i, label in enumerate(selected_labels)}
     
+    # Separator between filter and activity sections
+    st.markdown("---")
+    
     # Last 7 days combined chart
-    st.subheader("📊 Location Activity (Last 7 Days)")
+    st.subheader("📊 Activity (last 7 days)")
     
     all_7_day_data = []
     all_battery_data = []
@@ -279,12 +291,55 @@ def unit_dashboard():
                 x='date',
                 y='count',
                 color='source',
-                title="Daily Location Counts (Last 7 Days)",
+                title="Daily location counts",
                 barmode='group'
             )
+            
+            # Determine manufacturer type based on selected manufacturer
+            # Add reference lines for expected daily location counts
+            if selected_manufacturer.lower() in ['spoortrack', 'savannah tracking']:
+                # SpoorTrack and Savannah: good activity at 24 locations/day
+                fig.add_hline(
+                    y=24, 
+                    line_dash="dash", 
+                    line_color="green",
+                    annotation_text="Good (24/day)",
+                    annotation_position="top right",
+                    annotation_font_color="green"
+                )
+            elif selected_manufacturer.lower() in ['gsatsolar', 'ceres']:
+                # GSatSolar and Ceres: good activity at 3 locations/day
+                fig.add_hline(
+                    y=3, 
+                    line_dash="dash", 
+                    line_color="green",
+                    annotation_text="Good (3/day)",
+                    annotation_position="top right",
+                    annotation_font_color="green"
+                )
+            elif selected_manufacturer == 'All':
+                # When "All" is selected, check the actual sources in the data
+                sources_in_data = combined_df['source'].unique()
+                # Get the manufacturer for each source from the original data
+                source_manufacturers = df_sources[df_sources['label'].isin(selected_labels)]['provider'].unique()
+                
+                # If all sources are voltage-type manufacturers, use 24
+                voltage_manufacturers = ['spoortrack', 'savannah tracking']
+                percentage_manufacturers = ['gsatsolar', 'ceres']
+                
+                if all(mfg.lower() in voltage_manufacturers for mfg in source_manufacturers):
+                    fig.add_hline(y=24, line_dash="dash", line_color="green", 
+                                annotation_text="Good (24/day)", annotation_position="top right",
+                                annotation_font_color="green")
+                elif all(mfg.lower() in percentage_manufacturers for mfg in source_manufacturers):
+                    fig.add_hline(y=3, line_dash="dash", line_color="green", 
+                                annotation_text="Good (3/day)", annotation_position="top right",
+                                annotation_font_color="green")
+                # For mixed manufacturers, don't add a reference line
+            
             fig.update_layout(
                 xaxis_title="Date", 
-                yaxis_title="Number of Locations",
+                yaxis_title="Number of locations",
                 xaxis=dict(tickformat='%Y-%m-%d')
             )
             st.plotly_chart(fig, use_container_width=True)
@@ -295,26 +350,69 @@ def unit_dashboard():
         if all_battery_data:
             battery_df = pd.concat(all_battery_data, ignore_index=True)
             
+            # Determine battery type based on values (voltage vs percentage)
+            max_battery = battery_df['battery'].max()
+            min_battery = battery_df['battery'].min()
+            
+            # If values are in range 3-5, it's voltage; if 6-100, it's percentage
+            is_voltage = max_battery <= 5.0 and min_battery >= 3.0
+            is_percentage = max_battery > 10 and max_battery <= 100
+            
             # Create battery level chart
             fig_battery = px.line(
                 battery_df,
                 x='date',
                 y='battery',
                 color='source',
-                title="Average Daily Battery Level (Last 7 Days)",
+                title="Average daily battery",
                 markers=True
             )
+            
+            # Add reference line for "good" battery level and set y-axis limits
+            if is_voltage:
+                # For voltage (SpoorTrack, Savannah): good level at 3.9V
+                fig_battery.add_hline(
+                    y=3.9, 
+                    line_dash="dash", 
+                    line_color="green",
+                    annotation_text="Good (3.9V)",
+                    annotation_position="bottom right",
+                    annotation_font_color="green"
+                )
+                y_title = "Battery voltage (V)"
+                y_range = [3.2, 4.2]
+            elif is_percentage:
+                # For percentage (GSatSolar, Ceres): good level at 80%
+                fig_battery.add_hline(
+                    y=80, 
+                    line_dash="dash", 
+                    line_color="green",
+                    annotation_text="Good (80%)",
+                    annotation_position="bottom right",
+                    annotation_font_color="green"
+                )
+                y_title = "Battery level (%)"
+                y_range = [0, 100]
+            else:
+                # Unknown type, use generic label and auto-range
+                y_title = "Battery Level"
+                y_range = None
+            
             fig_battery.update_layout(
                 xaxis_title="Date",
-                yaxis_title="Battery Level",
-                xaxis=dict(tickformat='%Y-%m-%d')
+                yaxis_title=y_title,
+                xaxis=dict(tickformat='%Y-%m-%d'),
+                yaxis=dict(range=y_range) if y_range else {}
             )
             st.plotly_chart(fig_battery, use_container_width=True)
         else:
             st.info("No battery data available for selected sources.")
     
+    # Separator between activity and last location sections
+    st.markdown("---")
+    
     # Last location map for all selected sources
-    st.subheader("🗺️ Last Known Locations")
+    st.subheader("🗺️ Last location")
     
     last_locations = []
     
@@ -357,7 +455,7 @@ def unit_dashboard():
             lon='longitude',
             color='source',
             hover_data=hover_data,
-            title="Last Known Locations",
+            title="Last known locations",
             mapbox_style='open-street-map',
             height=500,
             size_max=15
@@ -380,7 +478,7 @@ def unit_dashboard():
         st.plotly_chart(fig_map, use_container_width=True)
         
         # Show last location details in a table
-        st.subheader("📍 Last Location Details")
+        st.subheader("📍 Last location details")
         display_columns = ['source', 'datetime', 'latitude', 'longitude']
         display_df = last_locations_df[display_columns].copy()
         
@@ -401,11 +499,11 @@ def unit_dashboard():
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Locations (7 days)", total_locations)
+            st.metric("Total locations (7 days)", total_locations)
         with col2:
-            st.metric("Average Daily", f"{avg_daily.mean():.1f}")
+            st.metric("Average daily locations", f"{avg_daily.mean():.1f}")
         with col3:
-            st.metric("Sources Reporting", len(selected_labels))
+            st.metric("Sources reporting", len(selected_labels))
 
 def _main_implementation():
     """Main application logic"""
@@ -414,7 +512,7 @@ def _main_implementation():
     # Header with logo
     with st.container():
         st.title("🔍 Unit Check Dashboard")
-        st.markdown("Monitor tracking device units - 7-day activity, battery, and location")
+        st.markdown("Monitor GPS tracking units (7 day activity/battery, and last location)")
     
     # Landing page (only shown if not authenticated yet)
     if not st.session_state.authenticated:
