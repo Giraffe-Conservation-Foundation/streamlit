@@ -117,86 +117,64 @@ def get_last_7_days(source_id, username, password):
             relocations=False  # Get raw DataFrame instead of Relocations object
         )
         
-        # DEBUG: Show what we received
-        if not relocations.empty:
-            st.write(f"🔍 **DEBUG - Raw data for source {source_id}:**")
-            st.write(f"Columns: {list(relocations.columns)}")
-            st.write(f"Shape: {relocations.shape}")
-            if len(relocations) > 0:
-                st.write("Sample row:")
-                sample_row = relocations.iloc[0]
-                st.json(sample_row.to_dict())
+
         
         if relocations.empty:
             return pd.DataFrame()
         
-        # Convert to the format we need - ecoscope uses different column names
+        # Convert to the format we need
         points = []
         for _, row in relocations.iterrows():
-            point = {
-                'datetime': row['recorded_at'],
-                'latitude': row.get('location_lat', row.get('latitude')),
-                'longitude': row.get('location_long', row.get('longitude'))
-            }
-            
-            # Extract geometry coordinates if location_lat/long not available
-            if pd.isna(point['latitude']) and 'geometry' in row:
+            # Extract coordinates from geometry (Point object)
+            latitude, longitude = None, None
+            if 'geometry' in row and pd.notna(row['geometry']):
                 try:
                     geom = row['geometry']
                     if hasattr(geom, 'y') and hasattr(geom, 'x'):
-                        point['latitude'] = geom.y
-                        point['longitude'] = geom.x
+                        latitude = geom.y
+                        longitude = geom.x
                 except:
-                    pass
+                    # Fallback to location dict if available
+                    if 'location' in row and isinstance(row['location'], dict):
+                        latitude = row['location'].get('latitude')
+                        longitude = row['location'].get('longitude')
             
-            # Try to extract battery info from additional fields
+            point = {
+                'datetime': row['recorded_at'],
+                'latitude': latitude,
+                'longitude': longitude
+            }
+            
+            # Extract battery data - check multiple sources
             battery_found = False
-            if 'additional' in row and pd.notna(row['additional']):
-                additional = row['additional']
-                if isinstance(additional, dict):
-                    st.write(f"🔋 **DEBUG - Additional fields for this observation:**")
-                    st.json(additional)
-                    
-                    battery_fields = [
-                        'battery_voltage', 'battery_level', 'battery', 'voltage', 'bat_voltage', 'batteryvoltage', 
-                        'v', 'battery_volts', 'battery_percentage'
-                    ]
+            
+            # First check observation_details (most direct)
+            if 'observation_details' in row and pd.notna(row['observation_details']):
+                obs_details = row['observation_details']
+                if isinstance(obs_details, dict):
+                    battery_fields = ['voltage', 'battery', 'batt', 'batt_perc', 'bat_soc']
                     for field in battery_fields:
-                        if field in additional:
-                            point['battery'] = additional[field]
+                        if field in obs_details:
+                            point['battery'] = obs_details[field]
                             battery_found = True
-                            st.write(f"✅ Found battery data in field '{field}': {additional[field]}")
                             break
             
-            # Check for device_status_properties (common in SpoorTrack)
-            if 'device_status_properties' in row and pd.notna(row['device_status_properties']):
+            # If not found, check device_status_properties
+            if not battery_found and 'device_status_properties' in row and pd.notna(row['device_status_properties']):
                 device_status = row['device_status_properties']
-                st.write(f"📱 **DEBUG - Device status properties:**")
-                st.json(device_status)
-                
                 if isinstance(device_status, list):
                     for item in device_status:
                         if isinstance(item, dict) and 'label' in item and 'value' in item:
                             label = item['label'].lower()
-                            if any(battery_term in label for battery_term in ['battery', 'voltage', 'v']):
+                            # Look for voltage, battery, batt, or bat_soc
+                            if any(battery_term in label for battery_term in ['voltage', 'battery', 'batt', 'bat_soc']):
                                 point['battery'] = item['value']
                                 battery_found = True
-                                st.write(f"✅ Found battery data in device status '{item['label']}': {item['value']}")
                                 break
-            
-            if not battery_found:
-                st.write("❌ No battery data found for this observation")
             
             points.append(point)
         
-        result_df = pd.DataFrame(points)
-        st.write(f"🎯 **DEBUG - Final processed data:**")
-        st.write(f"Columns: {list(result_df.columns)}")
-        st.write(f"Shape: {result_df.shape}")
-        if not result_df.empty:
-            st.dataframe(result_df.head())
-        
-        return result_df
+        return pd.DataFrame(points)
         
     except Exception as e:
         st.error(f"Error fetching observations: {e}")
@@ -277,17 +255,9 @@ def unit_dashboard():
                 all_7_day_data.append(counts)
                 
                 # Collect battery data if available
-                st.write(f"🔋 **DEBUG - Battery check for {source_label}:**")
-                st.write(f"Columns in df_7: {list(df_7.columns) if not df_7.empty else 'Empty DataFrame'}")
-                
                 if 'battery' in df_7.columns:
-                    st.write(f"✅ Battery column found for {source_label}")
                     # Convert battery values to numeric, handling any non-numeric values
                     df_7['battery_numeric'] = pd.to_numeric(df_7['battery'], errors='coerce')
-                    
-                    # Show battery values for debugging
-                    battery_values = df_7['battery'].dropna().unique()
-                    st.write(f"Battery values found: {battery_values}")
                     
                     # Only proceed if we have valid numeric battery values
                     if df_7['battery_numeric'].notna().any():
@@ -295,11 +265,6 @@ def unit_dashboard():
                         battery_data = battery_data.rename(columns={'battery_numeric': 'battery'})
                         battery_data['source'] = source_label
                         all_battery_data.append(battery_data)
-                        st.write(f"✅ Added battery data for {source_label}")
-                    else:
-                        st.write(f"❌ No valid numeric battery data for {source_label}")
-                else:
-                    st.write(f"❌ No battery column for {source_label}")
     
     # Create two columns for charts
     col1, col2 = st.columns(2)
@@ -380,18 +345,10 @@ def unit_dashboard():
     if last_locations:
         last_locations_df = pd.DataFrame(last_locations)
         
-        # DEBUG: Show what columns we have in last locations
-        st.write(f"🗺️ **DEBUG - Last locations data:**")
-        st.write(f"Columns: {list(last_locations_df.columns)}")
-        st.dataframe(last_locations_df)
-        
         # Prepare hover data - only include battery if it exists
         hover_data = {'datetime': True, 'latitude': ':.6f', 'longitude': ':.6f'}
         if 'battery' in last_locations_df.columns:
             hover_data['battery'] = True
-            st.write("✅ Battery data will be included in hover")
-        else:
-            st.write("❌ No battery data available for hover")
         
         # Create map with last locations only
         fig_map = px.scatter_mapbox(
@@ -429,9 +386,6 @@ def unit_dashboard():
         
         if 'battery' in last_locations_df.columns:
             display_df['battery'] = last_locations_df['battery']
-            st.write("✅ Battery data included in table")
-        else:
-            st.write("❌ No battery data available for table")
             
         display_df['datetime'] = pd.to_datetime(display_df['datetime']).dt.strftime('%Y-%m-%d %H:%M:%S')
         st.dataframe(display_df, use_container_width=True)
