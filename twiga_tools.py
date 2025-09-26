@@ -51,7 +51,7 @@ Navigate using the sidebar to access:
 - **NANW Dashboard** - monitor Northwest Namibia giraffe population  
 - **Camera Trap Upload** - process and upload camera trap images to Google Cloud
 - **Survey Upload** - process and upload survey images to Google Cloud
-- **Source Dashboard** - monitor tracking device sources and location data
+- **Unit Check** - monitor tracking device activity, battery, and locations over 7 days
 - **Tagging Dashboard** - monitor newly tagged giraffes by month and country
 - **Translocation Dashboard** - monitor and analyze giraffe translocation events
 - **Genetic Dashboard** - monitor and analyze biological sample events
