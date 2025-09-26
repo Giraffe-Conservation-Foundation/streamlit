@@ -1,6 +1,6 @@
 """
-📊 NANW Event Dashboard
-NW Namibia Conservation Monitoring
+📖 Create ID Book
+Wildbook ID Generator Tool
 """
 
 import streamlit as st
@@ -8,31 +8,30 @@ import sys
 import os
 from pathlib import Path
 
-# Add the nanw_dashboard directory to Python path
+# Add the wildbook directory to Python path
 current_dir = Path(__file__).parent.parent
-nanw_dir = current_dir / "nanw_dashboard"
-sys.path.insert(0, str(nanw_dir))
+wildbook_dir = current_dir / "wildbook_id_generator"
+sys.path.insert(0, str(wildbook_dir))
 
-st.title("📊 NANW Dashboard")
-st.markdown("*NW Namibia giraffe monitoring*")
+st.title("📖 Create an ID Book [beta]")
 
-if nanw_dir.exists() and (nanw_dir / "app.py").exists():
+if wildbook_dir.exists() and (wildbook_dir / "app.py").exists():
     # Store original working directory
     original_dir = os.getcwd()
     
     try:
         # Change to the app directory
-        os.chdir(nanw_dir)
+        os.chdir(wildbook_dir)
         
         # Load environment variables if available
         try:
             from dotenv import load_dotenv
             load_dotenv()
         except ImportError:
-            st.warning("⚠️ python-dotenv not installed. Environment variables from .env file won't be loaded.")
+            pass  # dotenv not required for this tool
         
         # Read and execute the app code
-        with open(nanw_dir / "app.py", "r", encoding="utf-8") as f:
+        with open(wildbook_dir / "app.py", "r", encoding="utf-8") as f:
             app_code = f.read()
             
         # Remove any set_page_config calls since this is a page
@@ -50,5 +49,5 @@ if nanw_dir.exists() and (nanw_dir / "app.py").exists():
         # Always restore original directory
         os.chdir(original_dir)
 else:
-    st.error("❌ NANW Dashboard not found!")
-    st.info("Please ensure the nanw_dashboard/app.py file exists.")
+    st.error("❌ Wildbook ID generator not found!")
+    st.info("Please ensure the wildbook_id_generator/app.py file exists.")

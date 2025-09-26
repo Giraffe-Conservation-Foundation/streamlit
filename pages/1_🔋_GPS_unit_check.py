@@ -29,7 +29,7 @@ try:
     if spec.loader is None:
         st.error(f"Could not get loader for: {app_file}")
         st.stop()
-        
+    
     spec.loader.exec_module(unit_check_app)
 
     # Get the main function
