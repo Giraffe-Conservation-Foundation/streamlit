@@ -8,8 +8,15 @@ import sys
 from pathlib import Path
 import importlib.util
 
-# Add the genetic_dashboard directory to Python path
+# Add shared utilities for logo
 current_dir = Path(__file__).parent.parent
+sys.path.append(str(current_dir))
+from shared.utils import add_sidebar_logo
+
+# Add logo to sidebar at the top
+add_sidebar_logo()
+
+# Add the genetic_dashboard directory to Python path
 genetic_dir = current_dir / "genetic_dashboard"
 app_file = genetic_dir / "app.py"
 

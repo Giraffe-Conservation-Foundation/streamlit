@@ -8,8 +8,15 @@ import sys
 import os
 from pathlib import Path
 
-# Add the nanw_dashboard directory to Python path
+# Add shared utilities for logo
 current_dir = Path(__file__).parent.parent
+sys.path.append(str(current_dir))
+from shared.utils import add_sidebar_logo
+
+# Add logo to sidebar at the top
+add_sidebar_logo()
+
+# Add the nanw_dashboard directory to Python path
 nanw_dir = current_dir / "nanw_dashboard"
 sys.path.insert(0, str(nanw_dir))
 

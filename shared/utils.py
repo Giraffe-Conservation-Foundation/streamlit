@@ -8,6 +8,21 @@ from datetime import datetime
 from PIL import Image
 from PIL.ExifTags import TAGS
 import io
+import streamlit as st
+from pathlib import Path
+
+def add_sidebar_logo():
+    """
+    Add GCF logo to the top of the sidebar for consistent branding across all pages
+    """
+    # Get the path to the shared logo
+    current_file_dir = Path(__file__).parent
+    logo_path = current_file_dir / "logo.png"
+    
+    with st.sidebar:
+        if logo_path.exists():
+            st.image(str(logo_path), width=180)
+        st.markdown("---")
 
 def validate_image_file(file_data):
     """

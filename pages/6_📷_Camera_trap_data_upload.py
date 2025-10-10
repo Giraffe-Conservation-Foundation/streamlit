@@ -8,6 +8,15 @@ import sys
 import os
 from pathlib import Path
 
+
+# Add shared utilities for logo
+current_dir = Path(__file__).parent.parent
+sys.path.append(str(current_dir))
+from shared.utils import add_sidebar_logo
+
+# Add logo to sidebar at the top
+add_sidebar_logo()
+
 # Add the camera_trap_upload directory to Python path
 current_dir = Path(__file__).parent.parent
 image_dir = current_dir / "camera_trap_upload"

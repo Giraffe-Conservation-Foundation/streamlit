@@ -71,6 +71,12 @@ st.markdown("""
 # Main page content
 current_dir = Path(__file__).parent
 
+# Add logo to sidebar
+with st.sidebar:
+    if (current_dir / "shared" / "logo.png").exists():
+        st.image(str(current_dir / "shared" / "logo.png"), width=200)
+    st.markdown("---")
+
 # Main content with logo at top
 if (current_dir / "shared" / "logo.png").exists():
     st.image(str(current_dir / "shared" / "logo.png"), width=300)
@@ -97,6 +103,9 @@ Navigate using the sidebar to access:
 - **Post-Tagging Dashboard** - monitor giraffe locations during first 2 days after collar deployment
 - **Translocation Dashboard** - monitor and analyze giraffe translocation events
 - **Genetic Dashboard** - monitor and analyze biological sample events
+- **Patrol Download** - download patrol tracks as shapefiles from EarthRanger for GIS analysis
+- **Mortality Dashboard** - track and analyze giraffe mortality events with timeline and location mapping
+- **ER2WB Converter** - convert EarthRanger giraffe encounter data to GiraffeSpotter bulk import format
 - **ER Backup** - comprehensive backup of all EarthRanger data
 
 ### 🚧 Coming soon

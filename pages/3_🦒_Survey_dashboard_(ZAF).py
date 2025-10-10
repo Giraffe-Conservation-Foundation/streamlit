@@ -9,10 +9,17 @@ import sys
 from pathlib import Path
 import importlib
 
+# Add shared utilities for logo
+current_dir = Path(__file__).parent.parent
+sys.path.append(str(current_dir))
+from shared.utils import add_sidebar_logo
+
+# Add logo to sidebar at the top
+add_sidebar_logo()
+
 def main():
     """Main function to launch ZAF Dashboard"""
     # Add the zaf_dashboard directory to Python path
-    current_dir = Path(__file__).parent.parent
     zaf_dashboard_dir = current_dir / "zaf_dashboard"
     
     if zaf_dashboard_dir not in sys.path:
