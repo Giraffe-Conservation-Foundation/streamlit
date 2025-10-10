@@ -36,7 +36,7 @@ except ImportError:
 st.markdown("""
 <style>
     .impact-header {
-        background: linear-gradient(90deg, #2E8B57 0%, #3CB371 100%);
+        background: linear-gradient(90deg, #db580f 0%, #e5661a 100%);
         padding: 2rem;
         border-radius: 10px;
         color: white;
@@ -65,7 +65,7 @@ st.markdown("""
     .metric-value {
         font-size: 2.5rem;
         font-weight: bold;
-        color: #2E8B57;
+        color: #db580f;
         margin-bottom: 0.5rem;
     }
     .metric-label {
@@ -79,12 +79,12 @@ st.markdown("""
         margin-top: 0.5rem;
     }
     .section-header {
-        color: #2E8B57;
+        color: #db580f;
         font-size: 1.8rem;
         font-weight: bold;
         margin: 2rem 0 1rem 0;
         padding-bottom: 0.5rem;
-        border-bottom: 3px solid #2E8B57;
+        border-bottom: 3px solid #db580f;
     }
     .placeholder-section {
         background-color: #f8f9fa;
