@@ -127,10 +127,10 @@ def get_last_7_days(source_id, username, password):
         for _, row in relocations.iterrows():
             # Extract coordinates from geometry (Point object)
             latitude, longitude = None, None
-            if 'geometry' in row and pd.notna(row['geometry']):
+            if 'geometry' in row:
                 try:
                     geom = row['geometry']
-                    if hasattr(geom, 'y') and hasattr(geom, 'x'):
+                    if geom is not None and hasattr(geom, 'y') and hasattr(geom, 'x'):
                         latitude = geom.y
                         longitude = geom.x
                 except:
@@ -149,9 +149,9 @@ def get_last_7_days(source_id, username, password):
             battery_found = False
             
             # First check observation_details (most direct)
-            if 'observation_details' in row and pd.notna(row['observation_details']):
+            if 'observation_details' in row:
                 obs_details = row['observation_details']
-                if isinstance(obs_details, dict):
+                if obs_details is not None and isinstance(obs_details, dict):
                     battery_fields = ['voltage', 'battery', 'batt', 'batt_perc', 'bat_soc']
                     for field in battery_fields:
                         if field in obs_details:
@@ -160,17 +160,19 @@ def get_last_7_days(source_id, username, password):
                             break
             
             # If not found, check device_status_properties
-            if not battery_found and 'device_status_properties' in row and pd.notna(row['device_status_properties']):
+            if not battery_found and 'device_status_properties' in row:
                 device_status = row['device_status_properties']
-                if isinstance(device_status, list):
-                    for item in device_status:
-                        if isinstance(item, dict) and 'label' in item and 'value' in item:
-                            label = item['label'].lower()
-                            # Look for voltage, battery, batt, or bat_soc
-                            if any(battery_term in label for battery_term in ['voltage', 'battery', 'batt', 'bat_soc']):
-                                point['battery'] = item['value']
-                                battery_found = True
-                                break
+                # Check if device_status is not null and not empty
+                if device_status is not None and device_status != [] and device_status != '':
+                    if isinstance(device_status, list):
+                        for item in device_status:
+                            if isinstance(item, dict) and 'label' in item and 'value' in item:
+                                label = item['label'].lower()
+                                # Look for voltage, battery, batt, or bat_soc
+                                if any(battery_term in label for battery_term in ['voltage', 'battery', 'batt', 'bat_soc']):
+                                    point['battery'] = item['value']
+                                    battery_found = True
+                                    break
             
             points.append(point)
         
@@ -435,8 +437,9 @@ def unit_dashboard():
                 }
                 
                 # Add battery info if available
-                if 'battery' in df_7.columns and pd.notna(last_location.get('battery')):
-                    location_data['battery'] = last_location['battery']
+                battery_value = last_location.get('battery')
+                if 'battery' in df_7.columns and battery_value is not None:
+                    location_data['battery'] = battery_value
                 
                 last_locations.append(location_data)
     
