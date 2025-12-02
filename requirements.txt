@@ -41,4 +41,4 @@ folium>=0.15.0  # Interactive maps
 streamlit-folium>=0.15.0  # Folium integration for Streamlit
 
 # GAD Dashboard - ArcGIS Integration
-arcgis>=2.0.0  # ArcGIS API for feature layer access
+arcgis==2.1.0  # ArcGIS API for feature layer access (pinned version for Python 3.12 compatibility)
