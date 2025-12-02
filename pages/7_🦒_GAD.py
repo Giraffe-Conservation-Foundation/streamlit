@@ -10,7 +10,7 @@ from arcgis.features import FeatureLayer
 
 # Configuration
 AGOL_URL = "https://services1.arcgis.com/uMBFfFIXcCOpjlID/arcgis/rest/services/GAD_20250624/FeatureServer/0"
-TOKEN = st.secrets["arcgis"]["token"]
+TOKEN = st.secrets.get("arcgis", {}).get("token", None)
 
 def check_password():
     """Returns `True` if the user had the correct password."""
@@ -43,8 +43,11 @@ def check_password():
 @st.cache_data(ttl=3600)
 def load_gad_data():
     """Load data from ArcGIS Online using ArcGIS Python API - like R's arcgisbinding"""
-    # Connect to ArcGIS Online with token
-    gis = GIS("https://www.arcgis.com", token=TOKEN)
+    # Connect to ArcGIS Online with token (if available, otherwise anonymous)
+    if TOKEN:
+        gis = GIS("https://www.arcgis.com", token=TOKEN)
+    else:
+        gis = GIS()  # Anonymous connection
     
     # Use ArcGIS FeatureLayer to get all data at once
     feature_layer = FeatureLayer(AGOL_URL, gis=gis)
