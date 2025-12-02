@@ -1,15 +1,16 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import requests
 from datetime import datetime
 import folium
 from streamlit_folium import st_folium
 from folium.plugins import MarkerCluster
-import json
+from arcgis.gis import GIS
+from arcgis.features import FeatureLayer
 
 # Configuration
 AGOL_URL = "https://services1.arcgis.com/uMBFfFIXcCOpjlID/arcgis/rest/services/GAD_20250624/FeatureServer/0"
-TOKEN = st.secrets.get("arcgis", {}).get("token", None)
+TOKEN = st.secrets["arcgis"]["token"]
 
 def check_password():
     """Returns `True` if the user had the correct password."""
@@ -33,7 +34,7 @@ def check_password():
         st.text_input(
             "Password", type="password", on_change=password_entered, key="password"
         )
-        st.error("😕 Password incorrect")
+        st.error("≡ƒÿò Password incorrect")
         return False
     else:
         # Password correct
@@ -41,89 +42,18 @@ def check_password():
 
 @st.cache_data(ttl=3600)
 def load_gad_data():
-    """Load data from ArcGIS Online using REST API - like R's arcgisbinding"""
-    # First check if service supports pagination
-    service_params = {'f': 'json'}
-    if TOKEN:
-        service_params['token'] = TOKEN
+    """Load data from ArcGIS Online using ArcGIS Python API - like R's arcgisbinding"""
+    # Connect to ArcGIS Online with token
+    gis = GIS("https://www.arcgis.com", token=TOKEN)
     
-    service_response = requests.get(AGOL_URL, params=service_params)
-    service_info = service_response.json()
-    supports_pagination = service_info.get('advancedQueryCapabilities', {}).get('supportsPagination', False)
-    max_record_count = service_info.get('maxRecordCount', 1000)
+    # Use ArcGIS FeatureLayer to get all data at once
+    feature_layer = FeatureLayer(AGOL_URL, gis=gis)
     
-    # Build query parameters
-    params = {
-        'where': '1=1',
-        'outFields': '*',
-        'f': 'json',
-        'returnGeometry': 'true'
-    }
+    # Query all features - this automatically handles pagination
+    feature_set = feature_layer.query(where='1=1', out_fields='*', return_all_records=True)
     
-    # Add token if available
-    if TOKEN:
-        params['token'] = TOKEN
-    
-    # Fetch all records with pagination
-    all_features = []
-    
-    if supports_pagination:
-        # Use offset-based pagination
-        offset = 0
-        max_records = min(2000, max_record_count)
-        
-        while True:
-            params['resultOffset'] = offset
-            params['resultRecordCount'] = max_records
-            
-            response = requests.get(f"{AGOL_URL}/query", params=params)
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'features' not in data or len(data['features']) == 0:
-                break
-                
-            all_features.extend(data['features'])
-            
-            # Check if we got all records
-            if len(data['features']) < max_records:
-                break
-                
-            offset += max_records
-    else:
-        # Use objectIds-based pagination for services that don't support offset
-        # First get all object IDs
-        id_params = params.copy()
-        id_params['returnIdsOnly'] = 'true'
-        id_response = requests.get(f"{AGOL_URL}/query", params=id_params)
-        object_ids = id_response.json().get('objectIds', [])
-        
-        # Fetch in batches
-        batch_size = max_record_count
-        for i in range(0, len(object_ids), batch_size):
-            batch_ids = object_ids[i:i+batch_size]
-            batch_params = params.copy()
-            batch_params['objectIds'] = ','.join(map(str, batch_ids))
-            
-            response = requests.get(f"{AGOL_URL}/query", params=batch_params)
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'features' in data:
-                all_features.extend(data['features'])
-    
-    # Convert to DataFrame
-    records = []
-    for feature in all_features:
-        record = feature['attributes'].copy()
-        # Add geometry coordinates if present
-        if 'geometry' in feature and feature['geometry']:
-            if 'x' in feature['geometry'] and 'y' in feature['geometry']:
-                record['x'] = feature['geometry']['x']
-                record['y'] = feature['geometry']['y']
-        records.append(record)
-    
-    df = pd.DataFrame(records)
+    # Convert to DataFrame - this is the equivalent of arc.select() in R
+    df = feature_set.sdf
     
     # Filter exactly as in R code:
     # filter(!is.na(Estimate)) %>%
@@ -435,14 +365,14 @@ def create_map(data):
 # Page Configuration
 st.set_page_config(
     page_title="GAD - Giraffe Africa Database", 
-    page_icon="🦒", 
+    page_icon="≡ƒªÆ", 
     layout="wide"
 )
 
 # Set pandas display options to show all rows
 pd.set_option('display.max_rows', None)
 
-st.title("🦒 Giraffe Africa Database (GAD v1.1)")
+st.title("≡ƒªÆ Giraffe Africa Database (GAD v1.1)")
 
 # Check password before showing content
 if not check_password():
@@ -502,7 +432,7 @@ region0_filter = st.sidebar.multiselect("Region", region0_options, max_selection
 summary = process_data(df, species_filter, subspecies_filter, country_filter, region0_filter)
 
 # Create tabs
-tab1, tab2 = st.tabs(["📊 Summary Table", "🗺️ Africa Map"])
+tab1, tab2 = st.tabs(["≡ƒôè Summary Table", "≡ƒù║∩╕Å Africa Map"])
 
 with tab1:
     st.header("Population Summary")
@@ -606,14 +536,14 @@ with tab2:
     - Click bubbles for detailed information
     
     **Legend:**
-    - 🔴 *G. c. peralta* (West African)
-    - 🟤 *G. c. antiquorum* (Kordofan)
-    - 🟠 *G. c. camelopardalis* (Nubian)
-    - 🟣 *G. reticulata* (Reticulated)
-    - 🔵 *G. t. tippelskirchi* (Masai)
-    - 🔷 *G. t. thornicrofti* (Luangwa)
-    - 🟢 *G. g. giraffa* (South African)
-    - 🟩 *G. g. angolensis* (Angolan)
+    - ≡ƒö┤ *G. c. peralta* (West African)
+    - ≡ƒƒñ *G. c. antiquorum* (Kordofan)
+    - ≡ƒƒá *G. c. camelopardalis* (Nubian)
+    - ≡ƒƒú *G. reticulata* (Reticulated)
+    - ≡ƒö╡ *G. t. tippelskirchi* (Masai)
+    - ≡ƒö╖ *G. t. thornicrofti* (Luangwa)
+    - ≡ƒƒó *G. g. giraffa* (South African)
+    - ≡ƒƒ⌐ *G. g. angolensis* (Angolan)
     """)
 
 # Footer
