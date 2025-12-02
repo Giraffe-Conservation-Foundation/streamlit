@@ -5,8 +5,7 @@ from datetime import datetime
 import folium
 from streamlit_folium import st_folium
 from folium.plugins import MarkerCluster
-from arcgis.gis import GIS
-from arcgis.features import FeatureLayer
+import json
 
 # Configuration
 AGOL_URL = "https://services1.arcgis.com/uMBFfFIXcCOpjlID/arcgis/rest/services/GAD_20250624/FeatureServer/0"
@@ -42,21 +41,55 @@ def check_password():
 
 @st.cache_data(ttl=3600)
 def load_gad_data():
-    """Load data from ArcGIS Online using ArcGIS Python API - like R's arcgisbinding"""
-    # Connect to ArcGIS Online with token (if available, otherwise anonymous)
+    """Load data from ArcGIS Online using REST API - like R's arcgisbinding"""
+    # Build query parameters
+    params = {
+        'where': '1=1',
+        'outFields': '*',
+        'f': 'json',
+        'returnGeometry': 'true'
+    }
+    
+    # Add token if available
     if TOKEN:
-        gis = GIS("https://www.arcgis.com", token=TOKEN)
-    else:
-        gis = GIS()  # Anonymous connection
+        params['token'] = TOKEN
     
-    # Use ArcGIS FeatureLayer to get all data at once
-    feature_layer = FeatureLayer(AGOL_URL, gis=gis)
+    # Fetch all records with pagination
+    all_features = []
+    offset = 0
+    max_records = 2000  # ArcGIS REST API max per request
     
-    # Query all features - this automatically handles pagination
-    feature_set = feature_layer.query(where='1=1', out_fields='*', return_all_records=True)
+    while True:
+        params['resultOffset'] = offset
+        params['resultRecordCount'] = max_records
+        
+        response = requests.get(f"{AGOL_URL}/query", params=params)
+        response.raise_for_status()
+        data = response.json()
+        
+        if 'features' not in data or len(data['features']) == 0:
+            break
+            
+        all_features.extend(data['features'])
+        
+        # Check if we got all records
+        if len(data['features']) < max_records:
+            break
+            
+        offset += max_records
     
-    # Convert to DataFrame - this is the equivalent of arc.select() in R
-    df = feature_set.sdf
+    # Convert to DataFrame
+    records = []
+    for feature in all_features:
+        record = feature['attributes'].copy()
+        # Add geometry coordinates if present
+        if 'geometry' in feature and feature['geometry']:
+            if 'x' in feature['geometry'] and 'y' in feature['geometry']:
+                record['x'] = feature['geometry']['x']
+                record['y'] = feature['geometry']['y']
+        records.append(record)
+    
+    df = pd.DataFrame(records)
     
     # Filter exactly as in R code:
     # filter(!is.na(Estimate)) %>%

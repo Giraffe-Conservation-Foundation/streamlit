@@ -39,6 +39,3 @@ planetary-computer>=1.0.0  # Microsoft Planetary Computer access
 rasterio>=1.3.0  # Raster data I/O
 folium>=0.15.0  # Interactive maps
 streamlit-folium>=0.15.0  # Folium integration for Streamlit
-
-# GAD Dashboard - ArcGIS Integration
-arcgis==2.0.1  # ArcGIS API for feature layer access (compatible with Python 3.11)
