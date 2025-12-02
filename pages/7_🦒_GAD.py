@@ -42,6 +42,16 @@ def check_password():
 @st.cache_data(ttl=3600)
 def load_gad_data():
     """Load data from ArcGIS Online using REST API - like R's arcgisbinding"""
+    # First check if service supports pagination
+    service_params = {'f': 'json'}
+    if TOKEN:
+        service_params['token'] = TOKEN
+    
+    service_response = requests.get(AGOL_URL, params=service_params)
+    service_info = service_response.json()
+    supports_pagination = service_info.get('advancedQueryCapabilities', {}).get('supportsPagination', False)
+    max_record_count = service_info.get('maxRecordCount', 1000)
+    
     # Build query parameters
     params = {
         'where': '1=1',
@@ -56,27 +66,51 @@ def load_gad_data():
     
     # Fetch all records with pagination
     all_features = []
-    offset = 0
-    max_records = 2000  # ArcGIS REST API max per request
     
-    while True:
-        params['resultOffset'] = offset
-        params['resultRecordCount'] = max_records
+    if supports_pagination:
+        # Use offset-based pagination
+        offset = 0
+        max_records = min(2000, max_record_count)
         
-        response = requests.get(f"{AGOL_URL}/query", params=params)
-        response.raise_for_status()
-        data = response.json()
-        
-        if 'features' not in data or len(data['features']) == 0:
-            break
+        while True:
+            params['resultOffset'] = offset
+            params['resultRecordCount'] = max_records
             
-        all_features.extend(data['features'])
-        
-        # Check if we got all records
-        if len(data['features']) < max_records:
-            break
+            response = requests.get(f"{AGOL_URL}/query", params=params)
+            response.raise_for_status()
+            data = response.json()
             
-        offset += max_records
+            if 'features' not in data or len(data['features']) == 0:
+                break
+                
+            all_features.extend(data['features'])
+            
+            # Check if we got all records
+            if len(data['features']) < max_records:
+                break
+                
+            offset += max_records
+    else:
+        # Use objectIds-based pagination for services that don't support offset
+        # First get all object IDs
+        id_params = params.copy()
+        id_params['returnIdsOnly'] = 'true'
+        id_response = requests.get(f"{AGOL_URL}/query", params=id_params)
+        object_ids = id_response.json().get('objectIds', [])
+        
+        # Fetch in batches
+        batch_size = max_record_count
+        for i in range(0, len(object_ids), batch_size):
+            batch_ids = object_ids[i:i+batch_size]
+            batch_params = params.copy()
+            batch_params['objectIds'] = ','.join(map(str, batch_ids))
+            
+            response = requests.get(f"{AGOL_URL}/query", params=batch_params)
+            response.raise_for_status()
+            data = response.json()
+            
+            if 'features' in data:
+                all_features.extend(data['features'])
     
     # Convert to DataFrame
     records = []
