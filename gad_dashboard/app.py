@@ -235,6 +235,21 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
     # Add Site column to region1_data so structure matches for combining
     region1_data['Site'] = ''
     
+    # DEBUG OUTPUT
+    st.write("### DEBUG INFO")
+    st.write(f"**Before anti_join:**")
+    st.write(f"- site_data rows: {len(site_data)}, total estimate: {site_data['Estimate'].sum():,.0f}")
+    st.write(f"- region1_data rows: {len(region1_data)}, total estimate: {region1_data['Estimate'].sum():,.0f}")
+    st.write(f"- region0_data rows: {len(region0_data)}, total estimate: {region0_data['Estimate'].sum():,.0f}")
+    
+    if len(region0_data) > 0:
+        st.write("**region0_data (aggregated summaries):**")
+        st.dataframe(region0_data[['Country', 'Species', 'Subspecies', 'Region0', 'Estimate']])
+    
+    if len(region1_data) > 0:
+        st.write("**region1_data (before filtering):**")
+        st.dataframe(region1_data[['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Estimate']])
+    
     # R anti_join logic: Use most aggregated data available
     # If a region0 summary exists, don't include any region1 or site data for that region0
     # If a region1 summary exists (but no region0), don't include site data for that region1
@@ -263,8 +278,20 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
         )
         region1_data = region1_data[region1_data['_merge'] == 'left_only'].drop('_merge', axis=1)
     
+    st.write(f"**After anti_join:**")
+    st.write(f"- site_data rows: {len(site_data)}, total estimate: {site_data['Estimate'].sum():,.0f}")
+    st.write(f"- region1_data rows: {len(region1_data)}, total estimate: {region1_data['Estimate'].sum():,.0f}")
+    st.write(f"- region0_data rows: {len(region0_data)}, total estimate: {region0_data['Estimate'].sum():,.0f}")
+    
+    if len(region1_data) > 0:
+        st.write("**region1_data (after filtering):**")
+        st.dataframe(region1_data[['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Estimate']])
+    
     # Combine all data (R: bind_rows)
     combined = pd.concat([site_data, region1_data, region0_data], ignore_index=True)
+    
+    st.write(f"**Combined total: {combined['Estimate'].sum():,.0f}**")
+    st.write("---")
     
     # Calculate years since survey
     combined['YearsSince'] = datetime.now().year - combined['Year']
