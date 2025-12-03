@@ -235,28 +235,11 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
     # Add Site column to region1_data so structure matches for combining
     region1_data['Site'] = ''
     
-    # DEBUG OUTPUT
-    st.write("### DEBUG INFO")
-    st.write(f"**Before anti_join:**")
-    st.write(f"- site_data rows: {len(site_data)}, total estimate: {site_data['Estimate'].sum():,.0f}")
-    st.write(f"- region1_data rows: {len(region1_data)}, total estimate: {region1_data['Estimate'].sum():,.0f}")
-    st.write(f"- region0_data rows: {len(region0_data)}, total estimate: {region0_data['Estimate'].sum():,.0f}")
-    
-    if len(region0_data) > 0:
-        st.write("**region0_data (aggregated summaries):**")
-        st.dataframe(region0_data[['Country', 'Species', 'Subspecies', 'Region0', 'Estimate']])
-    
-    if len(region1_data) > 0:
-        st.write("**region1_data (before filtering):**")
-        st.dataframe(region1_data[['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Estimate']])
-    
     # R anti_join logic: Use most aggregated data available
     # If a region0 summary exists, don't include any region1 or site data for that region0
     # If a region1 summary exists (but no region0), don't include site data for that region1
     
     # First: Remove site_data where we have a region1 summary for the same location
-    # This means: if there's a row in region1_data with matching Country/Species/Subspecies/Region0/Region1
-    # then remove corresponding sites from site_data
     if len(region1_data) > 0:
         site_data = site_data.merge(
             region1_data[['Country', 'Species', 'Subspecies', 'Region0', 'Region1']],
@@ -267,8 +250,6 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
         site_data = site_data[site_data['_merge'] == 'left_only'].drop('_merge', axis=1)
     
     # Second: Remove site_data where we have a region0 summary for the same location
-    # This means: if there's a row in region0_data with matching Country/Species/Subspecies/Region0
-    # then remove ALL sites within that region0 from site_data
     if len(region0_data) > 0:
         site_data = site_data.merge(
             region0_data[['Country', 'Species', 'Subspecies', 'Region0']],
@@ -279,8 +260,6 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
         site_data = site_data[site_data['_merge'] == 'left_only'].drop('_merge', axis=1)
     
     # Third: Remove region1_data where we have a region0 summary for the same location
-    # This means: if there's a row in region0_data with matching Country/Species/Subspecies/Region0
-    # then remove all region1 breakdowns from region1_data
     if len(region0_data) > 0:
         region1_data = region1_data.merge(
             region0_data[['Country', 'Species', 'Subspecies', 'Region0']],
@@ -290,20 +269,8 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
         )
         region1_data = region1_data[region1_data['_merge'] == 'left_only'].drop('_merge', axis=1)
     
-    st.write(f"**After anti_join:**")
-    st.write(f"- site_data rows: {len(site_data)}, total estimate: {site_data['Estimate'].sum():,.0f}")
-    st.write(f"- region1_data rows: {len(region1_data)}, total estimate: {region1_data['Estimate'].sum():,.0f}")
-    st.write(f"- region0_data rows: {len(region0_data)}, total estimate: {region0_data['Estimate'].sum():,.0f}")
-    
-    if len(region1_data) > 0:
-        st.write("**region1_data (after filtering):**")
-        st.dataframe(region1_data[['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Estimate']])
-    
     # Combine all data (R: bind_rows)
     combined = pd.concat([site_data, region1_data, region0_data], ignore_index=True)
-    
-    st.write(f"**Combined total: {combined['Estimate'].sum():,.0f}**")
-    st.write("---")
     
     # Calculate years since survey
     combined['YearsSince'] = datetime.now().year - combined['Year']
@@ -426,20 +393,17 @@ def main():
     col1, col2, col3, col4, col5 = st.columns(5)
 
     with col1:
-        # Year filter - maximum year only
-        min_year = int(df['Year'].min())
-        max_year = int(df['Year'].max())
-        max_year_filter = st.slider(
+        # Year filter - dropdown for year selection
+        year_options = sorted(df['Year'].dropna().unique().tolist(), reverse=True)
+        selected_year = st.selectbox(
             "Maximum Survey Year",
-            min_value=min_year,
-            max_value=max_year,
-            value=max_year,
-            step=1,
+            options=year_options,
+            index=0,
             help="Only include surveys up to this year"
         )
 
     # Apply year filter to dataframe
-    df = df[df['Year'] <= max_year_filter]
+    df = df[df['Year'] <= selected_year]
 
     with col2:
         species_options = sorted(df['Species'].dropna().unique().tolist())
