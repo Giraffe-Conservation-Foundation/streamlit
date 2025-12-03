@@ -232,29 +232,36 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
     region0_data['Region1'] = ''
     region0_data['Site'] = ''
     
-    # Remove duplicates - use most granular data available (matching R's anti_join logic)
-    # If region1 data exists for a location, don't use site level (R: anti_join)
-    region1_keys = region1_data[['Country', 'Species', 'Subspecies', 'Region0', 'Region1']].drop_duplicates()
-    site_data = site_data.merge(
-        region1_keys,
-        on=['Country', 'Species', 'Subspecies', 'Region0', 'Region1'],
-        how='left',
-        indicator=True
-    )
-    site_data = site_data[site_data['_merge'] == 'left_only'].drop('_merge', axis=1)
-    
-    # If region0 data exists for a location, don't use region1 level (R: anti_join)
-    region0_keys = region0_data[['Country', 'Species', 'Subspecies', 'Region0']].drop_duplicates()
-    region1_data = region1_data.merge(
-        region0_keys,
-        on=['Country', 'Species', 'Subspecies', 'Region0'],
-        how='left',
-        indicator=True
-    )
-    region1_data = region1_data[region1_data['_merge'] == 'left_only'].drop('_merge', axis=1)
-    
     # Add Site column to region1_data so structure matches for combining
     region1_data['Site'] = ''
+    
+    # R anti_join logic: Use most aggregated data available
+    # If a region0 summary exists, don't include any region1 or site data for that region0
+    # If a region1 summary exists (but no region0), don't include site data for that region1
+    
+    # First: Remove site_data where we have a region1 summary for the same location
+    # This means: if there's a row in region1_data with matching Country/Species/Subspecies/Region0/Region1
+    # then remove corresponding sites from site_data
+    if len(region1_data) > 0:
+        site_data = site_data.merge(
+            region1_data[['Country', 'Species', 'Subspecies', 'Region0', 'Region1']],
+            on=['Country', 'Species', 'Subspecies', 'Region0', 'Region1'],
+            how='left',
+            indicator=True
+        )
+        site_data = site_data[site_data['_merge'] == 'left_only'].drop('_merge', axis=1)
+    
+    # Second: Remove region1_data where we have a region0 summary for the same location
+    # This means: if there's a row in region0_data with matching Country/Species/Subspecies/Region0
+    # then remove all region1 breakdowns from region1_data
+    if len(region0_data) > 0:
+        region1_data = region1_data.merge(
+            region0_data[['Country', 'Species', 'Subspecies', 'Region0']],
+            on=['Country', 'Species', 'Subspecies', 'Region0'],
+            how='left',
+            indicator=True
+        )
+        region1_data = region1_data[region1_data['_merge'] == 'left_only'].drop('_merge', axis=1)
     
     # Combine all data (R: bind_rows)
     combined = pd.concat([site_data, region1_data, region0_data], ignore_index=True)
