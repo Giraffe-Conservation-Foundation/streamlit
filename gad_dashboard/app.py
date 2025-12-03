@@ -266,7 +266,19 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
         )
         site_data = site_data[site_data['_merge'] == 'left_only'].drop('_merge', axis=1)
     
-    # Second: Remove region1_data where we have a region0 summary for the same location
+    # Second: Remove site_data where we have a region0 summary for the same location
+    # This means: if there's a row in region0_data with matching Country/Species/Subspecies/Region0
+    # then remove ALL sites within that region0 from site_data
+    if len(region0_data) > 0:
+        site_data = site_data.merge(
+            region0_data[['Country', 'Species', 'Subspecies', 'Region0']],
+            on=['Country', 'Species', 'Subspecies', 'Region0'],
+            how='left',
+            indicator=True
+        )
+        site_data = site_data[site_data['_merge'] == 'left_only'].drop('_merge', axis=1)
+    
+    # Third: Remove region1_data where we have a region0 summary for the same location
     # This means: if there's a row in region0_data with matching Country/Species/Subspecies/Region0
     # then remove all region1 breakdowns from region1_data
     if len(region0_data) > 0:
