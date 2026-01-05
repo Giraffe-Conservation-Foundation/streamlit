@@ -212,8 +212,10 @@ def main():
     df["evt_dttm"] = pd.to_datetime(df["evt_dttm"])
     df = df.dropna(subset=["evt_dttm"])
 
-    # Sidebar filters
-    st.sidebar.header("Filter Date Range")
+    #### DASHBOARD LAYOUT ###############################################
+
+    # Top row: Date filter
+    st.subheader("Filter Date Range")
     # Clean evt_dttm and drop NaT values
     df["evt_dttm"] = pd.to_datetime(df["evt_dttm"], errors="coerce")
     df = df.dropna(subset=["evt_dttm"])
@@ -224,14 +226,14 @@ def main():
         min_date = datetime.today().date()
         max_date = datetime.today().date()
 
-    date_range = st.sidebar.date_input("Select date range", [min_date, max_date])
+    date_range = st.date_input("Select date range", [min_date, max_date])
 
     if len(date_range) == 2:
         filtered_df = df[(df["evt_dttm"].dt.date >= date_range[0]) & (df["evt_dttm"].dt.date <= date_range[1])]
     else:
         filtered_df = df
 
-    #### DASHBOARD LAYOUT ###############################################
+    st.markdown("---")
 
     #### heading metrics
     # Simplified metrics without subject group dependencies
