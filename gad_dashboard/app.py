@@ -584,15 +584,18 @@ def main():
         - Click bubbles for detailed information
         
         **Legend (Subspecies Colors):**
-        - **Red**: *G. c. peralta* (West African)
-        - **Brown**: *G. c. antiquorum* (Kordofan)
-        - **Orange**: *G. c. camelopardalis* (Nubian)
-        - **Purple**: *G. reticulata* (Reticulated)
-        - **Blue**: *G. t. tippelskirchi* (Masai)
-        - **Light Blue**: *G. t. thornicrofti* (Luangwa)
-        - **Green**: *G. g. giraffa* (South African)
-        - **Dark Green**: *G. g. angolensis* (Angolan)
-        """)
+        """, unsafe_allow_html=True)
+        
+        st.markdown("""
+        - <span style="color:#DB0F0F">●</span> *G. c. peralta* (West African)
+        - <span style="color:#9A392B">●</span> *G. c. antiquorum* (Kordofan)
+        - <span style="color:#E6751A">●</span> *G. c. camelopardalis* (Nubian)
+        - <span style="color:#C41697">●</span> *G. reticulata* (Reticulated)
+        - <span style="color:#216DCC">●</span> *G. t. tippelskirchi* (Masai)
+        - <span style="color:#5BAED9">●</span> *G. t. thornicrofti* (Luangwa)
+        - <span style="color:#4D9C2C">●</span> *G. g. giraffa* (South African)
+        - <span style="color:#457132">●</span> *G. g. angolensis* (Angolan)
+        """, unsafe_allow_html=True)
     
     with tab3:
         st.header("Giraffe distribution (by survey year, population)")
