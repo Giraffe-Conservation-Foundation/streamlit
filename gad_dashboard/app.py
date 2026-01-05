@@ -16,72 +16,12 @@ if hasattr(st, 'secrets'):
 else:
     print("[DEBUG] st.secrets not available at import")
 
-# Geospatial libraries
-try:
-    import geopandas as gpd
-    from shapely.geometry import Point
-    GEOPANDAS_AVAILABLE = True
-except ImportError:
-    GEOPANDAS_AVAILABLE = False
-
-# Google Earth Engine for BII data
-try:
-    import ee
-    GEE_AVAILABLE = True
-    # Initialize Earth Engine (will use credentials if available)
-    try:
-        ee.Initialize()
-        GEE_INITIALIZED = True
-    except:
-        GEE_INITIALIZED = False
-except ImportError:
-    GEE_AVAILABLE = False
-    GEE_INITIALIZED = False
-
-# Raster processing (optional - only if using local files)
-try:
-    import rasterio
-    from rasterio.sample import sample_gen
-    RASTERIO_AVAILABLE = True
-except ImportError:
-    RASTERIO_AVAILABLE = False
-
-# World Bank API
-try:
-    import wbgapi as wb
-    WBGAPI_AVAILABLE = True
-    WBDATA_AVAILABLE = False
-except ImportError:
-    WBGAPI_AVAILABLE = False
-    # Try alternative library
-    try:
-        import wbdata
-        WBDATA_AVAILABLE = True
-    except ImportError:
-        WBDATA_AVAILABLE = False
+# Note: GEE, World Bank API, and advanced geospatial libraries removed
+# GAD only uses AGOL data for summary table and folium map
 
 # Configuration
 AGOL_URL = "https://services1.arcgis.com/uMBFfFIXcCOpjlID/arcgis/rest/services/GAD_20250624/FeatureServer/0"
 TOKEN = st.secrets.get("arcgis", {}).get("token", None)
-
-# GEE Asset IDs
-WDPA_GEE_ASSET = 'WCMC/WDPA/current/polygons'  # Global WDPA database
-BII_GEE_ASSET = 'projects/earthengine-legacy/assets/projects/sat-io/open-datasets/BII/'  # Biodiversity Intactness Index
-
-# African country ISO3 codes for filtering WDPA
-AFRICAN_COUNTRIES_ISO3 = [
-    'AGO', 'BEN', 'BWA', 'BFA', 'CMR', 'CAF', 'TCD', 'COD', 'ETH', 'KEN',
-    'MWI', 'MOZ', 'NAM', 'NER', 'NGA', 'RWA', 'SOM', 'ZAF', 'SSD', 'SDN',
-    'TZA', 'UGA', 'ZMB', 'ZWE'
-]
-
-# Data paths - adjust these to your folder structure
-DATA_DIR = Path(__file__).parent
-VEG_SUITABILITY_PATH = DATA_DIR / "veg_suitability.tif"  # Vegetation suitability raster (optional)
-
-# ============================================================================
-# TRANSLOCATION ASSESSMENT HELPER FUNCTIONS
-# ============================================================================
 
 def get_zotero_giraffe_management_plans(library_id, library_type="group", api_key=None, collection_key=None):
     """
