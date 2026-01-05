@@ -201,31 +201,34 @@ df = df.dropna(subset=["evt_dttm"])
 
 
 
-# Sidebar filters
-st.sidebar.header("Filter Date Range")
-# Clean evt_dttm and drop NaT values
-df["evt_dttm"] = pd.to_datetime(df["evt_dttm"], errors="coerce")
-df = df.dropna(subset=["evt_dttm"])
-if df["evt_dttm"].notna().any():
-    min_date = df["evt_dttm"].min().date()
-    max_date = df["evt_dttm"].max().date()
-else:
-    min_date = datetime.today().date()
-    max_date = datetime.today().date()
+#### DASHBOARD LAYOUT ###############################################
+#st.title("🦒 GCF Namibia NW monitoring")
 
-date_range = st.sidebar.date_input("Select date range", [min_date, max_date])
+# Top row: Date filter and Current population size
+col_date, col_pop = st.columns([3, 1])
+
+with col_date:
+    st.subheader("Filter Date Range")
+    # Clean evt_dttm and drop NaT values
+    df["evt_dttm"] = pd.to_datetime(df["evt_dttm"], errors="coerce")
+    df = df.dropna(subset=["evt_dttm"])
+    if df["evt_dttm"].notna().any():
+        min_date = df["evt_dttm"].min().date()
+        max_date = df["evt_dttm"].max().date()
+    else:
+        min_date = datetime.today().date()
+        max_date = datetime.today().date()
+    
+    date_range = st.date_input("Select date range", [min_date, max_date])
+
+with col_pop:
+    st.metric("Current population size", len(active_subjects))
 
 filtered_df = df[(df["evt_dttm"].dt.date >= date_range[0]) & (df["evt_dttm"].dt.date <= date_range[1])]
 
-
-
-#### DASHBOARD LAYOUT ###############################################
-#st.title("🦒 GCF Namibia NW monitoring")
-st.info("Please select a date range from the side bar filter")
-
+st.markdown("---")
 
 #### heading metrics
-st.sidebar.metric("Current population size", len(active_subjects)) # shown in side bar separately
 
 # Calculate percentage of population seen
 distinct_individuals_seen = filtered_df["evt_girID"].nunique()
