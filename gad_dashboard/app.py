@@ -394,7 +394,7 @@ def create_map(data, color_by='subspecies'):
         
         folium.CircleMarker(
             location=[row['y'], row['x']],
-            radius=max(5, min(25, (row['Estimate'] ** 0.5) / 10)),
+            radius=max(5, min(40, (row['Estimate'] ** 0.5) / 10)),
             popup=folium.Popup(popup_text, max_width=300),
             tooltip=f"{location_name}: {int(row['Estimate']):,} giraffe",
             color=marker_color,
@@ -565,7 +565,7 @@ def main():
             st.metric("Avg Years Since Survey", f"{avg_years:.1f}")
 
     with tab2:
-        st.header("Giraffe Distribution by Population")
+        st.header("Giraffe distribution (by species, population)")
         
         # Create and display map using HTML export
         try:
@@ -583,19 +583,19 @@ def main():
         - Colors represent different giraffe subspecies
         - Click bubbles for detailed information
         
-        **Legend:**
-        - 🔴 *G. c. peralta* (West African)
-        - 🟤 *G. c. antiquorum* (Kordofan)
-        - 🟠 *G. c. camelopardalis* (Nubian)
-        - 🟣 *G. reticulata* (Reticulated)
-        - 🔵 *G. t. tippelskirchi* (Masai)
-        - 🔷 *G. t. thornicrofti* (Luangwa)
-        - 🟢 *G. g. giraffa* (South African)
-        - 🟩 *G. g. angolensis* (Angolan)
+        **Legend (Subspecies Colors):**
+        - **Red**: *G. c. peralta* (West African)
+        - **Brown**: *G. c. antiquorum* (Kordofan)
+        - **Orange**: *G. c. camelopardalis* (Nubian)
+        - **Purple**: *G. reticulata* (Reticulated)
+        - **Blue**: *G. t. tippelskirchi* (Masai)
+        - **Light Blue**: *G. t. thornicrofti* (Luangwa)
+        - **Green**: *G. g. giraffa* (South African)
+        - **Dark Green**: *G. g. angolensis* (Angolan)
         """)
     
     with tab3:
-        st.header("Survey Age Analysis")
+        st.header("Giraffe distribution (by survey year, population)")
         
         # Create and display map using HTML export with time-based colors
         try:
