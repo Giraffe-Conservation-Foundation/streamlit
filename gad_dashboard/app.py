@@ -343,8 +343,22 @@ def get_subspecies_color(subspecies):
     }
     return color_map.get(subspecies, '#E5E4D8')
 
-def create_map(data):
-    """Create folium map with giraffe populations"""
+def get_time_color(years_since):
+    """Get color based on years since survey (for highlighting populations needing review)"""
+    if years_since >= 8:
+        return '#FF6347'  # Red - urgent review needed
+    elif years_since >= 4:
+        return '#FFE866'  # Yellow - review needed soon
+    else:
+        return '#90EE90'  # Green - recent data
+
+def create_map(data, color_by='subspecies'):
+    """Create folium map with giraffe populations
+    
+    Args:
+        data: DataFrame with giraffe population data
+        color_by: 'subspecies' for subspecies colors or 'time' for time-based colors
+    """
     # Create base map centered on Africa
     m = folium.Map(location=[0, 20], zoom_start=4, tiles='OpenStreetMap')
     
@@ -372,14 +386,20 @@ def create_map(data):
         Reference: {row['Reference']}
         """
         
+        # Choose color based on parameter
+        if color_by == 'time':
+            marker_color = get_time_color(row['YearsSince'])
+        else:
+            marker_color = get_subspecies_color(row['Subspecies'])
+        
         folium.CircleMarker(
             location=[row['y'], row['x']],
             radius=max(5, min(25, (row['Estimate'] ** 0.5) / 10)),
             popup=folium.Popup(popup_text, max_width=300),
             tooltip=f"{location_name}: {int(row['Estimate']):,} giraffe",
-            color=get_subspecies_color(row['Subspecies']),
+            color=marker_color,
             fill=True,
-            fillColor=get_subspecies_color(row['Subspecies']),
+            fillColor=marker_color,
             fillOpacity=0.7,
             weight=2
         ).add_to(m)
@@ -460,7 +480,7 @@ def main():
     summary = process_data(df, species_filter, subspecies_filter, country_filter, region0_filter)
 
     # Create tabs
-    tab1, tab2 = st.tabs(["📊 Summary Table", "🗺️ Africa Map"])
+    tab1, tab2, tab3 = st.tabs(["📊 Summary Table", "🗺️ Map; population", "⏰ Map; time"])
 
     with tab1:
         st.header("Population Summary")
@@ -545,11 +565,11 @@ def main():
             st.metric("Avg Years Since Survey", f"{avg_years:.1f}")
 
     with tab2:
-        st.header("Giraffe Distribution Map")
+        st.header("Giraffe Distribution by Population")
         
         # Create and display map using HTML export
         try:
-            giraffe_map = create_map(summary)
+            giraffe_map = create_map(summary, color_by='subspecies')
             # Export to HTML and display
             map_html = giraffe_map._repr_html_()
             st.components.v1.html(map_html, height=600, scrolling=True)
@@ -572,6 +592,33 @@ def main():
         - 🔷 *G. t. thornicrofti* (Luangwa)
         - 🟢 *G. g. giraffa* (South African)
         - 🟩 *G. g. angolensis* (Angolan)
+        """)
+    
+    with tab3:
+        st.header("Survey Age Analysis")
+        
+        # Create and display map using HTML export with time-based colors
+        try:
+            giraffe_map = create_map(summary, color_by='time')
+            # Export to HTML and display
+            map_html = giraffe_map._repr_html_()
+            st.components.v1.html(map_html, height=600, scrolling=True)
+        except Exception as e:
+            st.error(f"Error displaying map: {e}")
+            st.info("Map display is temporarily unavailable. Please view data in the Summary Table tab.")
+        
+        st.markdown("""
+        **Map Information:**
+        - Bubble size represents population estimate
+        - **Colors indicate years since last survey** (populations needing review)
+        - Click bubbles for detailed information
+        
+        **Legend:**
+        - 🟢 **Green**: Recent surveys (< 4 years)
+        - 🟡 **Yellow**: Review needed soon (4-7 years)
+        - 🔴 **Red**: Urgent review needed (≥ 8 years)
+        
+        *This map highlights populations that require updated surveys to ensure accurate conservation data.*
         """)
 
 if __name__ == "__main__":
