@@ -21,6 +21,7 @@ except ImportError:
 
 # Configuration - can be overridden by environment variables
 EARTHRANGER_SERVER = os.getenv('EARTHRANGER_SERVER', 'https://twiga.pamdas.org')
+MAPBOX_TOKEN = os.getenv('MAPBOX_TOKEN', '')  # Add your Mapbox token here or in .env file
 
 #### ER AUTHENTICATION ###############################################
 def er_login(username, password):
@@ -135,7 +136,7 @@ def load_data():
     event_cat = "monitoring_nanw"
     event_type = "giraffe_nw_monitoring"
     since = "2024-07-01T00:00:00Z"
-    until = "2025-07-07T23:59:59Z"
+    until = "2026-12-31T23:59:59Z"
 
     events = er.get_events(
         event_category=event_cat,
@@ -145,10 +146,20 @@ def load_data():
         include_notes=False
     )
     flat = json_normalize(events.to_dict(orient="records"))
+    
+    # Check if we have data and the event_type column exists
+    if flat.empty or "event_type" not in flat.columns:
+        # Return empty DataFrames with expected structure
+        return pd.DataFrame(), pd.DataFrame()
+    
     giraffe_only = flat[flat["event_type"] == event_type]
 
     # Keep herd-level data for accurate metrics calculation
     herd_level_data = giraffe_only.copy()
+    
+    # Check if we have any giraffe events
+    if giraffe_only.empty:
+        return pd.DataFrame(), pd.DataFrame()
     
     # Explode for individual giraffe analysis
     giraffe_only = giraffe_only.explode("event_details.Herd").reset_index(drop=True)
@@ -161,6 +172,11 @@ def load_data():
     return events_final
 
 df, herd_level_df = load_data()
+
+# Check if we have data
+if df.empty or herd_level_df.empty:
+    st.warning("⚠️ No monitoring data available for the selected date range. Please check back later or adjust your date range.")
+    st.stop()
 
 # Rename columns
 rename_map = {
@@ -204,27 +220,70 @@ df = df.dropna(subset=["evt_dttm"])
 #### DASHBOARD LAYOUT ###############################################
 #st.title("🦒 GCF Namibia NW monitoring")
 
-# Top row: Date filter and Current population size
-col_date, col_pop = st.columns([3, 1])
+# Date filter row
+st.subheader("📅 Filter Date Range")
+col_date_start, col_date_end = st.columns(2)
 
-with col_date:
-    st.subheader("Filter Date Range")
-    # Clean evt_dttm and drop NaT values
-    df["evt_dttm"] = pd.to_datetime(df["evt_dttm"], errors="coerce")
-    df = df.dropna(subset=["evt_dttm"])
-    if df["evt_dttm"].notna().any():
-        min_date = df["evt_dttm"].min().date()
-        max_date = df["evt_dttm"].max().date()
-    else:
-        min_date = datetime.today().date()
-        max_date = datetime.today().date()
+# Clean evt_dttm and drop NaT values
+df["evt_dttm"] = pd.to_datetime(df["evt_dttm"], errors="coerce")
+df = df.dropna(subset=["evt_dttm"])
+
+# Set min/max dates from data for date picker range
+if df["evt_dttm"].notna().any():
+    data_min_date = df["evt_dttm"].min().date()
+    data_max_date = df["evt_dttm"].max().date()
+else:
+    data_min_date = datetime.today().date()
+    data_max_date = datetime.today().date()
+
+# Set default dates: last 30 days
+from datetime import timedelta
+default_end_date = datetime.today().date()
+default_start_date = default_end_date - timedelta(days=30)
+
+# Adjust defaults to be within data range
+if default_end_date > data_max_date:
+    default_end_date = data_max_date
+if default_start_date < data_min_date:
+    default_start_date = data_min_date
+if default_start_date > data_max_date:
+    default_start_date = data_max_date
+
+with col_date_start:
+    start_date = st.date_input(
+        "Start Date", 
+        value=default_start_date,
+        min_value=data_min_date,
+        max_value=data_max_date,
+        key="start_date"
+    )
+
+with col_date_end:
+    end_date = st.date_input(
+        "End Date", 
+        value=default_end_date,
+        min_value=data_min_date,
+        max_value=data_max_date,
+        key="end_date"
+    )
+
+# Ensure dates are valid
+if start_date and end_date:
+    if start_date > end_date:
+        st.error("⚠️ Start date must be before end date")
+        st.stop()
     
-    date_range = st.date_input("Select date range", [min_date, max_date])
+    # Apply date range filter - normalize timezone-aware datetimes to dates for comparison
+    df_dates = df["evt_dttm"].dt.tz_localize(None).dt.date if df["evt_dttm"].dt.tz is not None else df["evt_dttm"].dt.date
+    filtered_df = df[(df_dates >= start_date) & (df_dates <= end_date)]
+else:
+    filtered_df = df.copy()
 
-with col_pop:
-    st.metric("Current population size", len(active_subjects))
-
-filtered_df = df[(df["evt_dttm"].dt.date >= date_range[0]) & (df["evt_dttm"].dt.date <= date_range[1])]
+# Display filter info
+if len(df) > 0:
+    st.caption(f"Showing {len(filtered_df)} sightings from {start_date} to {end_date}")
+else:
+    st.caption(f"No data available")
 
 st.markdown("---")
 
@@ -238,37 +297,93 @@ if total_population > 0:
 else:
     percentage_seen = 0
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
-    st.metric("Distinct individuals seen", distinct_individuals_seen)
+    st.metric("Total Population", total_population)
 with col2:
-    import math
-    st.metric("% of population seen", f"{math.ceil(percentage_seen)}%")
+    st.metric("Individuals Seen", distinct_individuals_seen)
 with col3:
+    import math
+    st.metric("% Population Seen", f"{math.ceil(percentage_seen)}%")
+with col4:
     # Use herd-level data for accurate herd count
     # Process the herd-level data with same date filtering
     herd_df_for_metrics = herd_level_df.copy()
     herd_df_for_metrics["evt_dttm"] = pd.to_datetime(herd_df_for_metrics["time"], errors="coerce")
     herd_df_for_metrics = herd_df_for_metrics.dropna(subset=["evt_dttm"])
     
-    if len(date_range) == 2:
-        herd_df_for_metrics = herd_df_for_metrics[
-            (herd_df_for_metrics["evt_dttm"].dt.date >= date_range[0]) & 
-            (herd_df_for_metrics["evt_dttm"].dt.date <= date_range[1])
-        ]
+    # Apply date range filter
+    herd_df_for_metrics = herd_df_for_metrics[
+        (herd_df_for_metrics["evt_dttm"].dt.date >= start_date) & 
+        (herd_df_for_metrics["evt_dttm"].dt.date <= end_date)
+    ]
     
     herd_count = len(herd_df_for_metrics)
-    st.metric("Herds seen", herd_count)
-with col4:
+    st.metric("Herds Seen", herd_count)
+with col5:
     # Use herd-level data for average herd size calculation
     herd_df_for_metrics = herd_df_for_metrics.rename(columns={"event_details.herd_size": "evt_herdSize"})
     avg_herd_size = herd_df_for_metrics["evt_herdSize"].mean() if "evt_herdSize" in herd_df_for_metrics.columns else filtered_df["evt_herdSize"].mean()
-    st.metric("Average herd size", f"{avg_herd_size:.1f}" if not pd.isna(avg_herd_size) else "N/A")
+    st.metric("Avg Herd Size", f"{avg_herd_size:.1f}" if not pd.isna(avg_herd_size) else "N/A")
 
 #### Sighting map
 st.subheader("📍 Sightings map")
 map_df = filtered_df.dropna(subset=["lat", "lon"])
-st.map(map_df[["lat", "lon"]])
+if not map_df.empty:
+    # Create plotly map with dark satellite style (same as ZAF dashboard)
+    fig_map = px.scatter_mapbox(
+        map_df, 
+        lat="lat", 
+        lon="lon",
+        hover_data=["evt_dttm", "evt_herdSize"] if "evt_herdSize" in map_df.columns else ["evt_dttm"],
+        zoom=8,
+        height=500,
+        title="Giraffe Sightings"
+    )
+    
+    # Set map style based on token availability
+    if MAPBOX_TOKEN:
+        # Use satellite-streets for Google Maps-like experience with boundaries
+        map_style = "satellite-streets"
+        px.set_mapbox_access_token(MAPBOX_TOKEN)
+    else:
+        # Fallback to open street map (free, no token required)
+        map_style = "open-street-map"
+    
+    # Update layout for dark satellite style with boundaries
+    fig_map.update_layout(
+        mapbox_style=map_style,
+        mapbox=dict(
+            center=dict(
+                lat=map_df["lat"].mean(),
+                lon=map_df["lon"].mean()
+            ),
+            zoom=8
+        ),
+        margin={"r":0,"t":50,"l":0,"b":0},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)"
+    )
+    
+    # Update marker style for better visibility
+    if map_style == "satellite-streets":
+        # Yellow markers for satellite view
+        marker_color = "yellow"
+    else:
+        # Red markers for street map
+        marker_color = "red"
+    
+    fig_map.update_traces(
+        marker=dict(
+            size=12,
+            color=marker_color,
+            opacity=0.8
+        )
+    )
+    
+    st.plotly_chart(fig_map, use_container_width=True)
+else:
+    st.info("No location data available for mapping")
 
 #### Sightings/month bar chart
 st.subheader("📅 Sightings per month")
