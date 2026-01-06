@@ -7,6 +7,8 @@ from pandas import json_normalize, to_datetime
 import requests
 import os
 from pathlib import Path
+import geopandas as gpd
+from shapely.geometry import LineString
 
 def main():
     """Main function for the EHGR Dashboard"""
@@ -214,28 +216,46 @@ def main():
 
     #### DASHBOARD LAYOUT ###############################################
 
-    # Top row: Date filter
+    # Top row: Date filter - separate start and end dates
     st.subheader("Filter Date Range")
     # Clean evt_dttm and drop NaT values
     df["evt_dttm"] = pd.to_datetime(df["evt_dttm"], errors="coerce")
     df = df.dropna(subset=["evt_dttm"])
+    
+    # Calculate default dates: system date minus 1 month for start, system date for end
+    from datetime import timedelta
+    default_end_date = datetime.today().date()
+    default_start_date = (datetime.today() - timedelta(days=30)).date()
+    
+    # Get min/max from data if available
     if df["evt_dttm"].notna().any():
-        min_date = df["evt_dttm"].min().date()
-        max_date = df["evt_dttm"].max().date()
+        data_min_date = df["evt_dttm"].min().date()
+        data_max_date = df["evt_dttm"].max().date()
     else:
-        min_date = datetime.today().date()
-        max_date = datetime.today().date()
+        data_min_date = default_start_date
+        data_max_date = default_end_date
 
-    date_range = st.date_input("Select date range", [min_date, max_date])
+    col_date1, col_date2 = st.columns(2)
+    with col_date1:
+        start_date = st.date_input("Start date", value=default_start_date, help="Beginning of date range")
+    with col_date2:
+        end_date = st.date_input("End date", value=default_end_date, help="End of date range")
 
-    if len(date_range) == 2:
-        filtered_df = df[(df["evt_dttm"].dt.date >= date_range[0]) & (df["evt_dttm"].dt.date <= date_range[1])]
+    filtered_df = df[(df["evt_dttm"].dt.date >= start_date) & (df["evt_dttm"].dt.date <= end_date)]
+    
+    # Filter for specific users
+    target_users = ["Martina Kusters", "Katie Ahl", "Emma Wells"]
+    if "user_name" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["user_name"].isin(target_users)].copy()
+        if filtered_df.empty:
+            st.warning(f"⚠️ No giraffe sightings found for {', '.join(target_users)} in the selected date range")
     else:
-        filtered_df = df
+        st.info("ℹ️ user_name column not found in data")
 
     st.markdown("---")
 
     #### heading metrics
+    st.subheader("🦒 Giraffe Sightings")
     # Simplified metrics without subject group dependencies
 
     # Calculate basic metrics from filtered data
@@ -245,29 +265,48 @@ def main():
     with col1:
         st.metric("Individuals seen", individuals_seen)
     with col2:
-        st.metric("", "")  # Empty placeholder
-    with col3:
         # Count unique encounters/herds (each row represents one herd encounter)
         herd_count = len(filtered_df) if not filtered_df.empty else 0
         st.metric("Herds seen", herd_count)
-    with col4:
+    with col3:
         if "evt_herdSize" in filtered_df.columns:
             avg_herd_size = filtered_df["evt_herdSize"].mean()
             st.metric("Average herd size", f"{avg_herd_size:.1f}" if not pd.isna(avg_herd_size) else "N/A")
         else:
             st.metric("Average herd size", "N/A")
+    with col4:
+        st.metric("Date range", f"{(end_date - start_date).days} days")
 
     #### Sighting map
     st.subheader("📍 Sightings map")
     map_df = filtered_df.dropna(subset=["lat", "lon"])
     if not map_df.empty:
+        # Calculate appropriate zoom level based on data extent
+        lat_range = map_df["lat"].max() - map_df["lat"].min()
+        lon_range = map_df["lon"].max() - map_df["lon"].min()
+        max_range = max(lat_range, lon_range)
+        
+        # Estimate zoom level (approximate formula)
+        if max_range > 10:
+            zoom_level = 6
+        elif max_range > 5:
+            zoom_level = 7
+        elif max_range > 2:
+            zoom_level = 8
+        elif max_range > 1:
+            zoom_level = 9
+        elif max_range > 0.5:
+            zoom_level = 10
+        else:
+            zoom_level = 11
+        
         # Create plotly map with dark satellite style and park boundaries
         fig_map = px.scatter_mapbox(
             map_df, 
             lat="lat", 
             lon="lon",
             hover_data=["evt_dttm", "evt_herdSize"] if "evt_herdSize" in map_df.columns else ["evt_dttm"],
-            zoom=8,
+            zoom=zoom_level,
             height=500,
             title="Giraffe Sightings"
         )
@@ -289,7 +328,7 @@ def main():
                     lat=map_df["lat"].mean(),
                     lon=map_df["lon"].mean()
                 ),
-                zoom=8
+                zoom=zoom_level
             ),
             margin={"r":0,"t":50,"l":0,"b":0},
             paper_bgcolor="rgba(0,0,0,0)",
@@ -352,6 +391,299 @@ def main():
         st.plotly_chart(fig2, use_container_width=True)
     else:
         st.info("No age/sex data available for breakdown chart")
+
+    #### PATROL MAP ###############################################
+    st.markdown("---")
+    st.subheader("🚶 Patrol Tracks")
+    
+    # Allow user to edit patrol leader names
+    patrol_names_input = st.text_area(
+        "Patrol leader usernames (one per line)",
+        value="Martina Kusters\nKatie Ahl\nEmma Wells",
+        height=80,
+        help="Enter patrol leader names to filter. From debug info, available leaders are shown."
+    )
+    patrol_usernames = [name.strip() for name in patrol_names_input.split('\n') if name.strip()]
+
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def load_patrol_data(start_date_input, end_date_input, patrol_usernames_list, er_username, er_password, _debug=True):
+        """Load patrol data filtered by specified usernames"""
+        debug_info = []
+        try:
+            er = EarthRangerIO(
+                server="https://twiga.pamdas.org",
+                username=er_username,
+                password=er_password
+            )
+            
+            # Convert dates to ISO format
+            since = datetime.combine(start_date_input, datetime.min.time()).isoformat()
+            until = datetime.combine(end_date_input, datetime.max.time()).isoformat()
+            
+            debug_info.append(f"📅 Date range: {since} to {until}")
+            debug_info.append(f"👤 Looking for patrols by: {', '.join(patrol_usernames_list)}")
+            
+            # Get patrols
+            try:
+                patrols_df = er.get_patrols(
+                    since=since,
+                    until=until,
+                    status=['done', 'active']
+                )
+            except Exception as patrol_err:
+                if 'timeout' in str(patrol_err).lower():
+                    debug_info.append(f"⏱️ Request timed out - try a shorter date range")
+                    return None, f"Request timed out. Please try a shorter date range (currently {(end_date_input - start_date_input).days} days)", debug_info
+                else:
+                    raise
+            
+            debug_info.append(f"📊 Total patrols retrieved: {len(patrols_df)}")
+            
+            if patrols_df.empty:
+                return None, "No patrols found for the specified date range", debug_info
+            
+            # Extract patrol leader/subject from patrol_segments
+            def get_patrol_subject(row):
+                if 'patrol_segments' in row and isinstance(row['patrol_segments'], list) and len(row['patrol_segments']) > 0:
+                    segment = row['patrol_segments'][0]
+                    if isinstance(segment, dict):
+                        if 'leader' in segment:
+                            leader = segment['leader']
+                            if isinstance(leader, dict):
+                                return leader.get('name', leader.get('username', ''))
+                            return str(leader) if leader else ''
+                return ''
+            
+            patrols_df['patrol_leader'] = patrols_df.apply(get_patrol_subject, axis=1)
+            
+            # Get unique leaders for debugging
+            unique_leaders = patrols_df['patrol_leader'].unique().tolist()
+            unique_leaders_clean = [l for l in unique_leaders if l]
+            debug_info.append(f"👥 Found {len(unique_leaders_clean)} unique patrol leaders:")
+            for leader in sorted(unique_leaders_clean):
+                debug_info.append(f"   - '{leader}'")
+            
+            # Filter for specified username patrols only
+            patrols_df = patrols_df[patrols_df['patrol_leader'].isin(patrol_usernames_list)].copy()
+            
+            debug_info.append(f"✅ Patrols for {', '.join(patrol_usernames_list)}: {len(patrols_df)}")
+            
+            if patrols_df.empty:
+                return None, f"No patrols found for {', '.join(patrol_usernames_list)} in the specified date range", debug_info
+            
+            # Get patrol observations
+            debug_info.append(f"🔄 Fetching patrol observations...")
+            patrol_observations = er.get_patrol_observations(
+                patrols_df=patrols_df,
+                include_patrol_details=True
+            )
+            
+            # Handle both Relocations object and GeoDataFrame
+            if hasattr(patrol_observations, 'gdf'):
+                points_gdf = patrol_observations.gdf
+            else:
+                points_gdf = patrol_observations
+            
+            debug_info.append(f"📍 Total observation points: {len(points_gdf)}")
+            
+            if points_gdf.empty:
+                return None, "No patrol tracks found", debug_info
+            
+            # Find time column for sorting
+            time_col = None
+            for col in ['extra__recorded_at', 'recorded_at', 'fixtime', 'time', 'timestamp']:
+                if col in points_gdf.columns:
+                    time_col = col
+                    break
+            
+            debug_info.append(f"⏰ Time column used: {time_col if time_col else 'None found'}")
+            
+            # Convert points to LineStrings grouped by patrol_id
+            lines = []
+            group_col = 'patrol_id'
+            
+            unique_patrol_ids = points_gdf[group_col].unique()
+            debug_info.append(f"🆔 Unique patrol IDs: {len(unique_patrol_ids)}")
+            
+            for group_id in unique_patrol_ids:
+                patrol_points = points_gdf[points_gdf[group_col] == group_id].copy()
+                
+                # Sort by time
+                if time_col and time_col in patrol_points.columns:
+                    patrol_points = patrol_points.sort_values(time_col, ascending=True)
+                
+                if len(patrol_points) < 2:
+                    debug_info.append(f"⚠️ Patrol {group_id}: Only {len(patrol_points)} point(s), skipping")
+                    continue
+                
+                # Create LineString from points
+                coords = [(point.x, point.y) for point in patrol_points.geometry]
+                line = LineString(coords)
+                
+                # Get patrol metadata
+                first_point = patrol_points.iloc[0]
+                
+                # Get actual patrol leader name
+                patrol_leader_name = ''
+                if 'patrol_leader' in patrols_df.columns:
+                    patrol_info = patrols_df[patrols_df['id'] == first_point.get('patrol_id')]
+                    if not patrol_info.empty:
+                        patrol_leader_name = patrol_info.iloc[0]['patrol_leader']
+                
+                line_data = {
+                    'geometry': line,
+                    'patrol_id': first_point['patrol_id'] if 'patrol_id' in first_point.index else group_id,
+                    'patrol_title': first_point.get('patrol_title', ''),
+                    'patrol_sn': first_point.get('patrol_serial_number', ''),
+                    'patrol_type': first_point.get('patrol_type__display', first_point.get('patrol_type__value', '')),
+                    'subject_name': patrol_leader_name,
+                    'num_points': len(patrol_points),
+                    'distance_km': line.length * 111
+                }
+                
+                # Add time columns if available
+                if time_col:
+                    line_data['start_time'] = str(patrol_points[time_col].min())
+                    line_data['end_time'] = str(patrol_points[time_col].max())
+                
+                lines.append(line_data)
+            
+            debug_info.append(f"✅ Successfully created {len(lines)} patrol track(s)")
+            
+            if not lines:
+                return None, "No patrols with multiple points found (need at least 2 points per patrol)", debug_info
+            
+            # Create GeoDataFrame from lines
+            lines_gdf = gpd.GeoDataFrame(lines, crs=4326)
+            return lines_gdf, None, debug_info
+            
+        except Exception as e:
+            import traceback
+            debug_info.append(f"❌ ERROR: {str(e)}")
+            debug_info.append(f"📋 Traceback: {traceback.format_exc()}")
+            return None, f"Error loading patrol data: {str(e)}", debug_info
+
+    # Load patrol data automatically
+    with st.spinner(f"Loading patrol data for {', '.join(patrol_usernames)}... This may take a moment."):
+        patrol_result = load_patrol_data(start_date, end_date, patrol_usernames, username, password)
+    
+    # Unpack result (could be 2 or 3 items)
+    if len(patrol_result) == 3:
+        patrol_gdf, patrol_error, debug_info = patrol_result
+        
+        # Display debug information in an expander
+        with st.expander("🔍 Debug Information", expanded=False):
+            for info in debug_info:
+                st.write(info)
+    else:
+        patrol_gdf, patrol_error = patrol_result
+        patrol_gdf = None
+    
+    if patrol_error:
+        st.warning(f"⚠️ {patrol_error}")
+    elif patrol_gdf is not None and not patrol_gdf.empty:
+        st.success(f"✅ Loaded {len(patrol_gdf)} patrol track(s)")
+        
+        # Display patrol summary metrics
+        col_p1, col_p2, col_p3 = st.columns(3)
+        with col_p1:
+            st.metric("Total patrols", len(patrol_gdf))
+        with col_p2:
+            st.metric("Total distance (km)", f"{patrol_gdf['distance_km'].sum():.2f}")
+        with col_p3:
+            st.metric("Total points", patrol_gdf['num_points'].sum())
+        
+        # Patrol type breakdown
+        st.subheader("📋 Distance by patrol type")
+        if 'patrol_type' in patrol_gdf.columns:
+            patrol_type_summary = patrol_gdf.groupby('patrol_type')['distance_km'].agg(['sum', 'count']).reset_index()
+            patrol_type_summary.columns = ['Patrol Type', 'Total Distance (km)', 'Number of Patrols']
+            patrol_type_summary['Total Distance (km)'] = patrol_type_summary['Total Distance (km)'].round(2)
+            patrol_type_summary = patrol_type_summary.sort_values('Total Distance (km)', ascending=False)
+            st.dataframe(patrol_type_summary, use_container_width=True, hide_index=True)
+        else:
+            st.info("No patrol type data available")
+        
+        # Create patrol map
+        st.subheader("📍 Patrol tracks map")
+        
+        # Extract coordinates from LineStrings for plotting
+        patrol_plot_data = []
+        for idx, row in patrol_gdf.iterrows():
+            coords = list(row.geometry.coords)
+            for i, (lon, lat) in enumerate(coords):
+                patrol_plot_data.append({
+                    'lat': lat,
+                    'lon': lon,
+                    'patrol_id': row['patrol_id'],
+                    'patrol_title': row.get('patrol_title', f"Patrol {idx+1}"),
+                    'patrol_type': row.get('patrol_type', 'N/A'),
+                    'order': i
+                })
+        
+        patrol_plot_df = pd.DataFrame(patrol_plot_data)
+        
+        if not patrol_plot_df.empty:
+            # Calculate appropriate zoom level for patrol tracks
+            lat_range = patrol_plot_df["lat"].max() - patrol_plot_df["lat"].min()
+            lon_range = patrol_plot_df["lon"].max() - patrol_plot_df["lon"].min()
+            max_range = max(lat_range, lon_range)
+            
+            if max_range > 10:
+                patrol_zoom = 6
+            elif max_range > 5:
+                patrol_zoom = 7
+            elif max_range > 2:
+                patrol_zoom = 8
+            elif max_range > 1:
+                patrol_zoom = 9
+            elif max_range > 0.5:
+                patrol_zoom = 10
+            else:
+                patrol_zoom = 11
+            
+            # Create plotly line map
+            fig_patrol = px.line_mapbox(
+                patrol_plot_df,
+                lat="lat",
+                lon="lon",
+                color="patrol_title",
+                hover_data=["patrol_type"],
+                zoom=patrol_zoom,
+                height=500,
+                title="Patrol Tracks"
+            )
+            
+            # Set map style
+            if MAPBOX_TOKEN:
+                map_style = "satellite-streets"
+                px.set_mapbox_access_token(MAPBOX_TOKEN)
+            else:
+                map_style = "open-street-map"
+            
+            fig_patrol.update_layout(
+                mapbox_style=map_style,
+                mapbox=dict(
+                    center=dict(
+                        lat=patrol_plot_df["lat"].mean(),
+                        lon=patrol_plot_df["lon"].mean()
+                    ),
+                    zoom=patrol_zoom
+                ),
+                margin={"r":0,"t":50,"l":0,"b":0},
+                showlegend=True
+            )
+            
+            st.plotly_chart(fig_patrol, use_container_width=True)
+            
+            # Display patrol data table
+            st.subheader("Patrol details")
+            display_patrol_df = patrol_gdf.drop(columns=['geometry']).copy()
+            st.dataframe(display_patrol_df)
+        else:
+            st.info("No patrol track data to display")
+    else:
+        st.info("No patrol data available for the selected date range")
 
     #### Simplified - AAG section removed as not applicable for EHGR
 
