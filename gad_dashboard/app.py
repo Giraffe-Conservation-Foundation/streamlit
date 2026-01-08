@@ -7,21 +7,31 @@ from streamlit_folium import st_folium
 from folium.plugins import MarkerCluster
 from arcgis.gis import GIS
 from arcgis.features import FeatureLayer
+from arcgis.geometry import Point
 import os
 from pathlib import Path
+import json
 
 # DEBUG: Check secrets at module load time
-if hasattr(st, 'secrets'):
-    print(f"[DEBUG] Secrets available at import: {list(st.secrets.keys())}")
-else:
-    print("[DEBUG] st.secrets not available at import")
+try:
+    if hasattr(st, 'secrets'):
+        print(f"[DEBUG] Secrets available at import: {list(st.secrets.keys())}")
+    else:
+        print("[DEBUG] st.secrets not available at import")
+except Exception as e:
+    print(f"[DEBUG] Could not access secrets: {e}")
 
 # Note: GEE, World Bank API, and advanced geospatial libraries removed
 # GAD only uses AGOL data for summary table and folium map
 
 # Configuration
 AGOL_URL = "https://services1.arcgis.com/uMBFfFIXcCOpjlID/arcgis/rest/services/GAD_20250624/FeatureServer/0"
-TOKEN = st.secrets.get("arcgis", {}).get("token", None)
+
+# Get token safely - won't crash if secrets.toml doesn't exist locally
+try:
+    TOKEN = st.secrets.get("arcgis", {}).get("token", None)
+except Exception:
+    TOKEN = None  # For local development without secrets
 
 # ======== Authentication Functions ========
 
@@ -29,11 +39,19 @@ def check_password():
     """Returns `True` if the user had the correct password."""
     def password_entered():
         """Checks whether a password entered by the user is correct."""
-        if st.session_state["password"] == st.secrets["passwords"]["admin_password"]:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # don't store password
-        else:
-            st.session_state["password_correct"] = False
+        try:
+            if st.session_state["password"] == st.secrets["passwords"]["admin_password"]:
+                st.session_state["password_correct"] = True
+                del st.session_state["password"]  # don't store password
+            else:
+                st.session_state["password_correct"] = False
+        except Exception as e:
+            # For local development without secrets.toml, use a default password
+            if st.session_state["password"] == "admin":  # Default for local dev
+                st.session_state["password_correct"] = True
+                del st.session_state["password"]
+            else:
+                st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
         # First run, show input for password
@@ -406,6 +424,88 @@ def create_map(data, color_by='subspecies'):
     
     return m
 
+# ======== Data Submission Functions ========
+
+def submit_data_to_agol(feature_data):
+    """Submit new feature to ArcGIS Online feature layer
+    
+    Args:
+        feature_data: Dictionary containing all required fields for the new feature
+        
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        # Check if token is available
+        if not TOKEN:
+            return False, "No AGOL token available. Write access is required."
+        
+        # Connect to ArcGIS Online with token
+        gis = GIS("https://www.arcgis.com", token=TOKEN)
+        
+        # Get the feature layer
+        feature_layer = FeatureLayer(AGOL_URL, gis=gis)
+        
+        # Create geometry
+        geometry = {
+            "x": feature_data['x'],
+            "y": feature_data['y'],
+            "spatialReference": {"wkid": 4326}  # WGS84
+        }
+        
+        # Create attributes dictionary - only include fields that have values
+        attributes = {}
+        for key, value in feature_data.items():
+            if key not in ['x', 'y'] and value is not None and value != '':
+                attributes[key] = value
+        
+        # Create the feature
+        new_feature = {
+            "geometry": geometry,
+            "attributes": attributes
+        }
+        
+        # Add the feature to the layer
+        result = feature_layer.edit_features(adds=[new_feature])
+        
+        # Check if addition was successful
+        if result['addResults'] and len(result['addResults']) > 0:
+            if result['addResults'][0]['success']:
+                return True, f"Successfully added record with ObjectID: {result['addResults'][0]['objectId']}"
+            else:
+                error_msg = result['addResults'][0].get('error', {}).get('description', 'Unknown error')
+                return False, f"Failed to add record: {error_msg}"
+        else:
+            return False, "No results returned from AGOL"
+            
+    except Exception as e:
+        return False, f"Error submitting data: {str(e)}"
+
+def validate_coordinates(lat, lon):
+    """Validate latitude and longitude values
+    
+    Returns:
+        tuple: (valid: bool, message: str)
+    """
+    try:
+        lat_float = float(lat)
+        lon_float = float(lon)
+        
+        if lat_float < -90 or lat_float > 90:
+            return False, "Latitude must be between -90 and 90"
+        if lon_float < -180 or lon_float > 180:
+            return False, "Longitude must be between -180 and 180"
+        
+        # Check if coordinates are within Africa bounds (rough approximation)
+        if lat_float < -35 or lat_float > 38:
+            return False, "Warning: Latitude appears to be outside Africa's typical range (-35 to 38)"
+        if lon_float < -18 or lon_float > 52:
+            return False, "Warning: Longitude appears to be outside Africa's typical range (-18 to 52)"
+        
+        return True, "Coordinates valid"
+    except ValueError:
+        return False, "Coordinates must be valid numbers"
+
 # ======== Main Application ========
 
 def main():
@@ -413,7 +513,7 @@ def main():
     # Set pandas display options to show all rows
     pd.set_option('display.max_rows', None)
 
-    st.title("🦒 Giraffe Africa Database (GAD v1.1)")
+    st.title("🦒 Giraffe Africa Database (GAD v1.2)")
 
     # Check password before showing content
     if not check_password():
@@ -480,7 +580,7 @@ def main():
     summary = process_data(df, species_filter, subspecies_filter, country_filter, region0_filter)
 
     # Create tabs
-    tab1, tab2, tab3 = st.tabs(["📊 Summary Table", "🗺️ Map; population", "⏰ Map; time"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Summary Table", "🗺️ Map; population", "⏰ Map; time", "➕ Submit Data"])
 
     with tab1:
         st.header("Population Summary")
@@ -623,6 +723,423 @@ def main():
         
         *This map highlights populations that require updated surveys to ensure accurate conservation data.*
         """)
+    
+    with tab4:
+        st.header("Submit New Giraffe Population Data")
+        
+        st.warning("⚠️ **Important:** This form submits data directly to the GAD database. Please ensure all information is accurate before submitting.")
+        
+        # Submission Guidelines at top
+        with st.expander("📋 Submission Guidelines"):
+            st.markdown("""
+            **Survey Method:** Choose the method that best describes how the data was collected.
+            - **Observation** = high level ground monitoring with an ID book, i.e., the population is known
+            - **Ground sample** = a road based survey with transects covering only a sample of the area, population extrapolated
+            - **Aerial sample** = an aerial survey with transects covering a sample of the area, population extrapolated
+            - **Ground total** = a road based survey of the entire area, entire population counted
+            - **Aerial total** = an aerial survey of the entire area, entire population counted
+            - **Guesstimate** = a best guess / rough estimation
+            
+            **Data error rates:** Standard Error (SE) measures the variability of sample mean. A Confidence Interval (CI) is a range calculated usually using the SE.
+            Check your report for an SE or a range (upper and lower). All ground sample and aerial sample estimates should have an SE or a CI range reported.
+            
+            **Reference:** Include the author (year) for display purposes. Include the Zotero URL if possible.
+            
+            **After Submission:**
+            - Data are immediately added to the AGOL feature layer
+            - Refresh the page to see your submission reflected in the Summary Table and maps
+            - Contact Courtney if you need to edit or remove data submitted in error
+            """)
+        
+        # Check if token has write access
+        if not TOKEN:
+            st.error("No AGOL token available. Data submission requires authentication with write permissions.")
+            st.stop()
+        
+        # Pre-form selections for cascading dropdowns (outside form to allow dynamic updates)
+        st.markdown("**Step 1: Select Scale and Country**")
+        col_pre1, col_pre2 = st.columns(2)
+        
+        with col_pre1:
+            scale_options = ["SITE", "SUBREGION", "REGION"]
+            submit_scale = st.selectbox(
+                "Scale",
+                options=scale_options,
+                help="Geographic scale of survey",
+                key="scale_select"
+            )
+        
+        with col_pre2:
+            country_list = sorted(df['Country'].dropna().unique().tolist())
+            submit_country = st.selectbox(
+                "Country",
+                options=["Select a country"] + country_list,
+                help="Select the country where the population is located",
+                key="country_select"
+            )
+        
+        st.markdown("---")
+        
+        # Step 2: Location selection based on Scale and Coordinates
+        st.markdown("**Step 2: Select Location and Coordinates**")
+        
+        if submit_country != "Select a country":
+            country_data = df[df['Country'] == submit_country]
+            
+            if submit_scale == "SITE":
+                # For SITE scale: Select site first, then auto-populate regions
+                site_list = sorted(country_data['Site'].dropna().unique().tolist())
+                site_options = ["Select a site"] + site_list if site_list else ["No sites available"]
+                
+                submit_site = st.selectbox(
+                    "Site",
+                    options=site_options,
+                    help="Select the specific site name",
+                    key="site_select"
+                )
+                
+                # Auto-populate Region0, Region1, and Coordinates based on selected site
+                if submit_site and submit_site != "Select a site" and submit_site != "No sites available":
+                    site_data = country_data[country_data['Site'] == submit_site].iloc[0]
+                    submit_region0 = site_data['Region0'] if pd.notna(site_data['Region0']) else None
+                    submit_region1 = site_data['Region1'] if pd.notna(site_data['Region1']) else None
+                    submit_latitude = float(site_data['y']) if pd.notna(site_data['y']) else 0.0
+                    submit_longitude = float(site_data['x']) if pd.notna(site_data['x']) else 0.0
+                    
+                    # Display the auto-populated regions
+                    col_info1, col_info2 = st.columns(2)
+                    with col_info1:
+                        st.info(f"**Region 0:** {submit_region0}")
+                    with col_info2:
+                        if submit_region1:
+                            st.info(f"**Region 1:** {submit_region1}")
+                        else:
+                            st.info("**Region 1:** None")
+                    
+                    # Display auto-populated coordinates
+                    col_coord1, col_coord2 = st.columns(2)
+                    with col_coord1:
+                        st.info(f"**Latitude:** {submit_latitude}")
+                    with col_coord2:
+                        st.info(f"**Longitude:** {submit_longitude}")
+                else:
+                    submit_region0 = None
+                    submit_region1 = None
+                    submit_latitude = 0.0
+                    submit_longitude = 0.0
+                    
+            elif submit_scale == "SUBREGION":
+                # For SUBREGION scale: Select Region0, then Region1
+                region0_list = sorted(country_data['Region0'].dropna().unique().tolist())
+                region0_options = ["Select a region"] + region0_list if region0_list else ["No regions available"]
+                
+                col2a, col2b = st.columns(2)
+                with col2a:
+                    submit_region0 = st.selectbox(
+                        "Region (Level 0)",
+                        options=region0_options,
+                        help="Primary administrative region",
+                        key="region0_select"
+                    )
+                
+                with col2b:
+                    if submit_region0 and submit_region0 != "Select a region" and submit_region0 != "No regions available":
+                        region1_data = country_data[country_data['Region0'] == submit_region0]
+                        region1_list = sorted(region1_data['Region1'].dropna().unique().tolist())
+                        region1_options = ["Select a subregion"] + region1_list if region1_list else ["No subregions available"]
+                    else:
+                        region1_options = ["Select a subregion"]
+                    
+                    submit_region1 = st.selectbox(
+                        "Region (Level 1)",
+                        options=region1_options,
+                        help="Secondary administrative region",
+                        key="region1_select"
+                    )
+                
+                submit_site = None
+                submit_latitude = 0.0
+                submit_longitude = 0.0
+                
+            else:  # REGION scale
+                # For REGION scale: Only select Region0
+                region0_list = sorted(country_data['Region0'].dropna().unique().tolist())
+                region0_options = ["Select a region"] + region0_list if region0_list else ["No regions available"]
+                
+                submit_region0 = st.selectbox(
+                    "Region (Level 0)",
+                    options=region0_options,
+                    help="Primary administrative region",
+                    key="region0_only_select"
+                )
+                
+                submit_region1 = None
+                submit_site = None
+                submit_latitude = 0.0
+                submit_longitude = 0.0
+        else:
+            st.info("Please select a country to see location options")
+            submit_region0 = None
+            submit_region1 = None
+            submit_site = None
+            submit_latitude = 0.0
+            submit_longitude = 0.0
+        
+        st.markdown("---")
+        
+        # Step 3: Species Information
+        st.markdown("**Step 3: Species Information**")
+        
+        col4a, col4b = st.columns(2)
+        with col4a:
+            if submit_country != "Select a country":
+                country_species = sorted(country_data['Species'].dropna().unique().tolist())
+                species_options = ["Select a species"] + country_species
+            else:
+                species_options = ["Select a species"] + sorted(df['Species'].dropna().unique().tolist())
+            
+            submit_species = st.selectbox(
+                "Species",
+                options=species_options,
+                help="Scientific species name",
+                key="species_select"
+            )
+        
+        with col4b:
+            if submit_country != "Select a country" and submit_species != "Select a species":
+                country_subspecies = sorted(
+                    country_data[country_data['Species'] == submit_species]['Subspecies'].dropna().unique().tolist()
+                )
+                subspecies_options = ["Select a subspecies"] + country_subspecies
+            elif submit_country != "Select a country":
+                country_subspecies = sorted(country_data['Subspecies'].dropna().unique().tolist())
+                subspecies_options = ["Select a subspecies"] + country_subspecies
+            else:
+                subspecies_options = ["Select a subspecies"] + sorted(df['Subspecies'].dropna().unique().tolist())
+            
+            submit_subspecies = st.selectbox(
+                "Subspecies",
+                options=subspecies_options,
+                help="Subspecies designation",
+                key="subspecies_select"
+            )
+        
+        st.markdown("---")
+        
+        # Step 4: Survey Data
+        st.markdown("**Step 4: Survey Data**")
+        
+        col5a, col5b, col5c, col5d = st.columns(4)
+        with col5a:
+            submit_year = st.number_input(
+                "Survey Year",
+                min_value=1900,
+                max_value=datetime.now().year,
+                value=datetime.now().year,
+                step=1,
+                help="Year survey was conducted",
+                key="year_input"
+            )
+        
+        with col5b:
+            submit_month = st.number_input(
+                "Survey Month",
+                min_value=1,
+                max_value=12,
+                value=1,
+                step=1,
+                help="Month survey was conducted (1-12)",
+                key="month_input"
+            )
+        
+        with col5c:
+            submit_estimate = st.number_input(
+                "Population Estimate",
+                min_value=0,
+                value=0,
+                step=1,
+                help="Best estimate of population",
+                key="estimate_input"
+            )
+        
+        with col5d:
+            methods_list = [
+                "Select a method",
+                "Observation",
+                "Ground sample",
+                "Aerial sample",
+                "Ground total",
+                "Aerial total",
+                "Guesstimate"
+            ]
+            submit_method = st.selectbox(
+                "Survey Method",
+                options=methods_list,
+                help="Method for population estimation",
+                key="method_select"
+            )
+        
+        st.markdown("---")
+        
+        # Step 5: Data Error Rates (conditional)
+        if submit_method in ["Observation", "Ground sample", "Aerial sample"]:
+            st.markdown("**Step 5: Data Error Rates**")
+            st.info("Enter EITHER Standard Error OR Confidence Intervals (Upper and Lower)")
+            
+            # Standard Error on first row
+            submit_std_err = st.number_input(
+                "Standard Error",
+                min_value=0.0,
+                value=0.0,
+                step=0.1,
+                help="Standard error of the estimate (leave as 0 if not applicable)",
+                key="std_err_input"
+            )
+            
+            # CI on second row
+            col6b, col6c = st.columns(2)
+            with col6b:
+                submit_ci_lower = st.number_input(
+                    "CI Lower",
+                    min_value=0.0,
+                    value=0.0,
+                    step=0.1,
+                    help="Lower confidence interval (leave as 0 if not applicable)",
+                    key="ci_lower_input"
+                )
+            
+            with col6c:
+                submit_ci_upper = st.number_input(
+                    "CI Upper",
+                    min_value=0.0,
+                    value=0.0,
+                    step=0.1,
+                    help="Upper confidence interval (leave as 0 if not applicable)",
+                    key="ci_upper_input"
+                )
+            
+            st.markdown("---")
+        else:
+            # Set to None for methods that don't use SE/CI
+            submit_std_err = None
+            submit_ci_lower = None
+            submit_ci_upper = None
+        
+        # Step 6: Reference Information
+        st.markdown("**Step 6: Reference Information**")
+        
+        col_ref1, col_ref2 = st.columns([1, 1])
+        with col_ref1:
+            submit_reference = st.text_input(
+                "Reference",
+                placeholder="e.g., Fennessy et al (2025)",
+                help="Citation for the survey data",
+                key="reference_input"
+            )
+        
+        with col_ref2:
+            submit_ref_url = st.text_input(
+                "Zotero URL",
+                help="Zotero URL (if available)",
+                key="ref_url_input"
+            )
+        
+        st.markdown("---")
+        
+        with st.form("data_submission_form"):
+            
+            st.markdown("---")
+            
+            # Submit button
+            submit_button = st.form_submit_button("Submit Data", use_container_width=True)
+            
+            if submit_button:
+                # Validation
+                errors = []
+                
+                if submit_country == "Select a country":
+                    errors.append("Please select a country")
+                
+                # Validate based on scale
+                if submit_scale == "SITE":
+                    if not submit_site or submit_site == "Select a site" or submit_site == "No sites available":
+                        errors.append("Site is required for SITE scale")
+                    # Region0 can be NA for some sites, so we don't validate it for SITE scale
+                elif submit_scale == "SUBREGION":
+                    if not submit_region0 or submit_region0 == "Select a region" or submit_region0 == "No regions available":
+                        errors.append("Region (Level 0) is required for SUBREGION scale")
+                    if not submit_region1 or submit_region1 == "Select a subregion" or submit_region1 == "No subregions available":
+                        errors.append("Region (Level 1) is required for SUBREGION scale")
+                elif submit_scale == "REGION":
+                    if not submit_region0 or submit_region0 == "Select a region" or submit_region0 == "No regions available":
+                        errors.append("Region (Level 0) is required for REGION scale")
+                
+                if submit_species == "Select a species":
+                    errors.append("Please select a species")
+                if submit_subspecies == "Select a subspecies":
+                    errors.append("Please select a subspecies")
+                if submit_method == "Select a method":
+                    errors.append("Please select a survey method")
+                if submit_estimate < 0:
+                    errors.append("Population estimate cannot be negative")
+                if not submit_reference:
+                    errors.append("Reference is required")
+                
+                # Validate coordinates
+                coord_valid, coord_msg = validate_coordinates(submit_latitude, submit_longitude)
+                if not coord_valid:
+                    errors.append(coord_msg)
+                
+                # Check if coordinates are at default (0, 0)
+                if submit_latitude == 0.0 and submit_longitude == 0.0:
+                    errors.append("Please provide valid coordinates (not 0, 0)")
+                
+                if errors:
+                    st.error("**Please fix the following errors:**")
+                    for error in errors:
+                        st.error(f"- {error}")
+                else:
+                    # Prepare data for submission
+                    feature_data = {
+                        'Country': submit_country,
+                        'Region0': submit_region0 if submit_region0 else None,
+                        'Region1': submit_region1 if submit_region1 else None,
+                        'Site': submit_site if submit_site else None,
+                        'Species': submit_species,
+                        'Subspecies': submit_subspecies,
+                        'SCALE': submit_scale,
+                        'Year': submit_year,
+                        'Month': submit_month,
+                        'Estimate': submit_estimate,
+                        'Std_Err': submit_std_err if submit_std_err and submit_std_err > 0 else None,
+                        'CI_lower': submit_ci_lower if submit_ci_lower and submit_ci_lower > 0 else None,
+                        'CI_upper': submit_ci_upper if submit_ci_upper and submit_ci_upper > 0 else None,
+                        'Methods__field': submit_method,
+                        'Reference': submit_reference,
+                        'ref_url': submit_ref_url if submit_ref_url else None,
+                        'x': submit_longitude,
+                        'y': submit_latitude
+                    }
+                    
+                    # Show preview
+                    with st.spinner("Submitting data to AGOL..."):
+                        success, message = submit_data_to_agol(feature_data)
+                    
+                    if success:
+                        st.success(f"✅ {message}")
+                        st.balloons()
+                        
+                        # Clear the cache so new data will be loaded
+                        st.cache_data.clear()
+                        
+                        st.info("Data has been submitted successfully! Refresh the page to see the new record in the Summary Table and maps.")
+                        
+                        # Show submitted data
+                        with st.expander("View Submitted Data"):
+                            st.json(feature_data)
+                    else:
+                        st.error(f"❌ {message}")
+                        st.info("Please check your AGOL token has write permissions and try again.")
 
 if __name__ == "__main__":
     main()
