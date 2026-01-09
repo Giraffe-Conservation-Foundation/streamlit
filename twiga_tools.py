@@ -93,32 +93,35 @@ This integrated platform provides essential tools for giraffe conservation resea
 
 Navigate using the sidebar to access:
 
-- **Create ID Book** - generate an ID book using GiraffeSpotter (Wildbook) data
-- **NANW Dashboard** - monitor Northwest Namibia giraffe population  
-- **ZAF Dashboard** - monitor South Africa giraffe population and encounters
-- **EHGR Dashboard** - monitor Namibia giraffe encounters and survey data
-- **Camera Trap Upload** - process and upload camera trap images to Google Cloud
-- **Survey Upload** - process and upload survey images to Google Cloud
-- **Unit Check** - monitor tracking device activity, battery, and locations over 7 days
-- **Post-Tagging Dashboard** - monitor giraffe locations during first 2 days after collar deployment
-- **Translocation Dashboard** - monitor and analyze giraffe translocation events
-- **Genetic Dashboard** - monitor and analyze biological sample events
+- **Our impact** - quick look at our conservation success
+- **GPS unit check** - monitor GPS tracking device performance over 7 days
+- **Survey dashboard (NANW)** - monitor Northwest Namibia giraffe population
+- **Survey dashboard (ZAF)** - monitor South Africa giraffe survey encounters
+- **Survey dashboard (EHGR)** - monitor Etosha Heights giraffe encounters and patrol data
+- **Survey data upload** - process and upload survey images direct to Google Cloud
+- **Camera trap data upload** - process and upload camera trap images direct to Google Cloud
+- **Post-tagging dashboard** - monitor giraffe locations during first 7 days after collar deployment
+- **GAD** - review, download, or submit giraffe population to the Giraffe Africa Database
+- **Translocation dashboard** - monitor and review giraffe translocation events
+- **Genetic dashboard** - monitor and review biological sample events
+- **Create ID Book** - create and download an ID book using a GiraffeSpotter export
+
+### 🚧 Coming soon
+            
+- **Life history** - see all events linked with an individual giraffe (sightings, immobilisations, etc)
+- **Impact reports**
 - **Patrol Download** - download patrol tracks as shapefiles from EarthRanger for GIS analysis
 - **Mortality Dashboard** - track and analyze giraffe mortality events with timeline and location mapping
 - **ER2WB Converter** - convert EarthRanger giraffe encounter data to GiraffeSpotter bulk import format
 - **ER Backup** - comprehensive backup of all EarthRanger data
 
-### 🚧 Coming soon
-            
-- **Life history** - see all events linked with a giraffe (sightings, immobilisations, etc)
-- **Impact reports**
-- Please send any other tool/dashboard requests to courtney
+Please send any other tool/dashboard requests to courtney
 
 ### 🚀 Getting started
 
 1. Use the sidebar navigation to select a tool
 2. Follow the authentication/log in steps
-3. Upload your data and follow the guided process
+3. Follow the guided process
 4. If you need further help, please contact courtney@giraffeconservation.org             
 
 ### 🔒 Security
