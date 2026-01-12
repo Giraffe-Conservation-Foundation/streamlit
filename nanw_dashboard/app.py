@@ -506,8 +506,8 @@ if st.button("🔄 Calculate Movement Statistics", use_container_width=True):
                         st.info(f"⏭️ Skipping {subject_name}: No GPS data returned from API")
                         continue
                     
-                    # Relocations object has a .gdf property that contains the GeoDataFrame
-                    gdf = trajectories.gdf
+                    # Relocations object IS a GeoDataFrame (inherits from GeoDataFrame)
+                    gdf = trajectories
                     
                     if gdf.empty:
                         st.info(f"⏭️ Skipping {subject_name}: No GPS observations in date range")
