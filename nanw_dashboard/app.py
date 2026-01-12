@@ -486,11 +486,20 @@ if st.button("🔄 Calculate Movement Statistics", use_container_width=True):
                     subject_name = id_to_name.get(subject_id, f"Unknown ({subject_id})")
                     
                     # Fetch trajectory data for this subject
-                    trajectories = er.get_subject_observations(
-                        subject_ids=[subject_id],
-                        since=since_str,
-                        until=until_str
-                    )
+                    try:
+                        trajectories = er.get_subject_observations(
+                            subject_ids=[subject_id],
+                            since=since_str,
+                            until=until_str
+                        )
+                    except Exception as api_error:
+                        # Handle API errors (including JSON parsing errors)
+                        error_msg = str(api_error)
+                        if "Expecting value" in error_msg or "JSON" in error_msg:
+                            st.info(f"⏭️ Skipping {subject_name}: No GPS data available (empty API response)")
+                        else:
+                            st.warning(f"⚠️ API error for {subject_name}: {error_msg}")
+                        continue
                     
                     # Check if we got any data
                     if trajectories is None:
@@ -677,6 +686,12 @@ if st.button("🔄 Calculate Movement Statistics", use_container_width=True):
                 
                 st.dataframe(display_stats, use_container_width=True)
                 
+        except ImportError as e:
+            st.error(f"Missing required package: {str(e)}")
+            st.info("Please ensure you have the required packages installed: numpy, shapely, scipy")
         except Exception as e:
+            import traceback
             st.error(f"Error calculating movement statistics: {str(e)}")
-            st.info("Please ensure you have the required packages: numpy, shapely, scipy")
+            with st.expander("🔍 Show detailed error"):
+                st.code(traceback.format_exc())
+            st.info("If the error persists, try adjusting the date range or check your EarthRanger connection.")
