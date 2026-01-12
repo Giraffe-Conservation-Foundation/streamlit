@@ -96,8 +96,21 @@ def get_active_aag_subjects():
     subjects = subjects_df.to_dict('records')
     return subjects
 
+@st.cache_data(ttl=3600)
+def get_hoanib_giraffe_subjects():
+    """Get subjects from NAM_Hoanib_giraffe group (GPS-collared giraffes)"""
+    er = EarthRangerIO(
+        server="https://twiga.pamdas.org",
+        username=username,
+        password=password
+    )
+    subjects_df = er.get_subjects(subject_group_name="NAM_Hoanib_giraffe")
+    subjects = subjects_df.to_dict('records')
+    return subjects
+
 active_subjects = get_active_nanw_subjects()
 aag_subjects = get_active_aag_subjects()
+hoanib_gps_subjects = get_hoanib_giraffe_subjects()
 aag_id_to_name = {s["id"]: s["name"] for s in aag_subjects if "id" in s and "name" in s}
 aag_ids = set(aag_id_to_name.keys())
 
@@ -432,3 +445,240 @@ if not aag_table.empty:
     st.dataframe(aag_table[["giraffe_name"]].drop_duplicates().sort_values("giraffe_name").reset_index(drop=True), use_container_width=True)
 else:
     st.info("No AAG giraffes seen in the selected data.")
+
+st.markdown("---")
+
+#### MOVEMENT STATISTICS SECTION ###############################################
+st.subheader("📊 Movement Statistics")
+st.info("Calculate distance traveled and home ranges for tagged giraffes during the selected date range.")
+
+# Button to trigger analysis
+if st.button("🔄 Calculate Movement Statistics", use_container_width=True):
+    with st.spinner("Fetching trajectory data and calculating statistics..."):
+        try:
+            import numpy as np
+            from shapely.geometry import MultiPoint
+            from scipy.spatial import ConvexHull
+            
+            # Initialize ER connection
+            er = EarthRangerIO(
+                server=EARTHRANGER_SERVER,
+                username=username,
+                password=password
+            )
+            
+            # Get GPS-collared subjects from NAM_Hoanib_giraffe group
+            hoanib_subject_ids = [s["id"] for s in hoanib_gps_subjects]
+            
+            # Use only Hoanib GPS-collared subjects for movement statistics
+            subjects_to_process = hoanib_subject_ids
+            
+            st.info(f"Checking {len(subjects_to_process)} GPS-collared Hoanib giraffe(s) for observations...")
+            
+            # Convert start and end dates to datetime strings for API
+            since_str = datetime.combine(start_date, datetime.min.time()).isoformat() + "Z"
+            until_str = datetime.combine(end_date, datetime.max.time()).isoformat() + "Z"
+            
+            # Dictionary to store results for each subject
+            movement_stats = []
+            
+            for subject_id in subjects_to_process:
+                try:
+                    # Get subject name
+                    subject_name = id_to_name.get(subject_id, f"Unknown ({subject_id})")
+                    
+                    # Fetch trajectory data for this subject
+                    trajectories = er.get_subject_observations(
+                        subject_ids=[subject_id],
+                        since=since_str,
+                        until=until_str
+                    )
+                    
+                    # Check if we got any data
+                    if trajectories is None:
+                        st.info(f"⏭️ Skipping {subject_name}: No GPS data returned from API")
+                        continue
+                    
+                    # Relocations object has a .gdf property that contains the GeoDataFrame
+                    gdf = trajectories.gdf
+                    
+                    if gdf.empty:
+                        st.info(f"⏭️ Skipping {subject_name}: No GPS observations in date range")
+                        continue
+                    
+                    n_obs = len(gdf)
+                    
+                    if n_obs < 2:
+                        st.info(f"⏭️ Skipping {subject_name}: Only {n_obs} GPS point(s) in date range (need at least 2)")
+                        continue
+                    
+                    # Sort by recorded_at timestamp (use fixtime which is the standardized time column in Relocations)
+                    gdf = gdf.sort_values('fixtime')
+                    
+                    # Calculate distance between consecutive points using Haversine formula
+                    def haversine_distance(lat1, lon1, lat2, lon2):
+                        """Calculate distance between two points in km"""
+                        R = 6371  # Earth radius in km
+                        lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
+                        dlat = lat2 - lat1
+                        dlon = lon2 - lon1
+                        a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+                        c = 2 * np.arcsin(np.sqrt(a))
+                        return R * c
+                    
+                    # Extract coordinates from geometry column
+                    # GeoDataFrame has geometry with Point objects
+                    lats = gdf.geometry.y.values
+                    lons = gdf.geometry.x.values
+                    
+                    # Calculate distances between consecutive points
+                    distances = []
+                    for i in range(n_obs - 1):
+                        lat1 = lats[i]
+                        lon1 = lons[i]
+                        lat2 = lats[i+1]
+                        lon2 = lons[i+1]
+                        dist = haversine_distance(lat1, lon1, lat2, lon2)
+                        distances.append(dist)
+                    
+                    total_distance = sum(distances)
+                    
+                    # Calculate days active (use fixtime which is the standard time column)
+                    first_date = pd.to_datetime(gdf['fixtime'].min())
+                    last_date = pd.to_datetime(gdf['fixtime'].max())
+                    days_active = max(1, (last_date - first_date).days)
+                    
+                    avg_km_per_day = total_distance / days_active
+                    
+                    # Calculate 95% Minimum Convex Polygon (home range)
+                    # Get coordinates from geometry
+                    coords = np.column_stack([gdf.geometry.x.values, gdf.geometry.y.values])
+                    
+                    if len(coords) < 3:
+                        home_range_area = 0
+                    else:
+                        # Calculate convex hull for all points
+                        points = MultiPoint(coords)
+                        
+                        # For 95% MCP, we remove the 5% most extreme points
+                        # Calculate centroid
+                        centroid = points.centroid
+                        
+                        # Calculate distances from centroid
+                        distances_from_center = []
+                        for coord in coords:
+                            dist = haversine_distance(
+                                centroid.y, centroid.x,
+                                coord[1], coord[0]
+                            )
+                            distances_from_center.append((dist, coord))
+                        
+                        # Sort by distance and take 95%
+                        distances_from_center.sort(key=lambda x: x[0])
+                        n_points_95 = max(3, int(len(distances_from_center) * 0.95))
+                        coords_95 = [coord for _, coord in distances_from_center[:n_points_95]]
+                        
+                        if len(coords_95) >= 3:
+                            # Calculate convex hull area
+                            try:
+                                hull = ConvexHull(coords_95)
+                                # Convert area from square degrees to square km (approximate)
+                                # At equator: 1 degree ≈ 111 km
+                                area_deg2 = hull.volume  # In 2D, volume is actually area
+                                home_range_area = area_deg2 * (111 * 111)  # Convert to km²
+                            except:
+                                home_range_area = 0
+                        else:
+                            home_range_area = 0
+                    
+                    # Store results
+                    movement_stats.append({
+                        'subject_id': subject_id,
+                        'subject_name': subject_name,
+                        'total_distance_km': total_distance,
+                        'days_active': days_active,
+                        'avg_km_per_day': avg_km_per_day,
+                        'home_range_km2': home_range_area,
+                        'n_observations': n_obs
+                    })
+                    
+                except Exception as e:
+                    st.warning(f"Could not process data for {subject_name}: {str(e)}")
+                    continue
+            
+            if not movement_stats:
+                st.warning("No movement data available for the selected date range.")
+            else:
+                # Create dataframe from results
+                stats_df = pd.DataFrame(movement_stats)
+                
+                # Display results in columns
+                st.subheader("🏆 Movement Champions")
+                
+                col_stat1, col_stat2 = st.columns(2)
+                
+                with col_stat1:
+                    st.markdown("**Distance Traveled**")
+                    max_dist_row = stats_df.loc[stats_df['total_distance_km'].idxmax()]
+                    min_dist_row = stats_df.loc[stats_df['total_distance_km'].idxmin()]
+                    
+                    st.markdown(f"🥇 **Farthest Traveler:** {max_dist_row['subject_name']}")
+                    st.info(f"**{max_dist_row['total_distance_km']:.2f} km** traveled over {int(max_dist_row['days_active'])} days")
+                    
+                    st.markdown(f"🐌 **Shortest Distance:** {min_dist_row['subject_name']}")
+                    st.info(f"**{min_dist_row['total_distance_km']:.2f} km** traveled over {int(min_dist_row['days_active'])} days")
+                
+                with col_stat2:
+                    st.markdown("**Home Range Size (95% MCP)**")
+                    max_hr_row = stats_df.loc[stats_df['home_range_km2'].idxmax()]
+                    min_hr_row = stats_df.loc[stats_df['home_range_km2'].idxmin()]
+                    
+                    st.markdown(f"🏔️ **Largest Home Range:** {max_hr_row['subject_name']}")
+                    st.info(f"**{max_hr_row['home_range_km2']:.2f} km²** from {int(max_hr_row['n_observations'])} GPS points")
+                    
+                    st.markdown(f"🏠 **Smallest Home Range:** {min_hr_row['subject_name']}")
+                    st.info(f"**{min_hr_row['home_range_km2']:.2f} km²** from {int(min_hr_row['n_observations'])} GPS points")
+                
+                # Average stats
+                st.markdown("---")
+                st.subheader("📈 Average Statistics (All Active Subjects)")
+                
+                col_avg1, col_avg2, col_avg3 = st.columns(3)
+                
+                with col_avg1:
+                    avg_distance = stats_df['total_distance_km'].mean()
+                    st.metric("Avg Total Distance", f"{avg_distance:.2f} km")
+                
+                with col_avg2:
+                    avg_daily = stats_df['avg_km_per_day'].mean()
+                    st.metric("Avg Distance per Day", f"{avg_daily:.2f} km/day")
+                
+                with col_avg3:
+                    avg_home_range = stats_df['home_range_km2'].mean()
+                    st.metric("Avg Home Range", f"{avg_home_range:.2f} km²")
+                
+                # Detailed table
+                st.markdown("---")
+                st.subheader("📋 Detailed Movement Statistics")
+                
+                display_stats = stats_df.copy()
+                display_stats = display_stats.sort_values('total_distance_km', ascending=False)
+                display_stats['total_distance_km'] = display_stats['total_distance_km'].round(2)
+                display_stats['avg_km_per_day'] = display_stats['avg_km_per_day'].round(2)
+                display_stats['home_range_km2'] = display_stats['home_range_km2'].round(2)
+                
+                # Rename columns for display
+                display_stats = display_stats[[
+                    'subject_name', 'total_distance_km', 'avg_km_per_day', 
+                    'home_range_km2', 'days_active', 'n_observations'
+                ]]
+                display_stats.columns = [
+                    'Giraffe Name', 'Total Distance (km)', 'Avg km/day',
+                    'Home Range (km²)', 'Days Active', 'GPS Observations'
+                ]
+                
+                st.dataframe(display_stats, use_container_width=True)
+                
+        except Exception as e:
+            st.error(f"Error calculating movement statistics: {str(e)}")
+            st.info("Please ensure you have the required packages: numpy, shapely, scipy")
