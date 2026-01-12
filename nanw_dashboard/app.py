@@ -241,13 +241,11 @@ col_date_start, col_date_end = st.columns(2)
 df["evt_dttm"] = pd.to_datetime(df["evt_dttm"], errors="coerce")
 df = df.dropna(subset=["evt_dttm"])
 
-# Set min/max dates from data for date picker range
-if df["evt_dttm"].notna().any():
-    data_min_date = df["evt_dttm"].min().date()
-    data_max_date = df["evt_dttm"].max().date()
-else:
-    data_min_date = datetime.today().date()
-    data_max_date = datetime.today().date()
+# Set min/max dates for date picker - allow broader range than just event dates
+# Use a reasonable range (e.g., 2020 to today) to accommodate GPS observation data
+from datetime import date
+data_min_date = date(2020, 1, 1)  # Allow dates back to 2020
+data_max_date = datetime.today().date()
 
 # Set default dates: last 30 days
 from datetime import timedelta
