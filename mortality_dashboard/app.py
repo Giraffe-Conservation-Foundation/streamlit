@@ -153,6 +153,18 @@ def get_mortality_events(start_date=None, end_date=None, _debug=False):
         if gdf_events.empty:
             return pd.DataFrame()
         
+        # DEBUG: Check what's in the raw GeoDataFrame before any processing
+        if _debug:
+            st.write("DEBUG: Raw GeoDataFrame from ecoscope:")
+            st.write(f"Columns: {list(gdf_events.columns)}")
+            if len(gdf_events) > 0:
+                first = gdf_events.iloc[0]
+                st.write("First event latitude field:", first.get('latitude') if 'latitude' in gdf_events.columns else 'NO LATITUDE COLUMN')
+                st.write("First event longitude field:", first.get('longitude') if 'longitude' in gdf_events.columns else 'NO LONGITUDE COLUMN')
+                st.write("First event geometry:", first.get('geometry') if 'geometry' in gdf_events.columns else 'NO GEOMETRY')
+                if 'location' in gdf_events.columns:
+                    st.write("First event location field:", first.get('location'))
+        
         # Convert GeoDataFrame to regular DataFrame (keep geometry for now)
         df = pd.DataFrame(gdf_events)
         
@@ -293,7 +305,7 @@ def mortality_dashboard():
             
             # Show ZMB events specifically
             st.write("---")
-            st.write("ZMB (Zambia) Events:")
+            st.write("ZMB (Zambia) Events - RAW DATA CHECK:")
             zmb_events = []
             for idx, event in all_events.iterrows():
                 event_details = event.get('event_details', {})
@@ -301,10 +313,15 @@ def mortality_dashboard():
                     country = event_details.get('country')
                     country_str = str(country).upper() if country else ''
                     if 'ZMB' in country_str or 'ZAMBIA' in country_str:
+                        # Get location field
+                        location_field = event.get('location')
+                        location_str = str(location_field)[:200] if location_field else 'NO LOCATION FIELD'
+                        
                         zmb_events.append({
                             'serial': event.get('serial_number'),
-                            'latitude': str(event.get('latitude')),
-                            'longitude': str(event.get('longitude')),
+                            'top_level_lat': str(event.get('latitude')),
+                            'top_level_lon': str(event.get('longitude')),
+                            'location_field': location_str,
                             'country': country_str,
                             'time': str(event.get('time', ''))[:10]
                         })
