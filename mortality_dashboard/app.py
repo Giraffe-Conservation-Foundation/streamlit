@@ -657,16 +657,22 @@ def mortality_dashboard():
         for event_idx, event in enumerate(events_with_location):
             event_details = event.get('event_details', {})
             
-            # Get coordinates
-            location = event_details.get('location') if isinstance(event_details, dict) else {}
-            if isinstance(location, dict):
-                lat = location.get('latitude')
-                lon = location.get('longitude')
-                location_name = location.get('name', 'Unknown')
+            # Get coordinates - prioritize top-level event coordinates
+            lat = event.get('latitude')
+            lon = event.get('longitude')
+            location_name = 'Unknown'
+            
+            # If not at top level, check event_details['location']
+            if not lat or not lon:
+                location = event_details.get('location') if isinstance(event_details, dict) else {}
+                if isinstance(location, dict):
+                    lat = location.get('latitude')
+                    lon = location.get('longitude')
+                    location_name = location.get('name', 'Unknown')
             else:
-                lat = event.get('latitude')
-                lon = event.get('longitude')
-                location_name = event_details.get('location_name', 'Unknown') if isinstance(event_details, dict) else 'Unknown'
+                # Get location name from event_details if available
+                if isinstance(event_details, dict):
+                    location_name = event_details.get('location_name', 'Unknown')
             
             if lat and lon:
                 try:
@@ -772,12 +778,19 @@ def mortality_dashboard():
             elif country:
                 row['Country'] = str(country)
             
-            # Location
-            location = event_details.get('location')
-            if isinstance(location, dict):
-                row['Location'] = location.get('name', '')
-                row['Latitude'] = location.get('latitude', '')
-                row['Longitude'] = location.get('longitude', '')
+            # Location - prioritize top-level coordinates first
+            row['Latitude'] = event.get('latitude', '')
+            row['Longitude'] = event.get('longitude', '')
+            
+            # Try event_details['location'] if top-level coords not found
+            if not row['Latitude'] or not row['Longitude']:
+                location = event_details.get('location')
+                if isinstance(location, dict):
+                    row['Location'] = location.get('name', '')
+                    row['Latitude'] = location.get('latitude', '')
+                    row['Longitude'] = location.get('longitude', '')
+                else:
+                    row['Location'] = event_details.get('location_name', '')
             else:
                 row['Location'] = event_details.get('location_name', '')
             
@@ -806,12 +819,6 @@ def mortality_dashboard():
             notes = event_details.get('notes', '')
             if notes:
                 row['Notes'] = str(notes)
-        
-        # Also check for direct lat/lon on event
-        if not row['Latitude'] and event.get('latitude'):
-            row['Latitude'] = event.get('latitude')
-        if not row['Longitude'] and event.get('longitude'):
-            row['Longitude'] = event.get('longitude')
         
         export_data.append(row)
     
