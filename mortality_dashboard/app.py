@@ -278,58 +278,6 @@ def mortality_dashboard():
     with st.spinner("🔄 Loading mortality data..."):
         all_events = get_mortality_events(start_date, end_date)
     
-    # Debug: Check coordinate structure
-    if not all_events.empty:
-        with st.expander("🔍 Debug: Coordinate Data Structure", expanded=False):
-            st.write(f"Total events: {len(all_events)}")
-            st.write(f"Columns: {list(all_events.columns)}")
-            
-            # Check how many have lat/lon at top level
-            has_top_level_lat = all_events['latitude'].notna().sum() if 'latitude' in all_events.columns else 0
-            has_top_level_lon = all_events['longitude'].notna().sum() if 'longitude' in all_events.columns else 0
-            st.write(f"Events with top-level latitude: {has_top_level_lat}")
-            st.write(f"Events with top-level longitude: {has_top_level_lon}")
-            
-            # Show sample of first few events
-            st.write("Sample event structure (first event):")
-            if len(all_events) > 0:
-                first_event = all_events.iloc[0]
-                st.json({
-                    'latitude': str(first_event.get('latitude', 'MISSING')),
-                    'longitude': str(first_event.get('longitude', 'MISSING')),
-                    'event_details_keys': list(first_event.get('event_details', {}).keys()) if isinstance(first_event.get('event_details'), dict) else 'NOT A DICT',
-                    'has_location_in_details': 'location' in first_event.get('event_details', {}),
-                })
-            
-            # Show ZMB events specifically
-            st.write("---")
-            st.write("ZMB (Zambia) Events - RAW DATA CHECK:")
-            zmb_events = []
-            for idx, event in all_events.iterrows():
-                event_details = event.get('event_details', {})
-                if isinstance(event_details, dict):
-                    country = event_details.get('country')
-                    country_str = str(country).upper() if country else ''
-                    if 'ZMB' in country_str or 'ZAMBIA' in country_str:
-                        # Get location field
-                        location_field = event.get('location')
-                        location_str = str(location_field)[:200] if location_field else 'NO LOCATION FIELD'
-                        
-                        zmb_events.append({
-                            'serial': event.get('serial_number'),
-                            'top_level_lat': str(event.get('latitude')),
-                            'top_level_lon': str(event.get('longitude')),
-                            'location_field': location_str,
-                            'country': country_str,
-                            'time': str(event.get('time', ''))[:10]
-                        })
-            
-            if zmb_events:
-                st.write(f"Found {len(zmb_events)} ZMB events:")
-                st.json(zmb_events)
-            else:
-                st.write("No ZMB events found")
-    
     # Extract unique countries and mortality types
     all_countries = ['All Countries']
     all_species = ['All Species']
@@ -752,13 +700,6 @@ def mortality_dashboard():
             events_with_location.append(event)
     
     if events_with_location:
-        # Show count of events with valid coordinates
-        missing_coords = len(df_events) - len(events_with_location)
-        if missing_coords > 0:
-            st.info(f"📍 Showing {len(events_with_location)} events with valid coordinates ({missing_coords} events have missing coordinates)")
-        else:
-            st.info(f"📍 Showing {len(events_with_location)} events")
-        
         fig_map = go.Figure()
         
         # Simple color map for mortality types (not causes)
@@ -857,7 +798,8 @@ def mortality_dashboard():
                 center=dict(lat=0, lon=20)
             ),
             height=600,
-            showlegend=True
+            showlegend=True,
+            dragmode='zoom'
         )
         
         st.plotly_chart(fig_map, use_container_width=True)
