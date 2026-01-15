@@ -295,6 +295,30 @@ def mortality_dashboard():
                     'event_details_keys': list(first_event.get('event_details', {}).keys()) if isinstance(first_event.get('event_details'), dict) else 'NOT A DICT',
                     'has_location_in_details': 'location' in first_event.get('event_details', {}),
                 })
+            
+            # Show ZMB events specifically
+            st.write("---")
+            st.write("ZMB (Zambia) Events:")
+            zmb_events = []
+            for idx, event in all_events.iterrows():
+                event_details = event.get('event_details', {})
+                if isinstance(event_details, dict):
+                    country = event_details.get('country')
+                    country_str = str(country).upper() if country else ''
+                    if 'ZMB' in country_str or 'ZAMBIA' in country_str:
+                        zmb_events.append({
+                            'serial': event.get('serial_number'),
+                            'latitude': str(event.get('latitude')),
+                            'longitude': str(event.get('longitude')),
+                            'country': country_str,
+                            'time': str(event.get('time', ''))[:10]
+                        })
+            
+            if zmb_events:
+                st.write(f"Found {len(zmb_events)} ZMB events:")
+                st.json(zmb_events)
+            else:
+                st.write("No ZMB events found")
     
     # Extract unique countries and mortality types
     all_countries = ['All Countries']
