@@ -318,7 +318,8 @@ def mortality_dashboard():
         for idx, event in df_events.iterrows():
             event_details = event.get('event_details', {})
             if isinstance(event_details, dict):
-                mortality_cause = event_details.get('giraffe_mortality_cause')
+                # Check both new and old field names for backward compatibility
+                mortality_cause = event_details.get('giraffe_mortality_cause') or event_details.get('mortality_cause')
                 if mortality_cause:
                     mortality_type, cause = parse_mortality_cause(mortality_cause)
                     if mortality_type == selected_type:
@@ -428,7 +429,7 @@ def mortality_dashboard():
                 country_counts['Unknown'] = country_counts.get('Unknown', 0) + 1
             
             # Cause (from giraffe_mortality_cause field)
-            mortality_cause = event_details.get('giraffe_mortality_cause', 'Unknown')
+            mortality_cause = event_details.get('giraffe_mortality_cause') or event_details.get('mortality_cause') or 'Unknown'
             mortality_type, cause = parse_mortality_cause(mortality_cause)
             cause_counts[cause] = cause_counts.get(cause, 0) + 1
             
@@ -530,7 +531,8 @@ def mortality_dashboard():
         for idx, event in df_events.iterrows():
             event_details = event.get('event_details', {})
             if isinstance(event_details, dict):
-                mortality_cause = event_details.get('giraffe_mortality_cause')
+                # Check both new and old field names for backward compatibility
+                mortality_cause = event_details.get('giraffe_mortality_cause') or event_details.get('mortality_cause')
                 if mortality_cause:
                     mortality_type, cause = parse_mortality_cause(mortality_cause)
                     temporal_data.append({
@@ -681,8 +683,8 @@ def mortality_dashboard():
                         elif country_val:
                             country = str(country_val)
                         
-                        # Parse giraffe_mortality_cause
-                        mortality_cause = event_details.get('giraffe_mortality_cause')
+                        # Parse giraffe_mortality_cause (check both new and old field names)
+                        mortality_cause = event_details.get('giraffe_mortality_cause') or event_details.get('mortality_cause')
                         if mortality_cause:
                             mortality_type, cause = parse_mortality_cause(mortality_cause)
                         
@@ -784,8 +786,8 @@ def mortality_dashboard():
             elif species:
                 row['Species'] = str(species)
             
-            # Parse giraffe_mortality_cause into separate fields
-            mortality_cause = event_details.get('giraffe_mortality_cause')
+            # Parse giraffe_mortality_cause into separate fields (check both new and old field names)
+            mortality_cause = event_details.get('giraffe_mortality_cause') or event_details.get('mortality_cause')
             if mortality_cause:
                 mortality_type, cause = parse_mortality_cause(mortality_cause)
                 row['Mortality Type'] = mortality_type
