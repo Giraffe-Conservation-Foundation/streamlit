@@ -175,16 +175,14 @@ def get_mortality_events(start_date=None, end_date=None, _debug=False):
         if df.empty:
             return pd.DataFrame()
         
-        # NOW extract geometry coordinates only for the filtered events if needed
-        # But prioritize latitude/longitude from the API response (they should already be there)
+        # CRITICAL: Extract coordinates from the 'location' field (a dict with lat/lon)
+        # The top-level latitude/longitude fields from ecoscope are WRONG
+        if 'location' in df.columns:
+            df['latitude'] = df['location'].apply(lambda x: x.get('latitude') if isinstance(x, dict) else None)
+            df['longitude'] = df['location'].apply(lambda x: x.get('longitude') if isinstance(x, dict) else None)
+        
+        # Drop geometry column if it exists
         if 'geometry' in df.columns:
-            # Only extract from geometry if latitude/longitude columns don't exist or are missing
-            if 'latitude' not in df.columns or df['latitude'].isna().all():
-                df['latitude'] = df['geometry'].apply(lambda x: x.y if x and hasattr(x, 'y') else None)
-            if 'longitude' not in df.columns or df['longitude'].isna().all():
-                df['longitude'] = df['geometry'].apply(lambda x: x.x if x and hasattr(x, 'x') else None)
-            
-            # Drop geometry column after extracting coordinates
             df = df.drop(columns='geometry', errors='ignore')
         
         # Process the data
