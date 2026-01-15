@@ -229,6 +229,7 @@ def mortality_dashboard():
         start_date = st.date_input(
             "Start Date",
             value=date.today() - timedelta(days=365),
+            min_value=date(2000, 1, 1),  # Allow dates from 2000 onwards
             help="Select the earliest date for mortality events"
         )
     
@@ -236,6 +237,7 @@ def mortality_dashboard():
         end_date = st.date_input(
             "End Date", 
             value=date.today(),
+            min_value=date(2000, 1, 1),  # Allow dates from 2000 onwards
             help="Select the latest date for mortality events"
         )
     
