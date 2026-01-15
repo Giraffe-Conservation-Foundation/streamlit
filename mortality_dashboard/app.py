@@ -682,17 +682,49 @@ def mortality_dashboard():
     
     events_with_location = []
     for idx, event in df_events.iterrows():
-        event_details = event.get('event_details', {})
-        if isinstance(event_details, dict):
-            # Check for location in event_details
-            location = event_details.get('location')
-            if isinstance(location, dict) and location.get('latitude') and location.get('longitude'):
-                events_with_location.append(event)
-            # Also check for direct lat/lon fields
-            elif event.get('latitude') and event.get('longitude'):
-                events_with_location.append(event)
+        # Get coordinates from top level first
+        lat = event.get('latitude')
+        lon = event.get('longitude')
+        
+        # Validate that coordinates are not None, NaN, or empty
+        has_valid_coords = False
+        if lat is not None and lon is not None:
+            try:
+                lat_val = float(lat)
+                lon_val = float(lon)
+                if not (pd.isna(lat_val) or pd.isna(lon_val)):
+                    has_valid_coords = True
+            except (ValueError, TypeError):
+                pass
+        
+        # If no valid top-level coords, check event_details.location
+        if not has_valid_coords:
+            event_details = event.get('event_details', {})
+            if isinstance(event_details, dict):
+                location = event_details.get('location')
+                if isinstance(location, dict):
+                    lat = location.get('latitude')
+                    lon = location.get('longitude')
+                    if lat is not None and lon is not None:
+                        try:
+                            lat_val = float(lat)
+                            lon_val = float(lon)
+                            if not (pd.isna(lat_val) or pd.isna(lon_val)):
+                                has_valid_coords = True
+                        except (ValueError, TypeError):
+                            pass
+        
+        if has_valid_coords:
+            events_with_location.append(event)
     
     if events_with_location:
+        # Show count of events with valid coordinates
+        missing_coords = len(df_events) - len(events_with_location)
+        if missing_coords > 0:
+            st.info(f"📍 Showing {len(events_with_location)} events with valid coordinates ({missing_coords} events have missing coordinates)")
+        else:
+            st.info(f"📍 Showing {len(events_with_location)} events")
+        
         fig_map = go.Figure()
         
         # Simple color map for mortality types (not causes)
