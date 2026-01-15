@@ -191,7 +191,25 @@ def get_mortality_events(start_date=None, end_date=None, _debug=False):
         return df
         
     except Exception as e:
-        st.error(f"Error fetching mortality events: {str(e)}")
+        error_msg = str(e)
+        st.error(f"Error fetching mortality events: {error_msg}")
+        
+        # Provide more helpful error messages
+        if "Expecting value" in error_msg or "JSON" in error_msg:
+            st.warning("⚠️ The server returned an invalid response. This could mean:")
+            st.write("- The EarthRanger server is temporarily unavailable")
+            st.write("- Your session may have expired - try disconnecting and reconnecting")
+            st.write("- There may be a network connectivity issue")
+        elif "401" in error_msg or "Unauthorized" in error_msg:
+            st.warning("⚠️ Authentication failed. Please disconnect and log in again.")
+        elif "403" in error_msg or "Forbidden" in error_msg:
+            st.warning("⚠️ You don't have permission to access these events.")
+        elif "timeout" in error_msg.lower():
+            st.warning("⚠️ Connection timed out. Please try again.")
+            
+        with st.expander("🔍 Technical Details"):
+            st.code(error_msg)
+            
         return pd.DataFrame()
 
 def parse_mortality_cause(mortality_cause):
@@ -873,15 +891,20 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.subheader("🔧 Options")
     
-    if st.sidebar.button("🔄 Refresh Data"):
-        get_mortality_events.clear()
-        st.rerun()
+    col1, col2 = st.sidebar.columns(2)
     
-    if st.sidebar.button("🔓 Logout"):
-        for key in ['authenticated', 'username', 'password']:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
+    with col1:
+        if st.button("🔄 Refresh"):
+            get_mortality_events.clear()
+            st.rerun()
+    
+    with col2:
+        if st.button("🔓 Logout"):
+            for key in ['authenticated', 'username', 'password']:
+                if key in st.session_state:
+                    del st.session_state[key]
+            get_mortality_events.clear()
+            st.rerun()
 
 if __name__ == "__main__":
     main()
