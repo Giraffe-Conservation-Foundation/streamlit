@@ -273,6 +273,29 @@ def mortality_dashboard():
     with st.spinner("🔄 Loading mortality data..."):
         all_events = get_mortality_events(start_date, end_date)
     
+    # Debug: Check coordinate structure
+    if not all_events.empty:
+        with st.expander("🔍 Debug: Coordinate Data Structure", expanded=False):
+            st.write(f"Total events: {len(all_events)}")
+            st.write(f"Columns: {list(all_events.columns)}")
+            
+            # Check how many have lat/lon at top level
+            has_top_level_lat = all_events['latitude'].notna().sum() if 'latitude' in all_events.columns else 0
+            has_top_level_lon = all_events['longitude'].notna().sum() if 'longitude' in all_events.columns else 0
+            st.write(f"Events with top-level latitude: {has_top_level_lat}")
+            st.write(f"Events with top-level longitude: {has_top_level_lon}")
+            
+            # Show sample of first few events
+            st.write("Sample event structure (first event):")
+            if len(all_events) > 0:
+                first_event = all_events.iloc[0]
+                st.json({
+                    'latitude': str(first_event.get('latitude', 'MISSING')),
+                    'longitude': str(first_event.get('longitude', 'MISSING')),
+                    'event_details_keys': list(first_event.get('event_details', {}).keys()) if isinstance(first_event.get('event_details'), dict) else 'NOT A DICT',
+                    'has_location_in_details': 'location' in first_event.get('event_details', {}),
+                })
+    
     # Extract unique countries and mortality types
     all_countries = ['All Countries']
     all_species = ['All Species']
