@@ -153,32 +153,27 @@ def get_mortality_events(start_date=None, end_date=None, _debug=False):
         if gdf_events.empty:
             return pd.DataFrame()
         
-        # Extract geometry coordinates BEFORE dropping geometry column
-        # (in case latitude/longitude aren't in the main event)
-        geometry_lats = None
-        geometry_lons = None
-        if 'geometry' in gdf_events.columns:
-            geometry_lats = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
-            geometry_lons = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
+        # Convert GeoDataFrame to regular DataFrame (keep geometry for now)
+        df = pd.DataFrame(gdf_events)
         
-        # Convert GeoDataFrame to regular DataFrame
-        df = pd.DataFrame(gdf_events.drop(columns='geometry', errors='ignore'))
-        
-        # Filter by event_type for mortality events
+        # Filter by event_type for mortality events FIRST before any other processing
         if 'event_type' in df.columns:
             df = df[df['event_type'] == 'giraffe_mortality']
         
         if df.empty:
             return pd.DataFrame()
         
-        # Ensure latitude and longitude are preserved from EarthRanger API response
-        # Only use geometry-extracted coords if API didn't provide them
-        if geometry_lats is not None and geometry_lons is not None:
-            # Only fill missing coordinates from geometry, don't overwrite existing ones
+        # NOW extract geometry coordinates only for the filtered events if needed
+        # But prioritize latitude/longitude from the API response (they should already be there)
+        if 'geometry' in df.columns:
+            # Only extract from geometry if latitude/longitude columns don't exist or are missing
             if 'latitude' not in df.columns or df['latitude'].isna().all():
-                df['latitude'] = geometry_lats[df.index]
+                df['latitude'] = df['geometry'].apply(lambda x: x.y if x and hasattr(x, 'y') else None)
             if 'longitude' not in df.columns or df['longitude'].isna().all():
-                df['longitude'] = geometry_lons[df.index]
+                df['longitude'] = df['geometry'].apply(lambda x: x.x if x and hasattr(x, 'x') else None)
+            
+            # Drop geometry column after extracting coordinates
+            df = df.drop(columns='geometry', errors='ignore')
         
         # Process the data
         if 'time' in df.columns:
