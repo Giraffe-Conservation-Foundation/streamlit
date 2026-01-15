@@ -153,6 +153,14 @@ def get_mortality_events(start_date=None, end_date=None, _debug=False):
         if gdf_events.empty:
             return pd.DataFrame()
         
+        # Extract geometry coordinates BEFORE dropping geometry column
+        # (in case latitude/longitude aren't in the main event)
+        geometry_lats = None
+        geometry_lons = None
+        if 'geometry' in gdf_events.columns:
+            geometry_lats = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
+            geometry_lons = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
+        
         # Convert GeoDataFrame to regular DataFrame
         df = pd.DataFrame(gdf_events.drop(columns='geometry', errors='ignore'))
         
@@ -162,6 +170,15 @@ def get_mortality_events(start_date=None, end_date=None, _debug=False):
         
         if df.empty:
             return pd.DataFrame()
+        
+        # Ensure latitude and longitude are preserved from EarthRanger API response
+        # Only use geometry-extracted coords if API didn't provide them
+        if geometry_lats is not None and geometry_lons is not None:
+            # Only fill missing coordinates from geometry, don't overwrite existing ones
+            if 'latitude' not in df.columns or df['latitude'].isna().all():
+                df['latitude'] = geometry_lats[df.index]
+            if 'longitude' not in df.columns or df['longitude'].isna().all():
+                df['longitude'] = geometry_lons[df.index]
         
         # Process the data
         if 'time' in df.columns:
@@ -180,13 +197,6 @@ def get_mortality_events(start_date=None, end_date=None, _debug=False):
             if _debug and not df.empty:
                 st.write(f"Debug: After date filtering, {len(df)} events remain")
                 st.write(f"Debug: Date range in data: {df['date'].min()} to {df['date'].max()}")
-        
-        # Add location information if geometry was available
-        if not gdf_events.empty and 'geometry' in gdf_events.columns:
-            gdf_events['latitude'] = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
-            gdf_events['longitude'] = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
-            df['latitude'] = gdf_events['latitude']
-            df['longitude'] = gdf_events['longitude']
         
         return df
         
