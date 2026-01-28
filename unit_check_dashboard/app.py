@@ -507,6 +507,140 @@ def unit_dashboard():
             st.metric("Average daily locations", f"{avg_daily.mean():.1f}")
         with col3:
             st.metric("Sources reporting", len(selected_labels))
+    
+    # Separator before unit update events section
+    st.markdown("---")
+    
+    # Unit Update Events section
+    st.subheader("📝 Unit Update Events")
+    
+    fetch_unit_update_events(selected_source_ids, selected_labels, username, password)
+
+def fetch_unit_update_events(source_ids, source_labels, username, password):
+    """Fetch and display unit update events for selected sources"""
+    try:
+        er = EarthRangerIO(
+            server="https://twiga.pamdas.org",
+            username=username,
+            password=password
+        )
+    except Exception as e:
+        st.error(f"Error connecting to EarthRanger: {e}")
+        return
+    
+    with st.spinner("Fetching unit update events (all time)..."):
+        try:
+            # Fetch ALL events with category=monitoring and type=unit_update (UUID)
+            # No date filters - fetch all historical events
+            events_df = er.get_events(
+                event_category='monitoring',
+                event_type='7bb99e0c-9d37-405b-b8e7-edca8e9b5d6b',
+                include_details=True,
+                since=None,  # No date restriction
+                until=None   # No date restriction
+            )
+            
+            if events_df.empty:
+                st.info("No unit update events found in the system.")
+                return
+            
+            # Filter events to only those associated with the selected sources
+            # Source IDs are in the 'event_details' field (unitupdate_subject or unitupdate_unitid)
+            filtered_events = []
+            
+            for _, event in events_df.iterrows():
+                # Check event_details for unitupdate_subject or unitupdate_unitid
+                event_details = event.get('event_details')
+                
+                if event_details:
+                    # Parse event_details if it's a string
+                    if isinstance(event_details, str):
+                        try:
+                            import json
+                            event_details = json.loads(event_details)
+                        except:
+                            continue
+                    
+                    if isinstance(event_details, dict):
+                        # Check both unitupdate_subject and unitupdate_unitid
+                        subject_id = event_details.get('unitupdate_subject')
+                        unit_id = event_details.get('unitupdate_unitid')
+                        
+                        # Match against selected source IDs
+                        matched_id = None
+                        if subject_id in source_ids:
+                            matched_id = subject_id
+                        elif unit_id in source_ids:
+                            matched_id = unit_id
+                        
+                        if matched_id:
+                            # Add source label for display
+                            event_copy = event.to_dict()
+                            source_idx = source_ids.index(matched_id)
+                            event_copy['source_label'] = source_labels[source_idx]
+                            event_copy['matched_field'] = 'unitupdate_subject' if subject_id == matched_id else 'unitupdate_unitid'
+                            filtered_events.append(event_copy)
+                            continue
+                
+                # Fallback: Also check related_subjects (in case some events use it)
+                related_subjects = event.get('related_subjects', [])
+                if isinstance(related_subjects, list):
+                    for subject in related_subjects:
+                        if isinstance(subject, dict):
+                            subject_id = subject.get('id') or subject.get('subject_id')
+                            if subject_id in source_ids:
+                                event_copy = event.to_dict()
+                                source_idx = source_ids.index(subject_id)
+                                event_copy['source_label'] = source_labels[source_idx]
+                                event_copy['matched_field'] = 'related_subjects'
+                                filtered_events.append(event_copy)
+                                break
+            
+            if not filtered_events:
+                st.warning("No unit update events found for the selected sources.")
+                return
+            
+            # Convert to DataFrame
+            filtered_df = pd.DataFrame(filtered_events)
+            
+            # Show summary table
+            st.subheader("📊 Events Summary")
+            
+            # Build summary with additional fields from event_details
+            summary_data = []
+            for _, event in filtered_df.iterrows():
+                row = {
+                    'Source': event.get('source_label', ''),
+                    'Time': pd.to_datetime(event.get('time')).strftime('%Y-%m-%d %H:%M:%S') if event.get('time') else '',
+                    'Serial #': event.get('serial_number', ''),
+                    'State': event.get('state', '')
+                }
+                
+                # Extract fields from event_details
+                event_details = event.get('event_details')
+                if event_details:
+                    if isinstance(event_details, str):
+                        try:
+                            import json
+                            event_details = json.loads(event_details)
+                        except:
+                            pass
+                    
+                    if isinstance(event_details, dict):
+                        row['Action'] = event_details.get('unitupdate_action', '')
+                        row['Notes'] = event_details.get('unitupdate_notes', '')
+                        row['Country'] = event_details.get('unitupdate_country', '')
+                
+                summary_data.append(row)
+            
+            if summary_data:
+                summary_df = pd.DataFrame(summary_data)
+                st.dataframe(summary_df, use_container_width=True)
+            
+        except Exception as e:
+            st.error(f"Error fetching unit update events: {e}")
+            import traceback
+            st.code(traceback.format_exc())
 
 def _main_implementation():
     """Main application logic"""
