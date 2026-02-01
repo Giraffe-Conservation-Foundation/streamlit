@@ -75,6 +75,9 @@ if image_dir.exists() and (image_dir / "app.py").exists():
             flags=re.MULTILINE | re.DOTALL
         )
         
+        # Set camera trap mode flag before executing
+        globals()['CAMERA_TRAP_MODE'] = True
+        
         exec(cleaned_code)
         
     finally:
