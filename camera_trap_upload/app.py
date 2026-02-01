@@ -996,10 +996,13 @@ def upload_to_gcs():
         camera_type = st.session_state.get('camera_type', 'camera_fence')
         
         if camera_trap_mode:
-            # Camera trap mode with station subfolders: bucket/camera_trap/camera_[type]/yyyymm/station/camera/
+            # Camera trap mode with station subfolders: camera_trap/TYPE/yyyymm/SITE/CAMERA/
+            # Updated structure: camera_trap/camera_fence/202410/S015/S015_C024/
             station = st.session_state.metadata.get('station', 'UNKNOWN').upper()
             camera = st.session_state.metadata.get('camera', 'UNKNOWN').upper()
-            survey_path = f"camera_trap/{camera_type}/{folder_name}/{station}/{camera}/"
+            # Create full camera identifier as STATION_CAMERA (e.g., S015_C024)
+            full_camera = f"{station}_{camera}"
+            survey_path = f"camera_trap/{camera_type}/{folder_name}/{station}/{full_camera}/"
             st.info(f"📷 **Camera Trap Mode:** {camera_type.replace('_', ' ').title()}")
             st.info(f"📂 Upload folder structure: `{survey_path}`")
             st.caption(f"Final path: bucket/{survey_path}")
@@ -1074,10 +1077,13 @@ def upload_to_gcs():
                     # Survey mode: bucket/survey/survey_[type]/yyyymm/
                     img_folder_path = f"survey/{survey_type}/{img_month}/"
                 elif camera_trap_mode:
-                    # Camera trap mode with station subfolders: bucket/camera_trap/camera_[type]/yyyymm/station/camera/
+                    # Camera trap mode with station subfolders: camera_trap/TYPE/yyyymm/SITE/CAMERA/
+                    # Updated structure: camera_trap/camera_fence/202410/S015/S015_C024/
                     station = st.session_state.metadata.get('station', 'UNKNOWN').upper()
                     camera = st.session_state.metadata.get('camera', 'UNKNOWN').upper()
-                    img_folder_path = f"camera_trap/{camera_type}/{img_month}/{station}/{camera}/"
+                    # Create full camera identifier as STATION_CAMERA (e.g., S015_C024)
+                    full_camera = f"{station}_{camera}"
+                    img_folder_path = f"camera_trap/{camera_type}/{img_month}/{station}/{full_camera}/"
                 else:
                     # Legacy mode: bucket/COUNTRY_SITE_yyyymm/
                     legacy_folder = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{img_month}"
@@ -1208,7 +1214,10 @@ def upload_to_gcs():
                 if survey_mode:
                     path_display = f"survey/{survey_type}/{folder}/"
                 elif camera_trap_mode:
-                    path_display = f"camera_trap/{camera_type}/{folder}/"
+                    station = st.session_state.metadata.get('station', 'UNKNOWN').upper()
+                    camera = st.session_state.metadata.get('camera', 'UNKNOWN').upper()
+                    full_camera = f"{station}_{camera}"
+                    path_display = f"camera_trap/{camera_type}/{folder}/{station}/{full_camera}/"
                 else:
                     path_display = f"{st.session_state.metadata['country']}_{st.session_state.metadata['site']}_{folder}/"
                 

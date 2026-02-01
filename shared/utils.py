@@ -102,7 +102,7 @@ def generate_standardized_filename(original_filename, country, site, survey_date
     """
     Generate standardized filename based on conservation naming convention
     Survey Format: COUNTRY_SITE_datetime_INITIALS_ORIGINALNAME
-    Camera Trap Format: COUNTRY_SITE_STATION_CAMERA_datetime_ORIGINALNAME
+    Camera Trap Format: COUNTRY_SITE_STATION_CAMERA_YYYYMMDD_ORIGINALNAME
     Uses EXIF DateTimeOriginal if available, otherwise falls back to survey_date
     
     Args:
@@ -131,7 +131,8 @@ def generate_standardized_filename(original_filename, country, site, survey_date
     # Determine if this is camera trap mode or survey mode
     if station and camera:
         # Camera trap format: COUNTRY_SITE_STATION_CAMERA_YYYYMMDD_ORIGINALNAME
-        parts = [country.upper(), site.upper(), station.upper(), camera.upper(), date_str]
+        # e.g., NAM_EHGR_S015_C024_20241001_IMAG1135.JPG
+        parts = [country.upper(), site.upper(), station.upper(), camera.upper(), date_str, name_without_ext]
     else:
         # Survey format: COUNTRY_SITE_YYYYMMDD_INITIALS_ORIGINALNAME
         parts = [country.upper(), site.upper(), date_str]
@@ -141,9 +142,9 @@ def generate_standardized_filename(original_filename, country, site, survey_date
             clean_photographer = re.sub(r'[^\w]', '', photographer).upper()
             if clean_photographer:
                 parts.append(clean_photographer)
-    
-    # Add original filename (without extension)
-    parts.append(name_without_ext)
+        
+        # Add original filename (without extension)
+        parts.append(name_without_ext)
     
     # Join all parts with underscore and add extension
     base_name = "_".join(parts)
