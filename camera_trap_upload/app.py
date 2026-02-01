@@ -514,7 +514,8 @@ def image_processing():
         survey_mode = globals().get('SURVEY_MODE', False)
         survey_type = globals().get('SURVEY_TYPE', 'survey_vehicle')  # Default to vehicle
         camera_trap_mode = globals().get('CAMERA_TRAP_MODE', False)
-        camera_type = globals().get('CAMERA_TYPE', 'camera_fence')  # Default to fence
+        # Get camera_type from session state (user selected it earlier)
+        camera_type = st.session_state.get('camera_type', 'camera_fence')
         
         if survey_mode:
             # For survey mode: just use yyyymm as folder name
@@ -603,22 +604,34 @@ def image_processing():
             return False
         
         # First, analyze all images to determine folder structure based on EXIF dates
-        #st.info("📅 **Analyzing image dates to determine folder structure...**")
+        # Also cache metadata to avoid reading EXIF data multiple times
+        st.info("📅 **Analyzing image dates and extracting metadata...**")
         
         image_months = {}  # Dictionary to group images by YYYYMM
         images_without_exif = []
+        metadata_cache = {}  # Cache metadata to avoid redundant EXIF reads
         
-        # Analyze each image for EXIF date
-        for img_file in all_images:
+        # Use progress bar for large batches
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # Analyze each image for EXIF date and cache metadata
+        for idx, img_file in enumerate(all_images):
             try:
+                # Update progress
+                progress = (idx + 1) / len(all_images)
+                progress_bar.progress(progress)
+                status_text.text(f"Processing {idx + 1}/{len(all_images)}: {img_file.name}")
+                
                 # Get image data
                 if hasattr(img_file, '_data'):
                     image_data = img_file._data
                 else:
                     image_data = img_file.getvalue()
                 
-                # Extract image metadata to get EXIF date
+                # Extract image metadata to get EXIF date - CACHE IT
                 img_metadata = get_image_metadata(image_data)
+                metadata_cache[img_file.name] = img_metadata
                 
                 if 'datetime_original' in img_metadata:
                     # Use EXIF date
@@ -643,6 +656,10 @@ def image_processing():
                 if month_key not in image_months:
                     image_months[month_key] = []
                 image_months[month_key].append(img_file)
+        
+        # Clear progress indicators
+        progress_bar.empty()
+        status_text.empty()
         
         # Display analysis results
         total_months = len(image_months)
@@ -684,6 +701,7 @@ def image_processing():
             month_images = image_months[month_key]
             
             # Create preview using batch rename utility for this month's images
+            # Pass metadata cache to avoid re-reading EXIF data
             preview_data = batch_rename_preview(
                 month_images,
                 st.session_state.metadata['country'],
@@ -691,7 +709,8 @@ def image_processing():
                 st.session_state.metadata['survey_date'],
                 photographer,
                 station,
-                camera
+                camera,
+                metadata_cache  # Pass cached metadata
             )
             
             # Process each image in this month with size checking
@@ -717,14 +736,14 @@ def image_processing():
                     oversized_files.append(f"{uploaded_file.name} ({file_size_mb:.2f} MB)")
                     continue
                 
-                # Validate image
+                # Validate image (quick check)
                 is_valid, error_msg = validate_image_file(image_data)
                 if not is_valid:
                     st.error(f"❌ {uploaded_file.name}: {error_msg}")
                     continue
                 
-                # Get image metadata (including EXIF)
-                img_metadata = get_image_metadata(image_data)
+                # Get image metadata from cache (already extracted during analysis)
+                img_metadata = metadata_cache.get(uploaded_file.name, {})
                 
                 # Compress if needed
                 compressed_data = compress_image_if_needed(image_data)

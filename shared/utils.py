@@ -263,7 +263,7 @@ def compress_image_if_needed(image_data, max_size_mb=10, quality=85):
         # If compression fails, return original
         return image_data
 
-def batch_rename_preview(files, country, site, survey_date, photographer=None, station=None, camera=None):
+def batch_rename_preview(files, country, site, survey_date, photographer=None, station=None, camera=None, metadata_cache=None):
     """
     Preview batch rename operation using EXIF DateTimeOriginal when available
     
@@ -275,6 +275,7 @@ def batch_rename_preview(files, country, site, survey_date, photographer=None, s
         photographer: Optional photographer initials (for survey mode)
         station: Optional station ID (for camera trap mode)
         camera: Optional camera ID (for camera trap mode)
+        metadata_cache: Optional dict of pre-computed metadata by filename
         
     Returns:
         list: List of dictionaries with rename preview
@@ -282,16 +283,20 @@ def batch_rename_preview(files, country, site, survey_date, photographer=None, s
     preview = []
     
     for idx, file in enumerate(files, 1):
-        # Get file data
-        if hasattr(file, '_data'):
-            # MockUploadedFile from ZIP extraction
-            file_data = file._data
+        # Check if metadata is already cached
+        if metadata_cache and file.name in metadata_cache:
+            img_metadata = metadata_cache[file.name]
         else:
-            # Regular uploaded file
-            file_data = file.getvalue()
-        
-        # Extract image metadata to get EXIF date
-        img_metadata = get_image_metadata(file_data)
+            # Get file data and extract metadata
+            if hasattr(file, '_data'):
+                # MockUploadedFile from ZIP extraction
+                file_data = file._data
+            else:
+                # Regular uploaded file
+                file_data = file.getvalue()
+            
+            # Extract image metadata to get EXIF date
+            img_metadata = get_image_metadata(file_data)
         
         # Generate new filename using EXIF date if available
         new_name = generate_standardized_filename(
@@ -302,12 +307,18 @@ def batch_rename_preview(files, country, site, survey_date, photographer=None, s
         date_source = "EXIF" if 'date_taken' in img_metadata else "Survey Date"
         date_used = img_metadata.get('date_taken', survey_date.strftime("%Y%m%d"))
         
+        # Get file size (use cached size if available)
+        if hasattr(file, '_data'):
+            file_size = len(file._data)
+        else:
+            file_size = len(file.getvalue())
+        
         preview.append({
             'index': idx,
             'original_name': file.name,
             'new_name': new_name,
-            'size_mb': len(file_data) / (1024 * 1024),
-            'valid': validate_image_file(file_data)[0],
+            'size_mb': file_size / (1024 * 1024),
+            'valid': True,  # Skip validation here for speed - will validate during processing
             'date_source': date_source,
             'date_used': date_used,
             'datetime_original': img_metadata.get('datetime_original')
