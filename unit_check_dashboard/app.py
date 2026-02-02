@@ -127,9 +127,18 @@ def load_stock_data():
             plan_sheet = spreadsheet.worksheet('deployment_plan')
             records = plan_sheet.get_all_records()
             if records:
+                # Ensure numeric fields are properly typed
+                for record in records:
+                    record['spoortrack'] = int(record.get('spoortrack', 0)) if pd.notna(record.get('spoortrack')) else 0
+                    record['gsatsolar'] = int(record.get('gsatsolar', 0)) if pd.notna(record.get('gsatsolar')) else 0
+                    record['spoortrack_assigned'] = int(record.get('spoortrack_assigned', 0)) if pd.notna(record.get('spoortrack_assigned')) else 0
+                    record['gsatsolar_assigned'] = int(record.get('gsatsolar_assigned', 0)) if pd.notna(record.get('gsatsolar_assigned')) else 0
                 data['deployment_plan'] = records
+                st.success(f"✅ Loaded {len(records)} deployment plans from Google Sheets")
         except gspread.WorksheetNotFound:
-            pass
+            st.info("No deployment_plan worksheet found yet")
+        except Exception as e:
+            st.warning(f"Could not load deployment plans: {e}")
         
         # Load in_hand
         try:
@@ -157,10 +166,13 @@ def load_stock_data():
                 for record in summary_records:
                     type_name = record.get('type', '').lower()
                     if type_name in data['stock_summary']:
-                        data['stock_summary'][type_name]['in_hand'] = int(record.get('in_hand', 0))
-                        data['stock_summary'][type_name]['in_mail'] = int(record.get('in_mail', 0))
+                        data['stock_summary'][type_name]['in_hand'] = int(record.get('in_hand', 0)) if pd.notna(record.get('in_hand')) else 0
+                        data['stock_summary'][type_name]['in_mail'] = int(record.get('in_mail', 0)) if pd.notna(record.get('in_mail')) else 0
+                st.success(f"✅ Loaded stock summary from Google Sheets")
         except gspread.WorksheetNotFound:
-            pass
+            st.info("No stock_summary worksheet found yet")
+        except Exception as e:
+            st.warning(f"Could not load stock summary: {e}")
         
         return data
     except Exception as e:
