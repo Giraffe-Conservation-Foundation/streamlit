@@ -63,27 +63,32 @@ def get_google_sheets_client():
         # Check for gcp_service_account first, then fall back to gee_service_account
         if hasattr(st, 'secrets'):
             if 'gcp_service_account' in st.secrets:
+                st.info("✓ Using gcp_service_account credentials")
                 credentials = Credentials.from_service_account_info(
                     st.secrets['gcp_service_account'],
                     scopes=['https://www.googleapis.com/auth/spreadsheets']
                 )
             elif 'gee_service_account' in st.secrets:
-                st.info("Using existing GEE service account for Google Sheets. Make sure Google Sheets API is enabled in the 'translocation-priority' project.")
+                st.info("✓ Using gee_service_account credentials")
                 credentials = Credentials.from_service_account_info(
                     st.secrets['gee_service_account'],
                     scopes=['https://www.googleapis.com/auth/spreadsheets']
                 )
             else:
-                st.error("No Google service account found in secrets. See GOOGLE_SHEETS_SETUP.md")
+                st.error("❌ No Google service account found in secrets. See GOOGLE_SHEETS_SETUP.md")
                 return None
         else:
-            st.error("Google Sheets credentials not found in secrets. Using local fallback.")
+            st.error("❌ Streamlit secrets not accessible")
             return None
         
-        return gspread.authorize(credentials)
+        client = gspread.authorize(credentials)
+        st.success("✅ Successfully authenticated with Google Sheets")
+        return client
     except Exception as e:
-        st.error(f"Error authenticating with Google Sheets: {e}")
+        st.error(f"❌ Error authenticating with Google Sheets: {e}")
         st.info("Make sure Google Sheets API is enabled in your Google Cloud project.")
+        import traceback
+        st.code(traceback.format_exc())
         return None
 
 def load_stock_data():
@@ -355,8 +360,14 @@ def deployment_planning_dashboard():
                 st.session_state.stock_data['stock_summary']['spoortrack']['in_hand'] = spoortrack_hand
                 st.session_state.stock_data['stock_summary']['gsatsolar']['in_hand'] = gsatsolar_hand
                 st.session_state.stock_data['stock_summary']['other']['in_hand'] = other_hand
-                save_stock_data(st.session_state.stock_data)
-                st.success("Stock summary updated!")
+                
+                with st.spinner("Saving to Google Sheets..."):
+                    success = save_stock_data(st.session_state.stock_data)
+                    if success:
+                        st.success("Stock summary updated!")
+                        st.info("📊 Data saved to Google Sheets")
+                    else:
+                        st.error("Failed to save to Google Sheets. Check error messages above.")
                 st.rerun()
         
         st.markdown("---")
