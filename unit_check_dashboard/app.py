@@ -101,9 +101,8 @@ def load_stock_data():
             spreadsheet = client.create(SHEET_NAME)
             # Share with your email so you can access it
             try:
-                # Change this to your email address
-                spreadsheet.share('courtney@giraffesavannah.org', perm_type='user', role='writer')
-                st.success(f"✅ Created new spreadsheet '{SHEET_NAME}' and shared it with courtney@giraffesavannah.org")
+                spreadsheet.share('gcf.spatial@giraffeconservation.org', perm_type='user', role='writer')
+                st.success(f"✅ Created new spreadsheet '{SHEET_NAME}' and shared it with gcf.spatial@giraffeconservation.org")
                 st.info(f"📧 Check your email for the sharing notification, or search Google Drive for '{SHEET_NAME}'")
             except Exception as e:
                 st.warning(f"Created spreadsheet but couldn't auto-share: {e}. Search for '{SHEET_NAME}' in Google Drive.")
@@ -185,7 +184,7 @@ def save_stock_data(data):
             spreadsheet = client.create(SHEET_NAME)
             # Share with your email
             try:
-                spreadsheet.share('courtney@giraffesavannah.org', perm_type='user', role='writer')
+                spreadsheet.share('gcf.spatial@giraffeconservation.org', perm_type='user', role='writer')
             except:
                 pass  # Ignore if sharing fails
         
