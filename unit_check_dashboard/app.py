@@ -189,48 +189,21 @@ def save_stock_data(data):
         # Open or create spreadsheet
         try:
             spreadsheet = client.open(SHEET_NAME)
+            st.info(f"📝 Updating existing spreadsheet...")
         except gspread.SpreadsheetNotFound:
+            st.info(f"📄 Creating new spreadsheet...")
             spreadsheet = client.create(SHEET_NAME)
-            sheet_url = spreadsheet.url
             # Share with your email
             try:
                 spreadsheet.share('gcf.spatial@giraffeconservation.org', perm_type='user', role='writer')
-                st.success(f"✅ Created and shared spreadsheet!")
-                st.markdown(f"### 🔗 [Open Google Sheet]({sheet_url})")
+                st.success(f"✅ Shared with gcf.spatial@giraffeconservation.org")
             except Exception as e:
-                st.warning(f"Created spreadsheet but sharing failed: {e}")
-                st.markdown(f"### 🔗 [Open Google Sheet]({sheet_url})")
-                st.info("You may need to request access.")
+                st.warning(f"Could not auto-share: {e}")
         
-        # Save deployment plan
-        if data['deployment_plan']:
-            df_plan = pd.DataFrame(data['deployment_plan'])
-            try:
-                sheet = spreadsheet.worksheet('deployment_plan')
-                sheet.clear()
-            except gspread.WorksheetNotFound:
-                sheet = spreadsheet.add_worksheet(title='deployment_plan', rows=1000, cols=20)
-            sheet.update([df_plan.columns.values.tolist()] + df_plan.values.tolist())
-        
-        # Save in_hand
-        if data['in_hand']:
-            df_hand = pd.DataFrame(data['in_hand'])
-            try:
-                sheet = spreadsheet.worksheet('in_hand')
-                sheet.clear()
-            except gspread.WorksheetNotFound:
-                sheet = spreadsheet.add_worksheet(title='in_hand', rows=1000, cols=20)
-            sheet.update([df_hand.columns.values.tolist()] + df_hand.values.tolist())
-        
-        # Save in_mail
-        if data['in_mail']:
-            df_mail = pd.DataFrame(data['in_mail'])
-            try:
-                sheet = spreadsheet.worksheet('in_mail')
-                sheet.clear()
-            except gspread.WorksheetNotFound:
-                sheet = spreadsheet.add_worksheet(title='in_mail', rows=1000, cols=20)
-            sheet.update([df_mail.columns.values.tolist()] + df_mail.values.tolist())
+        # Always show the link
+        sheet_url = spreadsheet.url
+        st.markdown(f"### 🔗 [Open Google Sheet]({sheet_url})")
+        st.caption("Bookmark this link to access your data anytime!")
         
         # Save stock summary
         summary_data = [
@@ -245,10 +218,46 @@ def save_stock_data(data):
         except gspread.WorksheetNotFound:
             sheet = spreadsheet.add_worksheet(title='stock_summary', rows=100, cols=10)
         sheet.update([df_summary.columns.values.tolist()] + df_summary.values.tolist())
+        st.success("✅ Stock summary saved!")
+        
+        # Save deployment plan
+        if data['deployment_plan']:
+            df_plan = pd.DataFrame(data['deployment_plan'])
+            try:
+                sheet = spreadsheet.worksheet('deployment_plan')
+                sheet.clear()
+            except gspread.WorksheetNotFound:
+                sheet = spreadsheet.add_worksheet(title='deployment_plan', rows=1000, cols=20)
+            sheet.update([df_plan.columns.values.tolist()] + df_plan.values.tolist())
+            st.success(f"✅ Saved {len(data['deployment_plan'])} deployment plans")
+        
+        # Save in_hand
+        if data['in_hand']:
+            df_hand = pd.DataFrame(data['in_hand'])
+            try:
+                sheet = spreadsheet.worksheet('in_hand')
+                sheet.clear()
+            except gspread.WorksheetNotFound:
+                sheet = spreadsheet.add_worksheet(title='in_hand', rows=1000, cols=20)
+            sheet.update([df_hand.columns.values.tolist()] + df_hand.values.tolist())
+            st.success(f"✅ Saved {len(data['in_hand'])} in-hand units")
+        
+        # Save in_mail
+        if data['in_mail']:
+            df_mail = pd.DataFrame(data['in_mail'])
+            try:
+                sheet = spreadsheet.worksheet('in_mail')
+                sheet.clear()
+            except gspread.WorksheetNotFound:
+                sheet = spreadsheet.add_worksheet(title='in_mail', rows=1000, cols=20)
+            sheet.update([df_mail.columns.values.tolist()] + df_mail.values.tolist())
+            st.success(f"✅ Saved {len(data['in_mail'])} in-mail orders")
         
         return True
     except Exception as e:
         st.error(f"Error saving to Google Sheets: {e}")
+        import traceback
+        st.code(traceback.format_exc())
         return False
 
 def deployment_planning_dashboard():
