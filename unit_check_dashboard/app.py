@@ -4,6 +4,10 @@ from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
 from ecoscope.io.earthranger import EarthRangerIO
+import json
+import os
+import gspread
+from google.oauth2.service_account import Credentials
 
 # Make main available at module level for import
 def main():
@@ -44,6 +48,554 @@ def init_session_state():
         st.session_state.username = ""
     if 'password' not in st.session_state:
         st.session_state.password = ""
+    if 'current_tab' not in st.session_state:
+        st.session_state.current_tab = "Unit Check"
+    if 'stock_data' not in st.session_state:
+        st.session_state.stock_data = load_stock_data()
+
+# --- Stock Management Functions ---
+SHEET_NAME = 'GPS_Unit_Stock_Planning'
+
+def get_google_sheets_client():
+    """Get authenticated Google Sheets client"""
+    try:
+        # Try to get credentials from Streamlit secrets
+        # Check for gcp_service_account first, then fall back to gee_service_account
+        if hasattr(st, 'secrets'):
+            if 'gcp_service_account' in st.secrets:
+                credentials = Credentials.from_service_account_info(
+                    st.secrets['gcp_service_account'],
+                    scopes=['https://www.googleapis.com/auth/spreadsheets']
+                )
+            elif 'gee_service_account' in st.secrets:
+                st.info("Using existing GEE service account for Google Sheets. Make sure Google Sheets API is enabled in the 'translocation-priority' project.")
+                credentials = Credentials.from_service_account_info(
+                    st.secrets['gee_service_account'],
+                    scopes=['https://www.googleapis.com/auth/spreadsheets']
+                )
+            else:
+                st.error("No Google service account found in secrets. See GOOGLE_SHEETS_SETUP.md")
+                return None
+        else:
+            st.error("Google Sheets credentials not found in secrets. Using local fallback.")
+            return None
+        
+        return gspread.authorize(credentials)
+    except Exception as e:
+        st.error(f"Error authenticating with Google Sheets: {e}")
+        st.info("Make sure Google Sheets API is enabled in your Google Cloud project.")
+        return None
+
+def load_stock_data():
+    """Load stock data from Google Sheets"""
+    try:
+        client = get_google_sheets_client()
+        if client is None:
+            return get_default_stock_data()
+        
+        # Open the spreadsheet (will create if doesn't exist)
+        try:
+            spreadsheet = client.open(SHEET_NAME)
+        except gspread.SpreadsheetNotFound:
+            # Create new spreadsheet if it doesn't exist
+            spreadsheet = client.create(SHEET_NAME)
+            # Share with your email so you can access it
+            try:
+                # Change this to your email address
+                spreadsheet.share('courtney@giraffesavannah.org', perm_type='user', role='writer')
+                st.success(f"✅ Created new spreadsheet '{SHEET_NAME}' and shared it with courtney@giraffesavannah.org")
+                st.info(f"📧 Check your email for the sharing notification, or search Google Drive for '{SHEET_NAME}'")
+            except Exception as e:
+                st.warning(f"Created spreadsheet but couldn't auto-share: {e}. Search for '{SHEET_NAME}' in Google Drive.")
+            return get_default_stock_data()
+        
+        # Load each worksheet
+        data = get_default_stock_data()
+        
+        # Load deployment plan
+        try:
+            plan_sheet = spreadsheet.worksheet('deployment_plan')
+            records = plan_sheet.get_all_records()
+            if records:
+                data['deployment_plan'] = records
+        except gspread.WorksheetNotFound:
+            pass
+        
+        # Load in_hand
+        try:
+            hand_sheet = spreadsheet.worksheet('in_hand')
+            records = hand_sheet.get_all_records()
+            if records:
+                data['in_hand'] = records
+        except gspread.WorksheetNotFound:
+            pass
+        
+        # Load in_mail
+        try:
+            mail_sheet = spreadsheet.worksheet('in_mail')
+            records = mail_sheet.get_all_records()
+            if records:
+                data['in_mail'] = records
+        except gspread.WorksheetNotFound:
+            pass
+        
+        # Load stock summary
+        try:
+            summary_sheet = spreadsheet.worksheet('stock_summary')
+            summary_records = summary_sheet.get_all_records()
+            if summary_records:
+                for record in summary_records:
+                    type_name = record.get('type', '').lower()
+                    if type_name in data['stock_summary']:
+                        data['stock_summary'][type_name]['in_hand'] = int(record.get('in_hand', 0))
+                        data['stock_summary'][type_name]['in_mail'] = int(record.get('in_mail', 0))
+        except gspread.WorksheetNotFound:
+            pass
+        
+        return data
+    except Exception as e:
+        st.warning(f"Could not load from Google Sheets: {e}. Using default data.")
+        return get_default_stock_data()
+
+def get_default_stock_data():
+    """Return default empty stock data structure"""
+    return {
+        'deployment_plan': [],
+        'in_hand': [],
+        'in_mail': [],
+        'stock_summary': {
+            'spoortrack': {'in_hand': 0, 'in_mail': 0},
+            'gsatsolar': {'in_hand': 0, 'in_mail': 0},
+            'other': {'in_hand': 0, 'in_mail': 0}
+        }
+    }
+
+def save_stock_data(data):
+    """Save stock data to Google Sheets"""
+    try:
+        client = get_google_sheets_client()
+        if client is None:
+            st.error("Cannot save: Google Sheets client not available")
+            return False
+        
+        # Open or create spreadsheet
+        try:
+            spreadsheet = client.open(SHEET_NAME)
+        except gspread.SpreadsheetNotFound:
+            spreadsheet = client.create(SHEET_NAME)
+            # Share with your email
+            try:
+                spreadsheet.share('courtney@giraffesavannah.org', perm_type='user', role='writer')
+            except:
+                pass  # Ignore if sharing fails
+        
+        # Save deployment plan
+        if data['deployment_plan']:
+            df_plan = pd.DataFrame(data['deployment_plan'])
+            try:
+                sheet = spreadsheet.worksheet('deployment_plan')
+                sheet.clear()
+            except gspread.WorksheetNotFound:
+                sheet = spreadsheet.add_worksheet(title='deployment_plan', rows=1000, cols=20)
+            sheet.update([df_plan.columns.values.tolist()] + df_plan.values.tolist())
+        
+        # Save in_hand
+        if data['in_hand']:
+            df_hand = pd.DataFrame(data['in_hand'])
+            try:
+                sheet = spreadsheet.worksheet('in_hand')
+                sheet.clear()
+            except gspread.WorksheetNotFound:
+                sheet = spreadsheet.add_worksheet(title='in_hand', rows=1000, cols=20)
+            sheet.update([df_hand.columns.values.tolist()] + df_hand.values.tolist())
+        
+        # Save in_mail
+        if data['in_mail']:
+            df_mail = pd.DataFrame(data['in_mail'])
+            try:
+                sheet = spreadsheet.worksheet('in_mail')
+                sheet.clear()
+            except gspread.WorksheetNotFound:
+                sheet = spreadsheet.add_worksheet(title='in_mail', rows=1000, cols=20)
+            sheet.update([df_mail.columns.values.tolist()] + df_mail.values.tolist())
+        
+        # Save stock summary
+        summary_data = [
+            {'type': 'spoortrack', 'in_hand': data['stock_summary']['spoortrack']['in_hand'], 'in_mail': data['stock_summary']['spoortrack']['in_mail']},
+            {'type': 'gsatsolar', 'in_hand': data['stock_summary']['gsatsolar']['in_hand'], 'in_mail': data['stock_summary']['gsatsolar']['in_mail']},
+            {'type': 'other', 'in_hand': data['stock_summary']['other']['in_hand'], 'in_mail': data['stock_summary']['other']['in_mail']}
+        ]
+        df_summary = pd.DataFrame(summary_data)
+        try:
+            sheet = spreadsheet.worksheet('stock_summary')
+            sheet.clear()
+        except gspread.WorksheetNotFound:
+            sheet = spreadsheet.add_worksheet(title='stock_summary', rows=100, cols=10)
+        sheet.update([df_summary.columns.values.tolist()] + df_summary.values.tolist())
+        
+        return True
+    except Exception as e:
+        st.error(f"Error saving to Google Sheets: {e}")
+        return False
+
+def deployment_planning_dashboard():
+    """Deployment planning and stock management dashboard"""
+    st.header("📊 Deployment Planning & Stock Management")
+    
+    # Create tabs in main area
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 Deployment Plan", "📦 Current Stock", "📬 In Mail/Ordered", "📊 Gap Analysis"])
+    
+    # Tab 1: Deployment Plan
+    with tab1:
+        st.subheader("Deployment Plan")
+        st.caption("Track where and when you plan to deploy GPS units")
+        
+        # Add new deployment
+        with st.expander("➕ Add Deployment Plan", expanded=False):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                new_country = st.text_input("Country", key="new_plan_country")
+            with col2:
+                new_site = st.text_input("Site/Project", key="new_plan_site")
+            with col3:
+                new_quarter = st.selectbox("Quarter/Date", ["Q1 2026", "Q2 2026", "Q3 2026", "Q4 2026", "Q1 2027", "Other"], key="new_plan_quarter")
+            
+            if new_quarter == "Other":
+                new_date = st.date_input("Specific Date", key="new_plan_date")
+            else:
+                new_date = new_quarter
+            
+            col4, col5, col6 = st.columns(3)
+            with col4:
+                new_spoortrack = st.number_input("SpoorTrack units", min_value=0, value=0, key="new_plan_spoortrack")
+            with col5:
+                new_gsatsolar = st.number_input("GSatSolar units", min_value=0, value=0, key="new_plan_gsatsolar")
+            with col6:
+                new_other = st.number_input("Other units", min_value=0, value=0, key="new_plan_other")
+            
+            new_notes_plan = st.text_area("Notes", key="new_plan_notes", height=80)
+            
+            if st.button("Add Plan", key="add_plan"):
+                if new_country and new_site:
+                    new_plan = {
+                        'country': new_country,
+                        'site': new_site,
+                        'date': str(new_date),
+                        'spoortrack': new_spoortrack,
+                        'gsatsolar': new_gsatsolar,
+                        'other': new_other,
+                        'notes': new_notes_plan,
+                        'date_added': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                    st.session_state.stock_data['deployment_plan'].append(new_plan)
+                    save_stock_data(st.session_state.stock_data)
+                    st.success("Deployment plan added!")
+                    st.rerun()
+                else:
+                    st.warning("Please enter country and site")
+        
+        # Display deployment plan
+        if st.session_state.stock_data['deployment_plan']:
+            df_plan = pd.DataFrame(st.session_state.stock_data['deployment_plan'])
+            # Calculate total per row
+            df_plan['total'] = df_plan['spoortrack'] + df_plan['gsatsolar'] + df_plan['other']
+            st.dataframe(df_plan, use_container_width=True)
+            
+            # Show totals
+            st.markdown("### 📊 Total Requirements")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("SpoorTrack Needed", df_plan['spoortrack'].sum())
+            with col2:
+                st.metric("GSatSolar Needed", df_plan['gsatsolar'].sum())
+            with col3:
+                st.metric("Other Needed", df_plan['other'].sum())
+            with col4:
+                st.metric("Total Needed", df_plan['total'].sum())
+            
+            # Delete option
+            st.markdown("---")
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                if len(df_plan) > 0:
+                    delete_idx_plan = st.selectbox("Select plan to delete", 
+                                            range(len(st.session_state.stock_data['deployment_plan'])),
+                                            format_func=lambda x: f"{df_plan.iloc[x]['country']} - {df_plan.iloc[x]['site']} ({df_plan.iloc[x]['date']})",
+                                            key="delete_plan_select")
+            with col2:
+                if st.button("🗑️ Delete", key="delete_plan"):
+                    st.session_state.stock_data['deployment_plan'].pop(delete_idx_plan)
+                    save_stock_data(st.session_state.stock_data)
+                    st.success("Deleted!")
+                    st.rerun()
+        else:
+            st.info("No deployment plans yet. Add your planned deployments above.")
+    
+    # Tab 2: Current Stock
+    with tab2:
+        st.subheader("Current Stock (In Hand)")
+        st.caption("Track units you currently have available")
+        
+        # Quick update summary counts
+        with st.expander("⚡ Quick Update Stock Summary", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                spoortrack_hand = st.number_input("SpoorTrack in hand", min_value=0, 
+                                                 value=st.session_state.stock_data['stock_summary']['spoortrack']['in_hand'],
+                                                 key="spoortrack_hand")
+            with col2:
+                gsatsolar_hand = st.number_input("GSatSolar in hand", min_value=0,
+                                                value=st.session_state.stock_data['stock_summary']['gsatsolar']['in_hand'],
+                                                key="gsatsolar_hand")
+            with col3:
+                other_hand = st.number_input("Other in hand", min_value=0,
+                                            value=st.session_state.stock_data['stock_summary']['other']['in_hand'],
+                                            key="other_hand")
+            
+            if st.button("💾 Update Stock Summary", key="update_summary"):
+                st.session_state.stock_data['stock_summary']['spoortrack']['in_hand'] = spoortrack_hand
+                st.session_state.stock_data['stock_summary']['gsatsolar']['in_hand'] = gsatsolar_hand
+                st.session_state.stock_data['stock_summary']['other']['in_hand'] = other_hand
+                save_stock_data(st.session_state.stock_data)
+                st.success("Stock summary updated!")
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Add individual units for detailed tracking (optional)
+        with st.expander("➕ Add Individual Unit (optional detailed tracking)", expanded=False):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                new_type = st.selectbox("Type", ["SpoorTrack", "GSatSolar", "Other"], key="new_stock_type")
+            with col2:
+                new_serial = st.text_input("Serial Number", key="new_stock_serial")
+            with col3:
+                new_status = st.selectbox("Status", ["Available", "In ER (not deployed)", "Being configured"], key="new_stock_status")
+            
+            new_notes_stock = st.text_area("Notes", key="new_stock_notes", height=60)
+            
+            if st.button("Add Unit", key="add_stock"):
+                if new_serial:
+                    new_unit = {
+                        'type': new_type,
+                        'serial': new_serial,
+                        'status': new_status,
+                        'notes': new_notes_stock,
+                        'date_added': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                    st.session_state.stock_data['in_hand'].append(new_unit)
+                    save_stock_data(st.session_state.stock_data)
+                    st.success("Unit added!")
+                    st.rerun()
+                else:
+                    st.warning("Please enter serial number")
+        
+        # Display individual units
+        if st.session_state.stock_data['in_hand']:
+            df_stock = pd.DataFrame(st.session_state.stock_data['in_hand'])
+            st.dataframe(df_stock, use_container_width=True)
+            
+            # Delete option
+            st.markdown("---")
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                if len(df_stock) > 0:
+                    delete_idx_stock = st.selectbox("Select unit to delete", 
+                                             range(len(st.session_state.stock_data['in_hand'])),
+                                             format_func=lambda x: f"{df_stock.iloc[x]['type']} - {df_stock.iloc[x]['serial']}",
+                                             key="delete_stock_select")
+            with col2:
+                if st.button("🗑️ Delete", key="delete_stock"):
+                    st.session_state.stock_data['in_hand'].pop(delete_idx_stock)
+                    save_stock_data(st.session_state.stock_data)
+                    st.success("Deleted!")
+                    st.rerun()
+        else:
+            st.info("No individual units tracked. Use quick summary above or add units for detailed tracking.")
+    
+    # Tab 3: In Mail/Ordered
+    with tab3:
+        st.subheader("In Mail / Ordered")
+        st.caption("Track units you've ordered that are in transit")
+        
+        # Quick update for in-mail counts
+        with st.expander("⚡ Quick Update In-Mail Summary", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                spoortrack_mail = st.number_input("SpoorTrack in mail", min_value=0,
+                                                 value=st.session_state.stock_data['stock_summary']['spoortrack']['in_mail'],
+                                                 key="spoortrack_mail")
+            with col2:
+                gsatsolar_mail = st.number_input("GSatSolar in mail", min_value=0,
+                                                value=st.session_state.stock_data['stock_summary']['gsatsolar']['in_mail'],
+                                                key="gsatsolar_mail")
+            with col3:
+                other_mail = st.number_input("Other in mail", min_value=0,
+                                            value=st.session_state.stock_data['stock_summary']['other']['in_mail'],
+                                            key="other_mail")
+            
+            if st.button("💾 Update In-Mail Summary", key="update_mail_summary"):
+                st.session_state.stock_data['stock_summary']['spoortrack']['in_mail'] = spoortrack_mail
+                st.session_state.stock_data['stock_summary']['gsatsolar']['in_mail'] = gsatsolar_mail
+                st.session_state.stock_data['stock_summary']['other']['in_mail'] = other_mail
+                save_stock_data(st.session_state.stock_data)
+                st.success("In-mail summary updated!")
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Add detailed order tracking
+        with st.expander("➕ Add Order Details (optional)", expanded=False):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                new_type_mail = st.selectbox("Type", ["SpoorTrack", "GSatSolar", "Other"], key="new_mail_type")
+            with col2:
+                new_quantity_mail = st.number_input("Quantity", min_value=1, value=1, key="new_mail_quantity")
+            with col3:
+                new_status_mail = st.selectbox("Status", ["Ordered", "Shipped", "In Customs", "Out for Delivery"], key="new_mail_status")
+            
+            col4, col5 = st.columns(2)
+            with col4:
+                new_order_date = st.date_input("Order Date", key="new_mail_order_date")
+            with col5:
+                new_expected = st.date_input("Expected Arrival", key="new_mail_expected")
+            
+            new_notes_mail = st.text_area("Notes (tracking #, supplier, etc.)", key="new_mail_notes", height=60)
+            
+            if st.button("Add Order", key="add_mail"):
+                new_order = {
+                    'type': new_type_mail,
+                    'quantity': new_quantity_mail,
+                    'status': new_status_mail,
+                    'order_date': new_order_date.strftime('%Y-%m-%d'),
+                    'expected_date': new_expected.strftime('%Y-%m-%d'),
+                    'notes': new_notes_mail,
+                    'date_added': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+                st.session_state.stock_data['in_mail'].append(new_order)
+                save_stock_data(st.session_state.stock_data)
+                st.success("Order added!")
+                st.rerun()
+        
+        # Display orders
+        if st.session_state.stock_data['in_mail']:
+            df_mail = pd.DataFrame(st.session_state.stock_data['in_mail'])
+            st.dataframe(df_mail, use_container_width=True)
+            
+            # Delete option
+            st.markdown("---")
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                if len(df_mail) > 0:
+                    delete_idx_mail = st.selectbox("Select order to delete", 
+                                             range(len(st.session_state.stock_data['in_mail'])),
+                                             format_func=lambda x: f"{df_mail.iloc[x]['type']} - Qty: {df_mail.iloc[x]['quantity']} ({df_mail.iloc[x]['status']})",
+                                             key="delete_mail_select")
+            with col2:
+                if st.button("🗑️ Delete", key="delete_mail"):
+                    st.session_state.stock_data['in_mail'].pop(delete_idx_mail)
+                    save_stock_data(st.session_state.stock_data)
+                    st.success("Deleted!")
+                    st.rerun()
+        else:
+            st.info("No orders tracked. Use quick summary above or add order details.")
+    
+    # Tab 4: Gap Analysis
+    with tab4:
+        st.subheader("📊 Gap Analysis")
+        st.caption("Calculate how many more units you need to order")
+        
+        # Calculate totals
+        if st.session_state.stock_data['deployment_plan']:
+            df_plan = pd.DataFrame(st.session_state.stock_data['deployment_plan'])
+            
+            needed_spoortrack = df_plan['spoortrack'].sum()
+            needed_gsatsolar = df_plan['gsatsolar'].sum()
+            needed_other = df_plan['other'].sum()
+        else:
+            needed_spoortrack = 0
+            needed_gsatsolar = 0
+            needed_other = 0
+        
+        # Get current stock
+        stock = st.session_state.stock_data['stock_summary']
+        in_hand_spoortrack = stock['spoortrack']['in_hand']
+        in_hand_gsatsolar = stock['gsatsolar']['in_hand']
+        in_hand_other = stock['other']['in_hand']
+        
+        in_mail_spoortrack = stock['spoortrack']['in_mail']
+        in_mail_gsatsolar = stock['gsatsolar']['in_mail']
+        in_mail_other = stock['other']['in_mail']
+        
+        # Calculate totals available
+        total_spoortrack = in_hand_spoortrack + in_mail_spoortrack
+        total_gsatsolar = in_hand_gsatsolar + in_mail_gsatsolar
+        total_other = in_hand_other + in_mail_other
+        
+        # Calculate gaps
+        gap_spoortrack = max(0, needed_spoortrack - total_spoortrack)
+        gap_gsatsolar = max(0, needed_gsatsolar - total_gsatsolar)
+        gap_other = max(0, needed_other - total_other)
+        
+        # Display in a nice table
+        st.markdown("### SpoorTrack")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("Needed", needed_spoortrack)
+        with col2:
+            st.metric("In Hand", in_hand_spoortrack)
+        with col3:
+            st.metric("In Mail", in_mail_spoortrack)
+        with col4:
+            st.metric("Total Available", total_spoortrack)
+        with col5:
+            st.metric("⚠️ Need to Order", gap_spoortrack, delta=None if gap_spoortrack == 0 else f"-{gap_spoortrack}", delta_color="inverse")
+        
+        st.markdown("### GSatSolar")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("Needed", needed_gsatsolar)
+        with col2:
+            st.metric("In Hand", in_hand_gsatsolar)
+        with col3:
+            st.metric("In Mail", in_mail_gsatsolar)
+        with col4:
+            st.metric("Total Available", total_gsatsolar)
+        with col5:
+            st.metric("⚠️ Need to Order", gap_gsatsolar, delta=None if gap_gsatsolar == 0 else f"-{gap_gsatsolar}", delta_color="inverse")
+        
+        st.markdown("### Other")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("Needed", needed_other)
+        with col2:
+            st.metric("In Hand", in_hand_other)
+        with col3:
+            st.metric("In Mail", in_mail_other)
+        with col4:
+            st.metric("Total Available", total_other)
+        with col5:
+            st.metric("⚠️ Need to Order", gap_other, delta=None if gap_other == 0 else f"-{gap_other}", delta_color="inverse")
+        
+        # Summary
+        st.markdown("---")
+        st.markdown("### 📋 Summary")
+        total_needed = needed_spoortrack + needed_gsatsolar + needed_other
+        total_available = total_spoortrack + total_gsatsolar + total_other
+        total_gap = gap_spoortrack + gap_gsatsolar + gap_other
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Units Needed", total_needed)
+        with col2:
+            st.metric("Total Available (hand + mail)", total_available)
+        with col3:
+            st.metric("🚨 Total to Order", total_gap)
+        
+        if total_gap == 0:
+            st.success("✅ You have enough units! No additional orders needed.")
+        else:
+            st.warning(f"⚠️ You need to order {total_gap} more units total to meet your deployment plan.")
 
 def er_login(username, password):
     """Test EarthRanger login credentials"""
@@ -186,13 +738,28 @@ def get_last_7_days(source_id, username, password):
 
 def unit_dashboard():
     """Main unit check dashboard interface"""
-    #st.header("🔍 Unit Check Dashboard")
     
+    # Create main tabs in the dashboard
+    main_tab1, main_tab2 = st.tabs(["🔍 Unit Check", "📊 Deployment Planning"])
+    
+    with main_tab1:
+        unit_check_tab()
+    
+    with main_tab2:
+        deployment_planning_dashboard()
+
+def unit_check_tab():
+    """Unit check functionality"""
     username = st.session_state.username
     password = st.session_state.password
     
-    with st.spinner("Loading all sources..."):
-        df_sources = get_all_sources(username, password)
+    try:
+        with st.spinner("Loading all sources..."):
+            df_sources = get_all_sources(username, password)
+    except Exception as e:
+        st.error(f"Error connecting to EarthRanger: {e}")
+        st.info("Please check your internet connection and EarthRanger server status.")
+        return
     
     if df_sources.empty:
         st.warning("No sources found.")
@@ -257,28 +824,36 @@ def unit_dashboard():
     all_7_day_data = []
     all_battery_data = []
     
-    with st.spinner("Fetching 7-day location data..."):
-        for i, source_id in enumerate(selected_source_ids):
-            source_label = selected_labels[i]
-            df_7 = get_last_7_days(source_id, username, password)
-            
-            if not df_7.empty:
-                df_7['date'] = pd.to_datetime(df_7['datetime']).dt.date
-                counts = df_7.groupby('date').size().reset_index(name='count')
-                counts['source'] = source_label
-                all_7_day_data.append(counts)
+    try:
+        with st.spinner("Fetching 7-day location data..."):
+            for i, source_id in enumerate(selected_source_ids):
+                source_label = selected_labels[i]
+                try:
+                    df_7 = get_last_7_days(source_id, username, password)
+                except Exception as e:
+                    st.warning(f"Could not fetch data for {source_label}: {e}")
+                    continue
                 
-                # Collect battery data if available
-                if 'battery' in df_7.columns:
-                    # Convert battery values to numeric, handling any non-numeric values
-                    df_7['battery_numeric'] = pd.to_numeric(df_7['battery'], errors='coerce')
+                if not df_7.empty:
+                    df_7['date'] = pd.to_datetime(df_7['datetime']).dt.date
+                    counts = df_7.groupby('date').size().reset_index(name='count')
+                    counts['source'] = source_label
+                    all_7_day_data.append(counts)
                     
-                    # Only proceed if we have valid numeric battery values
-                    if df_7['battery_numeric'].notna().any():
-                        battery_data = df_7.groupby('date')['battery_numeric'].mean().reset_index()
-                        battery_data = battery_data.rename(columns={'battery_numeric': 'battery'})
-                        battery_data['source'] = source_label
-                        all_battery_data.append(battery_data)
+                    # Collect battery data if available
+                    if 'battery' in df_7.columns:
+                        # Convert battery values to numeric, handling any non-numeric values
+                        df_7['battery_numeric'] = pd.to_numeric(df_7['battery'], errors='coerce')
+                        
+                        # Only proceed if we have valid numeric battery values
+                        if df_7['battery_numeric'].notna().any():
+                            battery_data = df_7.groupby('date')['battery_numeric'].mean().reset_index()
+                            battery_data = battery_data.rename(columns={'battery_numeric': 'battery'})
+                            battery_data['source'] = source_label
+                            all_battery_data.append(battery_data)
+    except Exception as e:
+        st.error(f"Error fetching activity data: {e}")
+        st.info("The Deployment Planning tab doesn't require EarthRanger connection and will still work.")
     
     # Create two columns for charts
     col1, col2 = st.columns(2)
@@ -418,30 +993,37 @@ def unit_dashboard():
     
     last_locations = []
     
-    with st.spinner("Getting last locations..."):
-        for i, source_id in enumerate(selected_source_ids):
-            source_label = selected_labels[i]
-            df_7 = get_last_7_days(source_id, username, password)
-            
-            if not df_7.empty and 'latitude' in df_7.columns and 'longitude' in df_7.columns:
-                # Sort by datetime and get the most recent location
-                df_sorted = df_7.sort_values('datetime', ascending=False)
-                last_location = df_sorted.iloc[0]
+    try:
+        with st.spinner("Getting last locations..."):
+            for i, source_id in enumerate(selected_source_ids):
+                source_label = selected_labels[i]
+                try:
+                    df_7 = get_last_7_days(source_id, username, password)
+                except Exception as e:
+                    st.warning(f"Could not fetch location for {source_label}: {e}")
+                    continue
                 
-                location_data = {
-                    'source': source_label,
-                    'latitude': last_location['latitude'],
-                    'longitude': last_location['longitude'],
-                    'datetime': last_location['datetime'],
-                    'color': color_map[source_label]
-                }
-                
-                # Add battery info if available
-                battery_value = last_location.get('battery')
-                if 'battery' in df_7.columns and battery_value is not None:
-                    location_data['battery'] = battery_value
-                
-                last_locations.append(location_data)
+                if not df_7.empty and 'latitude' in df_7.columns and 'longitude' in df_7.columns:
+                    # Sort by datetime and get the most recent location
+                    df_sorted = df_7.sort_values('datetime', ascending=False)
+                    last_location = df_sorted.iloc[0]
+                    
+                    location_data = {
+                        'source': source_label,
+                        'latitude': last_location['latitude'],
+                        'longitude': last_location['longitude'],
+                        'datetime': last_location['datetime'],
+                        'color': color_map[source_label]
+                    }
+                    
+                    # Add battery info if available
+                    battery_value = last_location.get('battery')
+                    if 'battery' in df_7.columns and battery_value is not None:
+                        location_data['battery'] = battery_value
+                    
+                    last_locations.append(location_data)
+    except Exception as e:
+        st.error(f"Error fetching location data: {e}")
     
     if last_locations:
         last_locations_df = pd.DataFrame(last_locations)
@@ -666,7 +1248,7 @@ def _main_implementation():
         st.sidebar.write(f"**User:** {st.session_state.username}")
         st.sidebar.write("**Server:** https://twiga.pamdas.org")
     
-    # Show dashboard
+    # Show dashboard with tabs
     unit_dashboard()
     
     # Sidebar options
