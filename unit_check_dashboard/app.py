@@ -619,8 +619,9 @@ def deployment_planning_dashboard():
                         st.write(f"**Needed:** {row['spoortrack']} SpoorTrack, {row['gsatsolar']} GSatSolar")
                     
                     with col2:
-                        current_st_assigned = int(row.get('spoortrack_assigned', 0))
-                        current_gs_assigned = int(row.get('gsatsolar_assigned', 0))
+                        # Handle NaN values from Google Sheets
+                        current_st_assigned = int(row.get('spoortrack_assigned', 0)) if pd.notna(row.get('spoortrack_assigned', 0)) else 0
+                        current_gs_assigned = int(row.get('gsatsolar_assigned', 0)) if pd.notna(row.get('gsatsolar_assigned', 0)) else 0
                         st.write(f"**Assigned:** {current_st_assigned} SpoorTrack, {current_gs_assigned} GSatSolar")
                     
                     # Assignment controls
