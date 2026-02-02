@@ -104,13 +104,17 @@ def load_stock_data():
         except gspread.SpreadsheetNotFound:
             # Create new spreadsheet if it doesn't exist
             spreadsheet = client.create(SHEET_NAME)
+            sheet_url = spreadsheet.url
             # Share with your email so you can access it
             try:
                 spreadsheet.share('gcf.spatial@giraffeconservation.org', perm_type='user', role='writer')
                 st.success(f"✅ Created new spreadsheet '{SHEET_NAME}' and shared it with gcf.spatial@giraffeconservation.org")
-                st.info(f"📧 Check your email for the sharing notification, or search Google Drive for '{SHEET_NAME}'")
+                st.markdown(f"### 🔗 [Click here to open the Google Sheet]({sheet_url})")
+                st.info(f"📧 You should also receive an email notification. Bookmark this link!")
             except Exception as e:
-                st.warning(f"Created spreadsheet but couldn't auto-share: {e}. Search for '{SHEET_NAME}' in Google Drive.")
+                st.warning(f"Created spreadsheet but couldn't auto-share: {e}")
+                st.markdown(f"### 🔗 [Click here to open the Google Sheet]({sheet_url})")
+                st.info("You may need to request access when you open it.")
             return get_default_stock_data()
         
         # Load each worksheet
@@ -187,11 +191,16 @@ def save_stock_data(data):
             spreadsheet = client.open(SHEET_NAME)
         except gspread.SpreadsheetNotFound:
             spreadsheet = client.create(SHEET_NAME)
+            sheet_url = spreadsheet.url
             # Share with your email
             try:
                 spreadsheet.share('gcf.spatial@giraffeconservation.org', perm_type='user', role='writer')
-            except:
-                pass  # Ignore if sharing fails
+                st.success(f"✅ Created and shared spreadsheet!")
+                st.markdown(f"### 🔗 [Open Google Sheet]({sheet_url})")
+            except Exception as e:
+                st.warning(f"Created spreadsheet but sharing failed: {e}")
+                st.markdown(f"### 🔗 [Open Google Sheet]({sheet_url})")
+                st.info("You may need to request access.")
         
         # Save deployment plan
         if data['deployment_plan']:
