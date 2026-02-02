@@ -8,11 +8,15 @@ This guide will help you set up Google Sheets integration for the deployment pla
 2. Create a new project (or use an existing one)
 3. Name it something like "Twiga Tools"
 
-## Step 2: Enable Google Sheets API
+## Step 2: Enable Google Sheets API and Google Drive API
 
 1. In your project, go to **APIs & Services** > **Enable APIs and Services**
 2. Search for "Google Sheets API"
 3. Click **Enable**
+4. Go back and search for "Google Drive API"
+5. Click **Enable**
+
+(Both APIs are required for the integration to work)
 
 ## Step 3: Create Service Account
 

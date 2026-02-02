@@ -66,13 +66,15 @@ def get_google_sheets_client():
                 st.info("✓ Using gcp_service_account credentials")
                 credentials = Credentials.from_service_account_info(
                     st.secrets['gcp_service_account'],
-                    scopes=['https://www.googleapis.com/auth/spreadsheets']
+                    scopes=['https://www.googleapis.com/auth/spreadsheets',
+                           'https://www.googleapis.com/auth/drive']
                 )
             elif 'gee_service_account' in st.secrets:
                 st.info("✓ Using gee_service_account credentials")
                 credentials = Credentials.from_service_account_info(
                     st.secrets['gee_service_account'],
-                    scopes=['https://www.googleapis.com/auth/spreadsheets']
+                    scopes=['https://www.googleapis.com/auth/spreadsheets',
+                           'https://www.googleapis.com/auth/drive']
                 )
             else:
                 st.error("❌ No Google service account found in secrets. See GOOGLE_SHEETS_SETUP.md")
@@ -86,7 +88,7 @@ def get_google_sheets_client():
         return client
     except Exception as e:
         st.error(f"❌ Error authenticating with Google Sheets: {e}")
-        st.info("Make sure Google Sheets API is enabled in your Google Cloud project.")
+        st.info("Make sure Google Sheets API AND Google Drive API are both enabled in your Google Cloud project.")
         import traceback
         st.code(traceback.format_exc())
         return None
@@ -334,6 +336,14 @@ def deployment_planning_dashboard():
                 st.metric("Other Needed", df_plan['other'].sum())
             with col4:
                 st.metric("Total Needed", df_plan['total'].sum())
+            
+            # Manual save button
+            st.markdown("---")
+            if st.button("💾 Save All Plans to Google Sheets", key="save_plans"):
+                with st.spinner("Saving to Google Sheets..."):
+                    success = save_stock_data(st.session_state.stock_data)
+                    if success:
+                        st.balloons()
             
             # Delete option
             st.markdown("---")
