@@ -319,12 +319,57 @@ def deployment_planning_dashboard():
     st.header("📊 Deployment Planning & Stock Management")
     
     # Create tabs in main area
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 Deployment Plan", "📦 Current Stock", "📬 In Mail/Ordered", "📊 Summary & Assignments"])
+    tab1, tab2 = st.tabs(["📋 Stock & Deployment Plans", "📊 Summary"])
     
-    # Tab 1: Deployment Plan
+    # Tab 1: Stock & Deployment Plans (Combined)
     with tab1:
-        st.subheader("Deployment Plan")
-        st.caption("Track where and when you plan to deploy GPS units")
+        st.subheader("📋 Stock & Deployment Plans")
+        
+        # Initialize office_stock if not exists
+        if 'office_stock' not in st.session_state.stock_data:
+            st.session_state.stock_data['office_stock'] = {
+                'Namibia': {'spoortrack': 0, 'gsatsolar': 0},
+                'Kenya': {'spoortrack': 0, 'gsatsolar': 0},
+                'South Africa': {'spoortrack': 0, 'gsatsolar': 0}
+            }
+        
+        # Stock by office - simple and clear
+        st.markdown("### 📦 Current Stock by Office")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**🇳🇦 Namibia**")
+            nam_st = st.number_input("SpoorTrack", min_value=0, value=st.session_state.stock_data['office_stock']['Namibia']['spoortrack'], key="nam_st_input")
+            nam_gs = st.number_input("GSatSolar", min_value=0, value=st.session_state.stock_data['office_stock']['Namibia']['gsatsolar'], key="nam_gs_input")
+        
+        with col2:
+            st.markdown("**🇰🇪 Kenya**")
+            ken_st = st.number_input("SpoorTrack ", min_value=0, value=st.session_state.stock_data['office_stock']['Kenya']['spoortrack'], key="ken_st_input")
+            ken_gs = st.number_input("GSatSolar ", min_value=0, value=st.session_state.stock_data['office_stock']['Kenya']['gsatsolar'], key="ken_gs_input")
+        
+        with col3:
+            st.markdown("**🇿🇦 South Africa**")
+            sa_st = st.number_input("SpoorTrack  ", min_value=0, value=st.session_state.stock_data['office_stock']['South Africa']['spoortrack'], key="sa_st_input")
+            sa_gs = st.number_input("GSatSolar  ", min_value=0, value=st.session_state.stock_data['office_stock']['South Africa']['gsatsolar'], key="sa_gs_input")
+        
+        if st.button("💾 Update Stock", type="primary"):
+            st.session_state.stock_data['office_stock']['Namibia']['spoortrack'] = nam_st
+            st.session_state.stock_data['office_stock']['Namibia']['gsatsolar'] = nam_gs
+            st.session_state.stock_data['office_stock']['Kenya']['spoortrack'] = ken_st
+            st.session_state.stock_data['office_stock']['Kenya']['gsatsolar'] = ken_gs
+            st.session_state.stock_data['office_stock']['South Africa']['spoortrack'] = sa_st
+            st.session_state.stock_data['office_stock']['South Africa']['gsatsolar'] = sa_gs
+            
+            # Update total stock summary
+            st.session_state.stock_data['stock_summary']['spoortrack']['in_hand'] = nam_st + ken_st + sa_st
+            st.session_state.stock_data['stock_summary']['gsatsolar']['in_hand'] = nam_gs + ken_gs + sa_gs
+            
+            save_stock_data(st.session_state.stock_data)
+            st.success("✅ Stock updated!")
+            st.rerun()
+        
+        st.markdown("---")
+        st.markdown("### 📋 Deployment Plans")
         
         # Add new deployment
         with st.expander("➕ Add Deployment Plan", expanded=False):
@@ -372,334 +417,67 @@ def deployment_planning_dashboard():
                 else:
                     st.warning("Please enter country and site")
         
-        # Display deployment plan
+        # Display deployment plans grouped by office
         if st.session_state.stock_data['deployment_plan']:
             df_plan = pd.DataFrame(st.session_state.stock_data['deployment_plan'])
             
-            # Ensure office column exists for old records
+            # Ensure office column exists
             if 'office' not in df_plan.columns:
-                df_plan['office'] = 'Kenya'  # Default for old records
+                df_plan['office'] = 'Kenya'
             
-            # Select and order columns for display
-            display_cols = ['country', 'site', 'office', 'date', 'spoortrack', 'gsatsolar']
-            if 'notes' in df_plan.columns:
-                display_cols.append('notes')
+            # Group by office and display
+            for office in ['Namibia', 'Kenya', 'South Africa']:
+                office_plans = df_plan[df_plan['office'] == office]
+                if len(office_plans) > 0:
+                    with st.expander(f"📍 {office} Office - {len(office_plans)} plans", expanded=True):
+                        for idx, row in office_plans.iterrows():
+                            col1, col2, col3 = st.columns([3, 2, 1])
+                            with col1:
+                                st.write(f"**{row['country']} - {row['site']}**")
+                                st.caption(f"Date: {row['date']}")
+                            with col2:
+                                st.write(f"📦 ST: {row['spoortrack']} | GS: {row['gsatsolar']}")
+                            with col3:
+                                if st.button("🗑️", key=f"del_{idx}"):
+                                    del st.session_state.stock_data['deployment_plan'][idx]
+                                    save_stock_data(st.session_state.stock_data)
+                                    st.rerun()
             
-            # Calculate total per row
-            df_plan['total'] = df_plan['spoortrack'] + df_plan['gsatsolar']
-            display_cols.append('total')
-            
-            st.dataframe(df_plan[display_cols], use_container_width=True)
-            
-            # Show totals
-            st.markdown("### 📊 Total Requirements")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("SpoorTrack Needed", df_plan['spoortrack'].sum())
-            with col2:
-                st.metric("GSatSolar Needed", df_plan['gsatsolar'].sum())
-            with col3:
-                st.metric("Total Needed", df_plan['total'].sum())
-            
-            # Manual save button
             st.markdown("---")
-            if st.button("💾 Save All Plans to Google Sheets", key="save_plans"):
-                with st.spinner("Saving to Google Sheets..."):
-                    success = save_stock_data(st.session_state.stock_data)
-                    if success:
-                        st.balloons()
-            
-            # Delete option
-            st.markdown("---")
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                if len(df_plan) > 0:
-                    delete_idx_plan = st.selectbox("Select plan to delete", 
-                                            range(len(st.session_state.stock_data['deployment_plan'])),
-                                            format_func=lambda x: f"{df_plan.iloc[x]['country']} - {df_plan.iloc[x]['site']} ({df_plan.iloc[x]['date']})",
-                                            key="delete_plan_select")
-            with col2:
-                if st.button("🗑️ Delete", key="delete_plan"):
-                    st.session_state.stock_data['deployment_plan'].pop(delete_idx_plan)
-                    save_stock_data(st.session_state.stock_data)
-                    st.success("Deleted!")
-                    st.rerun()
+            if st.button("💾 Save All Changes", type="primary", key="save_all_plans"):
+                save_stock_data(st.session_state.stock_data)
+                st.success("✅ Saved to Google Sheets!")
         else:
             st.info("No deployment plans yet. Add your planned deployments above.")
     
-    # Tab 2: Current Stock
+    # Tab 2: Simple Summary
     with tab2:
-        st.subheader("Current Stock (In Hand)")
-        st.caption("Track units you currently have available")
-        
-        # Quick update summary counts
-        with st.expander("⚡ Quick Update Stock Summary", expanded=True):
-            st.caption("Track units by office location")
-            
-            # Create tabs for each office
-            office_tab1, office_tab2, office_tab3 = st.tabs(["Namibia", "Kenya", "South Africa"])
-            
-            # Initialize office-specific stock if not exists
-            if 'office_stock' not in st.session_state.stock_data:
-                st.session_state.stock_data['office_stock'] = {
-                    'Namibia': {'spoortrack': 0, 'gsatsolar': 0},
-                    'Kenya': {'spoortrack': 0, 'gsatsolar': 0},
-                    'South Africa': {'spoortrack': 0, 'gsatsolar': 0}
-                }
-            
-            with office_tab1:
-                col1, col2 = st.columns(2)
-                with col1:
-                    nam_st = st.number_input("SpoorTrack", min_value=0, value=st.session_state.stock_data['office_stock']['Namibia']['spoortrack'], key="nam_st")
-                with col2:
-                    nam_gs = st.number_input("GSatSolar", min_value=0, value=st.session_state.stock_data['office_stock']['Namibia']['gsatsolar'], key="nam_gs")
-            
-            with office_tab2:
-                col1, col2 = st.columns(2)
-                with col1:
-                    ken_st = st.number_input("SpoorTrack", min_value=0, value=st.session_state.stock_data['office_stock']['Kenya']['spoortrack'], key="ken_st")
-                with col2:
-                    ken_gs = st.number_input("GSatSolar", min_value=0, value=st.session_state.stock_data['office_stock']['Kenya']['gsatsolar'], key="ken_gs")
-            
-            with office_tab3:
-                col1, col2 = st.columns(2)
-                with col1:
-                    sa_st = st.number_input("SpoorTrack", min_value=0, value=st.session_state.stock_data['office_stock']['South Africa']['spoortrack'], key="sa_st")
-                with col2:
-                    sa_gs = st.number_input("GSatSolar", min_value=0, value=st.session_state.stock_data['office_stock']['South Africa']['gsatsolar'], key="sa_gs")
-            
-            if st.button("💾 Update Stock Summary", key="update_summary"):
-                st.session_state.stock_data['office_stock']['Namibia']['spoortrack'] = nam_st
-                st.session_state.stock_data['office_stock']['Namibia']['gsatsolar'] = nam_gs
-                st.session_state.stock_data['office_stock']['Kenya']['spoortrack'] = ken_st
-                st.session_state.stock_data['office_stock']['Kenya']['gsatsolar'] = ken_gs
-                st.session_state.stock_data['office_stock']['South Africa']['spoortrack'] = sa_st
-                st.session_state.stock_data['office_stock']['South Africa']['gsatsolar'] = sa_gs
-                
-                # Update total stock summary
-                st.session_state.stock_data['stock_summary']['spoortrack']['in_hand'] = nam_st + ken_st + sa_st
-                st.session_state.stock_data['stock_summary']['gsatsolar']['in_hand'] = nam_gs + ken_gs + sa_gs
-                
-                with st.spinner("Saving to Google Sheets..."):
-                    success = save_stock_data(st.session_state.stock_data)
-                    if success:
-                        st.success("Stock summary updated!")
-                        st.info("📊 Data saved to Google Sheets")
-                    else:
-                        st.error("Failed to save to Google Sheets. Check error messages above.")
-                st.rerun()
-        
-        st.markdown("---")
-        
-        # Add individual units for detailed tracking (optional)
-        with st.expander("➕ Add Individual Unit (optional detailed tracking)", expanded=False):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                new_type = st.selectbox("Type", ["SpoorTrack", "GSatSolar", "Other"], key="new_stock_type")
-            with col2:
-                new_serial = st.text_input("Serial Number", key="new_stock_serial")
-            with col3:
-                new_status = st.selectbox("Status", ["Available", "In ER (not deployed)", "Being configured"], key="new_stock_status")
-            
-            new_notes_stock = st.text_area("Notes", key="new_stock_notes", height=60)
-            
-            if st.button("Add Unit", key="add_stock"):
-                if new_serial:
-                    new_unit = {
-                        'type': new_type,
-                        'serial': new_serial,
-                        'status': new_status,
-                        'notes': new_notes_stock,
-                        'date_added': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    }
-                    st.session_state.stock_data['in_hand'].append(new_unit)
-                    save_stock_data(st.session_state.stock_data)
-                    st.success("Unit added!")
-                    st.rerun()
-                else:
-                    st.warning("Please enter serial number")
-        
-        # Display individual units
-        if st.session_state.stock_data['in_hand']:
-            df_stock = pd.DataFrame(st.session_state.stock_data['in_hand'])
-            st.dataframe(df_stock, use_container_width=True)
-            
-            # Delete option
-            st.markdown("---")
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                if len(df_stock) > 0:
-                    delete_idx_stock = st.selectbox("Select unit to delete", 
-                                             range(len(st.session_state.stock_data['in_hand'])),
-                                             format_func=lambda x: f"{df_stock.iloc[x]['type']} - {df_stock.iloc[x]['serial']}",
-                                             key="delete_stock_select")
-            with col2:
-                if st.button("🗑️ Delete", key="delete_stock"):
-                    st.session_state.stock_data['in_hand'].pop(delete_idx_stock)
-                    save_stock_data(st.session_state.stock_data)
-                    st.success("Deleted!")
-                    st.rerun()
-        else:
-            st.info("No individual units tracked. Use quick summary above or add units for detailed tracking.")
-    
-    # Tab 3: In Mail/Ordered
-    with tab3:
-        st.subheader("In Mail / Ordered")
-        st.caption("Track units you've ordered that are in transit")
-        
-        # Quick update for in-mail counts
-        with st.expander("⚡ Quick Update In-Mail Summary", expanded=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                spoortrack_mail = st.number_input("SpoorTrack in mail", min_value=0,
-                                                 value=st.session_state.stock_data['stock_summary']['spoortrack']['in_mail'],
-                                                 key="spoortrack_mail")
-            with col2:
-                gsatsolar_mail = st.number_input("GSatSolar in mail", min_value=0,
-                                                value=st.session_state.stock_data['stock_summary']['gsatsolar']['in_mail'],
-                                                key="gsatsolar_mail")
-            
-            if st.button("💾 Update In-Mail Summary", key="update_mail_summary"):
-                st.session_state.stock_data['stock_summary']['spoortrack']['in_mail'] = spoortrack_mail
-                st.session_state.stock_data['stock_summary']['gsatsolar']['in_mail'] = gsatsolar_mail
-                save_stock_data(st.session_state.stock_data)
-                st.success("In-mail summary updated!")
-                st.rerun()
-        
-        st.markdown("---")
-        
-        # Add detailed order tracking
-        with st.expander("➕ Add Order Details (optional)", expanded=False):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                new_type_mail = st.selectbox("Type", ["SpoorTrack", "GSatSolar", "Other"], key="new_mail_type")
-            with col2:
-                new_quantity_mail = st.number_input("Quantity", min_value=1, value=1, key="new_mail_quantity")
-            with col3:
-                new_status_mail = st.selectbox("Status", ["Ordered", "Shipped", "In Customs", "Out for Delivery"], key="new_mail_status")
-            
-            col4, col5 = st.columns(2)
-            with col4:
-                new_order_date = st.date_input("Order Date", key="new_mail_order_date")
-            with col5:
-                new_expected = st.date_input("Expected Arrival", key="new_mail_expected")
-            
-            new_notes_mail = st.text_area("Notes (tracking #, supplier, etc.)", key="new_mail_notes", height=60)
-            
-            if st.button("Add Order", key="add_mail"):
-                new_order = {
-                    'type': new_type_mail,
-                    'quantity': new_quantity_mail,
-                    'status': new_status_mail,
-                    'order_date': new_order_date.strftime('%Y-%m-%d'),
-                    'expected_date': new_expected.strftime('%Y-%m-%d'),
-                    'notes': new_notes_mail,
-                    'date_added': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                }
-                st.session_state.stock_data['in_mail'].append(new_order)
-                save_stock_data(st.session_state.stock_data)
-                st.success("Order added!")
-                st.rerun()
-        
-        # Display orders
-        if st.session_state.stock_data['in_mail']:
-            df_mail = pd.DataFrame(st.session_state.stock_data['in_mail'])
-            st.dataframe(df_mail, use_container_width=True)
-            
-            # Delete option
-            st.markdown("---")
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                if len(df_mail) > 0:
-                    delete_idx_mail = st.selectbox("Select order to delete", 
-                                             range(len(st.session_state.stock_data['in_mail'])),
-                                             format_func=lambda x: f"{df_mail.iloc[x]['type']} - Qty: {df_mail.iloc[x]['quantity']} ({df_mail.iloc[x]['status']})",
-                                             key="delete_mail_select")
-            with col2:
-                if st.button("🗑️ Delete", key="delete_mail"):
-                    st.session_state.stock_data['in_mail'].pop(delete_idx_mail)
-                    save_stock_data(st.session_state.stock_data)
-                    st.success("Deleted!")
-                    st.rerun()
-        else:
-            st.info("No orders tracked. Use quick summary above or add order details.")
-    
-    # Tab 4: Summary & Assignments
-    with tab4:
-        st.subheader("📊 Summary & Assignments")
-        st.caption("Overview of stock by office and assign units to projects")
-        
-        # Initialize office_stock if not exists
-        if 'office_stock' not in st.session_state.stock_data:
-            st.session_state.stock_data['office_stock'] = {
-                'Namibia': {'spoortrack': 0, 'gsatsolar': 0},
-                'Kenya': {'spoortrack': 0, 'gsatsolar': 0},
-                'South Africa': {'spoortrack': 0, 'gsatsolar': 0}
-            }
-        
-        # Display stock overview by office
-        st.markdown("### 📦 Stock Overview by Office")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("#### 🇳🇦 Namibia")
-            subcol1, subcol2 = st.columns(2)
-            with subcol1:
-                st.metric("SpoorTrack", st.session_state.stock_data['office_stock']['Namibia']['spoortrack'])
-            with subcol2:
-                st.metric("GSatSolar", st.session_state.stock_data['office_stock']['Namibia']['gsatsolar'])
-        
-        with col2:
-            st.markdown("#### 🇰🇪 Kenya")
-            subcol1, subcol2 = st.columns(2)
-            with subcol1:
-                st.metric("SpoorTrack", st.session_state.stock_data['office_stock']['Kenya']['spoortrack'])
-            with subcol2:
-                st.metric("GSatSolar", st.session_state.stock_data['office_stock']['Kenya']['gsatsolar'])
-        
-        with col3:
-            st.markdown("#### 🇿🇦 South Africa")
-            subcol1, subcol2 = st.columns(2)
-            with subcol1:
-                st.metric("SpoorTrack", st.session_state.stock_data['office_stock']['South Africa']['spoortrack'])
-            with subcol2:
-                st.metric("GSatSolar", st.session_state.stock_data['office_stock']['South Africa']['gsatsolar'])
+        st.subheader("📊 Summary: Do I Need to Order More?")
         
         # Calculate totals
+        total_st_in_stock = st.session_state.stock_data['office_stock']['Namibia']['spoortrack'] + \
+                            st.session_state.stock_data['office_stock']['Kenya']['spoortrack'] + \
+                            st.session_state.stock_data['office_stock']['South Africa']['spoortrack']
+        
+        total_gs_in_stock = st.session_state.stock_data['office_stock']['Namibia']['gsatsolar'] + \
+                            st.session_state.stock_data['office_stock']['Kenya']['gsatsolar'] + \
+                            st.session_state.stock_data['office_stock']['South Africa']['gsatsolar']
+        
+        # Calculate needed from plans
         if st.session_state.stock_data['deployment_plan']:
             df_plan = pd.DataFrame(st.session_state.stock_data['deployment_plan'])
-            
-            needed_spoortrack = df_plan['spoortrack'].sum()
-            needed_gsatsolar = df_plan['gsatsolar'].sum()
-            
-            # Calculate assigned
-            assigned_spoortrack = df_plan.get('spoortrack_assigned', pd.Series([0]* len(df_plan))).sum()
-            assigned_gsatsolar = df_plan.get('gsatsolar_assigned', pd.Series([0]* len(df_plan))).sum()
+            total_st_needed = df_plan['spoortrack'].sum()
+            total_gs_needed = df_plan['gsatsolar'].sum()
         else:
-            needed_spoortrack = 0
-            needed_gsatsolar = 0
-            assigned_spoortrack = 0
-            assigned_gsatsolar = 0
-        
-        # Get current stock
-        stock = st.session_state.stock_data['stock_summary']
-        in_hand_spoortrack = stock['spoortrack']['in_hand']
-        in_hand_gsatsolar = stock['gsatsolar']['in_hand']
-        
-        in_mail_spoortrack = stock['spoortrack']['in_mail']
-        in_mail_gsatsolar = stock['gsatsolar']['in_mail']
-        
-        # Calculate totals available
-        total_spoortrack = in_hand_spoortrack + in_mail_spoortrack
-        total_gsatsolar = in_hand_gsatsolar + in_mail_gsatsolar
+            total_st_needed = 0
+            total_gs_needed = 0
         
         # Calculate gaps
-        gap_spoortrack = max(0, needed_spoortrack - total_spoortrack)
-        gap_gsatsolar = max(0, needed_gsatsolar - total_gsatsolar)
+        st_gap = max(0, total_st_needed - total_st_in_stock)
+        gs_gap = max(0, total_gs_needed - total_gs_in_stock)
         
-        # Display overview
-        st.markdown("### 📦 Stock Overview")
+        # Display summary
+        st.markdown("### Overall Stock Status")
         
         col1, col2 = st.columns(2)
         
@@ -707,119 +485,71 @@ def deployment_planning_dashboard():
             st.markdown("#### SpoorTrack")
             subcol1, subcol2, subcol3 = st.columns(3)
             with subcol1:
-                st.metric("In Hand", in_hand_spoortrack)
+                st.metric("In Stock", total_st_in_stock)
             with subcol2:
-                st.metric("Ordered", in_mail_spoortrack)
+                st.metric("Needed", total_st_needed)
             with subcol3:
-                st.metric("🛒 Need to Order", gap_spoortrack, 
-                         delta=None if gap_spoortrack == 0 else f"-{gap_spoortrack}", 
-                         delta_color="inverse")
+                if st_gap > 0:
+                    st.metric("⚠️ To Order", st_gap, delta=f"-{st_gap}", delta_color="inverse")
+                else:
+                    surplus = total_st_in_stock - total_st_needed
+                    st.metric("✅ Surplus", surplus, delta=f"+{surplus}", delta_color="normal")
         
         with col2:
             st.markdown("#### GSatSolar")
             subcol1, subcol2, subcol3 = st.columns(3)
             with subcol1:
-                st.metric("In Hand", in_hand_gsatsolar)
+                st.metric("In Stock", total_gs_in_stock)
             with subcol2:
-                st.metric("Ordered", in_mail_gsatsolar)
+                st.metric("Needed", total_gs_needed)
             with subcol3:
-                st.metric("🛒 Need to Order", gap_gsatsolar,
-                         delta=None if gap_gsatsolar == 0 else f"-{gap_gsatsolar}", 
-                         delta_color="inverse")
+                if gs_gap > 0:
+                    st.metric("⚠️ To Order", gs_gap, delta=f"-{gs_gap}", delta_color="inverse")
+                else:
+                    surplus = total_gs_in_stock - total_gs_needed
+                    st.metric("✅ Surplus", surplus, delta=f"+{surplus}", delta_color="normal")
         
-        # Order message
+        # Clear message
         st.markdown("---")
-        total_gap = gap_spoortrack + gap_gsatsolar
+        total_gap = st_gap + gs_gap
         if total_gap == 0:
-            st.success("✅ You have enough units! No additional orders needed.")
+            st.success("✅ **You have enough units!** No orders needed.")
         else:
-            st.warning(f"⚠️ You need to order {total_gap} more units total ({gap_spoortrack} SpoorTrack, {gap_gsatsolar} GSatSolar)")
+            st.error(f"⚠️ **ACTION NEEDED:** Order {total_gap} more units ({st_gap} SpoorTrack, {gs_gap} GSatSolar)")
         
-        # Project assignments by office
+        # Breakdown by office
         st.markdown("---")
-        st.markdown("### 🎯 Project Assignments by Office")
-        st.caption("Assign available stock to specific projects/deployments")
+        st.markdown("### Stock by Office")
         
         if st.session_state.stock_data['deployment_plan']:
             df_plan = pd.DataFrame(st.session_state.stock_data['deployment_plan'])
-            
-            # Ensure assignment columns and office exist
-            if 'spoortrack_assigned' not in df_plan.columns:
-                df_plan['spoortrack_assigned'] = 0
-            if 'gsatsolar_assigned' not in df_plan.columns:
-                df_plan['gsatsolar_assigned'] = 0
             if 'office' not in df_plan.columns:
-                df_plan['office'] = 'Kenya'  # Default for old records
+                df_plan['office'] = 'Kenya'
             
-            # Group by office
             for office in ['Namibia', 'Kenya', 'South Africa']:
                 office_plans = df_plan[df_plan['office'] == office]
+                office_stock = st.session_state.stock_data['office_stock'][office]
+                
+                st.markdown(f"#### {office}")
                 
                 if len(office_plans) > 0:
-                    st.markdown(f"#### 📍 {office} Office")
-                    office_stock = st.session_state.stock_data['office_stock'][office]
-                    st.info(f"Available: {office_stock['spoortrack']} SpoorTrack, {office_stock['gsatsolar']} GSatSolar")
-                    
-                    for idx, row in office_plans.iterrows():
-                        with st.expander(f"📍 {row['country']} - {row['site']} ({row['date']})", expanded=False):
-                            col1, col2 = st.columns(2)
-                            
-                            with col1:
-                                st.write(f"**Needed:** {row['spoortrack']} SpoorTrack, {row['gsatsolar']} GSatSolar")
-                            
-                            with col2:
-                                # Handle NaN values from Google Sheets
-                                current_st_assigned = int(row.get('spoortrack_assigned', 0)) if pd.notna(row.get('spoortrack_assigned', 0)) else 0
-                                current_gs_assigned = int(row.get('gsatsolar_assigned', 0)) if pd.notna(row.get('gsatsolar_assigned', 0)) else 0
-                                st.write(f"**Assigned:** {current_st_assigned} SpoorTrack, {current_gs_assigned} GSatSolar")
-                            
-                            # Assignment controls
-                            subcol1, subcol2 = st.columns(2)
-                            with subcol1:
-                                assign_st = st.number_input(
-                                    f"Assign SpoorTrack",
-                                    min_value=0,
-                                    max_value=int(row['spoortrack']),
-                                    value=current_st_assigned,
-                                    key=f"assign_st_{idx}"
-                                )
-                            with subcol2:
-                                assign_gs = st.number_input(
-                                    f"Assign GSatSolar",
-                                    min_value=0,
-                                    max_value=int(row['gsatsolar']),
-                                    value=current_gs_assigned,
-                                    key=f"assign_gs_{idx}"
-                                )
-                            
-                            if st.button(f"💾 Update Assignment", key=f"update_assign_{idx}"):
-                                st.session_state.stock_data['deployment_plan'][idx]['spoortrack_assigned'] = assign_st
-                                st.session_state.stock_data['deployment_plan'][idx]['gsatsolar_assigned'] = assign_gs
-                                save_stock_data(st.session_state.stock_data)
-                                st.success("Assignment updated!")
-                                st.rerun()
-            
-            # Show assignment summary
-            st.markdown("---")
-            st.markdown("### 📋 Assignment Summary by Project")
-            
-            assignment_summary = []
-            for plan in st.session_state.stock_data['deployment_plan']:
-                assignment_summary.append({
-                    'Country': plan['country'],
-                    'Site': plan['site'],
-                    'Office': plan.get('office', 'Kenya'),
-                    'Date': plan['date'],
-                    'ST Needed': plan['spoortrack'],
-                    'ST Assigned': plan.get('spoortrack_assigned', 0),
-                    'GS Needed': plan['gsatsolar'],
-                    'GS Assigned': plan.get('gsatsolar_assigned', 0)
-                })
-            
-            df_summary = pd.DataFrame(assignment_summary)
-            st.dataframe(df_summary, use_container_width=True)
+                    office_st_needed = office_plans['spoortrack'].sum()
+                    office_gs_needed = office_plans['gsatsolar'].sum()
+                else:
+                    office_st_needed = 0
+                    office_gs_needed = 0
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**SpoorTrack:** {office_stock['spoortrack']} in stock | {office_st_needed} needed")
+                    if office_st_needed > office_stock['spoortrack']:
+                        st.warning(f"⚠️ Short by {office_st_needed - office_stock['spoortrack']}")
+                with col2:
+                    st.write(f"**GSatSolar:** {office_stock['gsatsolar']} in stock | {office_gs_needed} needed")
+                    if office_gs_needed > office_stock['gsatsolar']:
+                        st.warning(f"⚠️ Short by {office_gs_needed - office_stock['gsatsolar']}")
         else:
-            st.info("No deployment plans yet. Add plans in the Deployment Plan tab.")
+            st.info("Add deployment plans to see breakdown by office.")
 
 def er_login(username, password):
     """Test EarthRanger login credentials"""
