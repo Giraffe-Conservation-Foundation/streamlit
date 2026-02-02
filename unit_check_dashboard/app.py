@@ -352,6 +352,19 @@ def deployment_planning_dashboard():
             sa_st = st.number_input("SpoorTrack  ", min_value=0, value=st.session_state.stock_data['office_stock']['South Africa']['spoortrack'], key="sa_st_input")
             sa_gs = st.number_input("GSatSolar  ", min_value=0, value=st.session_state.stock_data['office_stock']['South Africa']['gsatsolar'], key="sa_gs_input")
         
+        # Ordered/In Transit section
+        st.markdown("---")
+        st.markdown("### 📬 Ordered / In Transit")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**SpoorTrack**")
+            ordered_st = st.number_input("Units ordered/in transit", min_value=0, value=st.session_state.stock_data['stock_summary']['spoortrack']['in_mail'], key="ordered_st_input")
+        
+        with col2:
+            st.markdown("**GSatSolar**")
+            ordered_gs = st.number_input("Units ordered/in transit ", min_value=0, value=st.session_state.stock_data['stock_summary']['gsatsolar']['in_mail'], key="ordered_gs_input")
+        
         if st.button("💾 Update Stock", type="primary"):
             st.session_state.stock_data['office_stock']['Namibia']['spoortrack'] = nam_st
             st.session_state.stock_data['office_stock']['Namibia']['gsatsolar'] = nam_gs
@@ -363,6 +376,10 @@ def deployment_planning_dashboard():
             # Update total stock summary
             st.session_state.stock_data['stock_summary']['spoortrack']['in_hand'] = nam_st + ken_st + sa_st
             st.session_state.stock_data['stock_summary']['gsatsolar']['in_hand'] = nam_gs + ken_gs + sa_gs
+            
+            # Update ordered/in mail
+            st.session_state.stock_data['stock_summary']['spoortrack']['in_mail'] = ordered_st
+            st.session_state.stock_data['stock_summary']['gsatsolar']['in_mail'] = ordered_gs
             
             save_stock_data(st.session_state.stock_data)
             st.success("✅ Stock updated!")
@@ -463,6 +480,14 @@ def deployment_planning_dashboard():
                             st.session_state.stock_data['office_stock']['Kenya']['gsatsolar'] + \
                             st.session_state.stock_data['office_stock']['South Africa']['gsatsolar']
         
+        # Get ordered units
+        total_st_ordered = st.session_state.stock_data['stock_summary']['spoortrack']['in_mail']
+        total_gs_ordered = st.session_state.stock_data['stock_summary']['gsatsolar']['in_mail']
+        
+        # Calculate total available (in stock + ordered)
+        total_st_available = total_st_in_stock + total_st_ordered
+        total_gs_available = total_gs_in_stock + total_gs_ordered
+        
         # Calculate needed from plans
         if st.session_state.stock_data['deployment_plan']:
             df_plan = pd.DataFrame(st.session_state.stock_data['deployment_plan'])
@@ -472,9 +497,9 @@ def deployment_planning_dashboard():
             total_st_needed = 0
             total_gs_needed = 0
         
-        # Calculate gaps
-        st_gap = max(0, total_st_needed - total_st_in_stock)
-        gs_gap = max(0, total_gs_needed - total_gs_in_stock)
+        # Calculate gaps (considering both in stock and ordered)
+        st_gap = max(0, total_st_needed - total_st_available)
+        gs_gap = max(0, total_gs_needed - total_gs_available)
         
         # Display summary
         st.markdown("### Overall Stock Status")
@@ -483,30 +508,34 @@ def deployment_planning_dashboard():
         
         with col1:
             st.markdown("#### SpoorTrack")
-            subcol1, subcol2, subcol3 = st.columns(3)
+            subcol1, subcol2, subcol3, subcol4 = st.columns(4)
             with subcol1:
                 st.metric("In Stock", total_st_in_stock)
             with subcol2:
-                st.metric("Needed", total_st_needed)
+                st.metric("Ordered", total_st_ordered)
             with subcol3:
+                st.metric("Needed", total_st_needed)
+            with subcol4:
                 if st_gap > 0:
                     st.metric("⚠️ To Order", st_gap, delta=f"-{st_gap}", delta_color="inverse")
                 else:
-                    surplus = total_st_in_stock - total_st_needed
+                    surplus = total_st_available - total_st_needed
                     st.metric("✅ Surplus", surplus, delta=f"+{surplus}", delta_color="normal")
         
         with col2:
             st.markdown("#### GSatSolar")
-            subcol1, subcol2, subcol3 = st.columns(3)
+            subcol1, subcol2, subcol3, subcol4 = st.columns(4)
             with subcol1:
                 st.metric("In Stock", total_gs_in_stock)
             with subcol2:
-                st.metric("Needed", total_gs_needed)
+                st.metric("Ordered", total_gs_ordered)
             with subcol3:
+                st.metric("Needed", total_gs_needed)
+            with subcol4:
                 if gs_gap > 0:
                     st.metric("⚠️ To Order", gs_gap, delta=f"-{gs_gap}", delta_color="inverse")
                 else:
-                    surplus = total_gs_in_stock - total_gs_needed
+                    surplus = total_gs_available - total_gs_needed
                     st.metric("✅ Surplus", surplus, delta=f"+{surplus}", delta_color="normal")
         
         # Clear message
