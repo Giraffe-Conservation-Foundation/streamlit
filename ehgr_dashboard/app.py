@@ -119,7 +119,8 @@ def main():
         event_cat = "monitoring_nam"
         event_type = "giraffe_survey_encounter_nam"
         since = "2024-07-01T00:00:00Z"
-        until = "2025-12-31T23:59:59Z"
+        # Set until to current system date
+        until = datetime.now().strftime("%Y-%m-%dT23:59:59Z")
 
         try:
             events = er.get_events(
@@ -244,7 +245,7 @@ def main():
     filtered_df = df[(df["evt_dttm"].dt.date >= start_date) & (df["evt_dttm"].dt.date <= end_date)]
     
     # Filter for specific users
-    target_users = ["Martina Kusters", "Katie Ahl", "Emma Wells"]
+    target_users = ["Martina Kusters", "Katie Ahl", "Emma Wells", "Etosha Heights"]
     if "user_name" in filtered_df.columns:
         filtered_df = filtered_df[filtered_df["user_name"].isin(target_users)].copy()
         if filtered_df.empty:
@@ -355,6 +356,116 @@ def main():
     else:
         st.info("No location data available for mapping")
 
+    # Display giraffe sightings data table
+    st.subheader("🦒 Giraffe sightings details")
+    if not filtered_df.empty:
+        # Check if we need to explode herd data for individual giraffes
+        if "event_details.Herd" in filtered_df.columns:
+            # Explode herd data to show individual giraffes
+            display_sightings_df = filtered_df.explode("event_details.Herd").reset_index(drop=True)
+            
+            # Normalize the herd details if they exist
+            if not display_sightings_df["event_details.Herd"].isna().all():
+                herd_details = json_normalize(display_sightings_df["event_details.Herd"])
+                display_sightings_df = pd.concat([display_sightings_df.drop(columns="event_details.Herd"), herd_details], axis=1)
+                
+                # Comprehensive column mapping including all event details
+                column_mapping = {
+                    'evt_dttm': 'Date/Time',
+                    'user_name': 'Observer',
+                    'evt_serial': 'Serial Number',
+                    'event_id': 'Event ID',
+                    'evt_imagePrefix': 'Image Prefix',
+                    'evt_herdSize': 'Herd Size',
+                    'evt_riverSystem': 'River System',
+                    'evt_herd_dir': 'Herd Direction',
+                    'evt_herd_dist': 'Herd Distance (m)',
+                    'evt_herdNotes': 'Herd Notes',
+                    'giraffe_id': 'Giraffe ID',
+                    'giraffe_sex': 'Sex',
+                    'giraffe_age': 'Age',
+                    'giraffe_notes': 'Giraffe Notes',
+                    'giraffe_right': 'Right Photo',
+                    'giraffe_left': 'Left Photo',
+                    'lat': 'Latitude',
+                    'lon': 'Longitude',
+                    'evt_url': 'Event URL'
+                }
+            else:
+                # Fallback if herd details are empty
+                column_mapping = {
+                    'evt_dttm': 'Date/Time',
+                    'user_name': 'Observer',
+                    'evt_serial': 'Serial Number',
+                    'event_id': 'Event ID',
+                    'evt_imagePrefix': 'Image Prefix',
+                    'evt_herdSize': 'Herd Size',
+                    'evt_riverSystem': 'River System',
+                    'evt_herd_dir': 'Herd Direction',
+                    'evt_herd_dist': 'Herd Distance',
+                    'evt_herdNotes': 'Notes',
+                    'lat': 'Latitude',
+                    'lon': 'Longitude',
+                    'evt_url': 'Event URL'
+                }
+        else:
+            # No herd data to explode, use event-level columns
+            display_sightings_df = filtered_df.copy()
+            column_mapping = {
+                'evt_dttm': 'Date/Time',
+                'user_name': 'Observer',
+                'evt_serial': 'Serial Number',
+                'event_id': 'Event ID',
+                'evt_imagePrefix': 'Image Prefix',
+                'evt_herdSize': 'Herd Size',
+                'evt_riverSystem': 'River System',
+                'evt_herd_dir': 'Herd Direction',
+                'evt_herd_dist': 'Herd Distance',
+                'evt_herdNotes': 'Herd Notes',
+                'evt_girID': 'Giraffe ID',
+                'evt_girSex': 'Sex',
+                'evt_girAge': 'Age',
+                'evt_girNotes': 'Giraffe Notes',
+                'evt_girRight': 'Right Photo',
+                'evt_gifLeft': 'Left Photo',
+                'lat': 'Latitude',
+                'lon': 'Longitude',
+                'evt_url': 'Event URL'
+            }
+        
+        # Build display dataframe with available columns
+        available_cols = [col for col in column_mapping.keys() if col in display_sightings_df.columns]
+        display_sightings_df = display_sightings_df[available_cols]
+        
+        # Rename columns to friendly names
+        display_sightings_df = display_sightings_df.rename(columns={k: v for k, v in column_mapping.items() if k in available_cols})
+        
+        # Format datetime if present
+        if 'Date/Time' in display_sightings_df.columns:
+            display_sightings_df['Date/Time'] = display_sightings_df['Date/Time'].dt.strftime('%Y-%m-%d %H:%M')
+        
+        # Format photo numbers to be at least 4 digits with leading zeros
+        def format_photo_number(x):
+            if pd.isna(x):
+                return x
+            try:
+                # Try to convert to int and then format with leading zeros
+                return str(int(float(x))).zfill(4)
+            except (ValueError, TypeError):
+                return x
+        
+        for photo_col in ['Right Photo', 'Left Photo']:
+            if photo_col in display_sightings_df.columns:
+                display_sightings_df[photo_col] = display_sightings_df[photo_col].apply(format_photo_number)
+        
+        # Sort by date descending
+        if 'Date/Time' in display_sightings_df.columns:
+            display_sightings_df = display_sightings_df.sort_values('Date/Time', ascending=False)
+        
+        st.dataframe(display_sightings_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No giraffe sightings to display")
+
     #### Age/sex breakdown bar chart
     st.subheader("🧬 Age / sex breakdown")
 
@@ -399,7 +510,7 @@ def main():
     # Allow user to edit patrol leader names
     patrol_names_input = st.text_area(
         "Patrol leader usernames (one per line)",
-        value="Martina Kusters\nKatie Ahl\nEmma Wells",
+        value="Martina Kusters\nKatie Ahl\nEmma Wells\nEtosha Heights",
         height=80,
         help="Enter patrol leader names to filter. From debug info, available leaders are shown."
     )
