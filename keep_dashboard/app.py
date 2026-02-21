@@ -1,12 +1,11 @@
 """
 KEEP Dashboard
-Embedded ArcGIS Dashboard for KEEP project
+Opens ArcGIS Dashboard in a new tab
 """
 
 import streamlit as st
 import sys
 from pathlib import Path
-import base64
 
 # Add shared utilities for logo
 current_dir = Path(__file__).parent.parent
@@ -17,16 +16,6 @@ try:
 except ImportError:
     def add_sidebar_logo():
         pass
-
-# Get ArcGIS credentials from secrets
-try:
-    ARCGIS_USERNAME = st.secrets.get("arcgis", {}).get("username", None)
-    ARCGIS_PASSWORD = st.secrets.get("arcgis", {}).get("password", None)
-    PORTAL_URL = st.secrets.get("arcgis", {}).get("portal_url", "https://giraffecf.maps.arcgis.com")
-except Exception:
-    ARCGIS_USERNAME = None
-    ARCGIS_PASSWORD = None
-    PORTAL_URL = "https://giraffecf.maps.arcgis.com"
 
 # Custom CSS for full-page iframe
 st.markdown("""
@@ -102,128 +91,53 @@ def main():
     # ArcGIS Dashboard URL
     dashboard_url = "https://giraffecf.maps.arcgis.com/apps/dashboards/572591b7353b4c1db3a4e85d200ed2de"
     
-    # Check if we have credentials
-    if not ARCGIS_USERNAME or not ARCGIS_PASSWORD:
-        st.error("❌ ArcGIS credentials not configured in secrets.")
-        st.info("Add arcgis.username and arcgis.password to Streamlit secrets.")
-        return
+    # Auto-open in new tab
+    st.markdown(f"""
+    <script>
+        window.open('{dashboard_url}', '_blank');
+    </script>
+    """, unsafe_allow_html=True)
     
-    # Create auto-login HTML page
-    # Encode credentials for JavaScript
-    username_b64 = base64.b64encode(ARCGIS_USERNAME.encode()).decode()
-    password_b64 = base64.b64encode(ARCGIS_PASSWORD.encode()).decode()
+    st.success("✅ Dashboard is opening in a new tab...")
     
-    html_code = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            body, html {{
-                margin: 0;
-                padding: 0;
-                height: 100%;
-                overflow: hidden;
-            }}
-            #dashboardFrame {{
-                width: 100%;
-                height: 100vh;
-                border: none;
-            }}
-            .loading {{
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                height: 100vh;
-                font-family: Arial, sans-serif;
-                background-color: #f5f5f5;
-            }}
-            .spinner {{
-                border: 4px solid #f3f3f3;
-                border-top: 4px solid #0079c1;
-                border-radius: 50%;
-                width: 40px;
-                height: 40px;
-                animation: spin 1s linear infinite;
-                margin-right: 15px;
-            }}
-            @keyframes spin {{
-                0% {{ transform: rotate(0deg); }}
-                100% {{ transform: rotate(360deg); }}
-            }}
-        </style>
-    </head>
-    <body>
-        <div id="loadingDiv" class="loading">
-            <div class="spinner"></div>
-            <div>
-                <h3>Authenticating with ArcGIS...</h3>
-                <p>Please wait while we load your dashboard</p>
-            </div>
-        </div>
-        <iframe id="dashboardFrame" style="display:none;"></iframe>
-        
-        <script>
-            // Decode credentials
-            const username = atob('{username_b64}');
-            const password = atob('{password_b64}');
-            const portalUrl = '{PORTAL_URL}';
-            const dashboardUrl = '{dashboard_url}';
-            
-            // Function to authenticate and get token
-            async function authenticate() {{
-                try {{
-                    const tokenUrl = portalUrl + '/sharing/rest/generateToken';
-                    
-                    const params = new URLSearchParams();
-                    params.append('username', username);
-                    params.append('password', password);
-                    params.append('referer', portalUrl);
-                    params.append('f', 'json');
-                    
-                    const response = await fetch(tokenUrl, {{
-                        method: 'POST',
-                        body: params
-                    }});
-                    
-                    const data = await response.json();
-                    
-                    if (data.token) {{
-                        // Successfully authenticated, load dashboard with token
-                        loadDashboard(data.token);
-                    }} else {{
-                        showError('Authentication failed: ' + (data.error?.message || 'Unknown error'));
-                    }}
-                }} catch (error) {{
-                    showError('Error authenticating: ' + error.message);
-                }}
-            }}
-            
-            function loadDashboard(token) {{
-                const iframe = document.getElementById('dashboardFrame');
-                const urlWithToken = dashboardUrl + '?token=' + token;
-                
-                iframe.onload = function() {{
-                    document.getElementById('loadingDiv').style.display = 'none';
-                    iframe.style.display = 'block';
-                }};
-                
-                iframe.src = urlWithToken;
-            }}
-            
-            function showError(message) {{
-                const loadingDiv = document.getElementById('loadingDiv');
-                loadingDiv.innerHTML = '<div style="color: red;"><h3>❌ Error</h3><p>' + message + '</p></div>';
-            }}
-            
-            // Start authentication on page load
-            authenticate();
-        </script>
-    </body>
-    </html>
-    """
+    st.info("""
+    The KEEP Dashboard is opening in a new browser tab.
     
-    # Display the auto-login page
-    st.components.v1.html(html_code, height=1000, scrolling=False)
+    **If it didn't open automatically:**
+    - Your browser may have blocked the popup
+    - Click the button below to open it manually
+    """)
+    
+    # Manual button as backup
+    st.markdown(f"""
+    <a href="{dashboard_url}" target="_blank">
+        <button style="
+            background-color: #0079c1;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            font-size: 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            margin: 10px 0;
+            font-weight: bold;
+        ">
+            🚀 Open KEEP Dashboard
+        </button>
+    </a>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    st.markdown("""
+    **Note:** 
+    - The dashboard opens in a separate tab where authentication works properly
+    - You may need to sign in to ArcGIS on first access
+    - After signing in once, your session will persist in that tab
+    - You can keep this tab open and return to the dashboard anytime
+    """)
 
 if __name__ == "__main__":
     main()

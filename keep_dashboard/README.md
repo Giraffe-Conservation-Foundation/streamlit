@@ -12,34 +12,26 @@ This dashboard embeds the ArcGIS Dashboard for the KEEP (Key Elephant & Environm
 
 https://giraffecf.maps.arcgis.com/apps/dashboards/572591b7353b4c1db3a4e85d200ed2de
 
-## ArcGIS Authentication
+## Dashboard Access
 
-The dashboard automatically authenticates using ArcGIS credentials stored in Streamlit secrets.
+The KEEP Dashboard automatically opens in a new browser tab when you access this page.
 
-### Setup
+### How It Works
 
-Add your ArcGIS credentials to Streamlit secrets:
+1. When you navigate to the KEEP Dashboard page, it automatically opens the ArcGIS dashboard in a new tab
+2. You'll authenticate with ArcGIS in that new tab (if not already signed in)
+3. Once authenticated, your session persists in that tab
+4. You can return to the dashboard anytime by keeping the tab open
 
-```toml
-[arcgis]
-username = "your-arcgis-username"
-password = "your-arcgis-password"
-portal_url = "https://giraffecf.maps.arcgis.com"  # Optional, defaults to this value
-```
+### Manual Access
 
-The app will:
-1. Automatically authenticate with ArcGIS using the provided credentials
-2. Get an access token
-3. Load the dashboard with the token - no user interaction required
+If the automatic opening is blocked by your browser, a button is provided to manually open the dashboard.
 
-### For Streamlit Cloud
+**Dashboard URL:** https://giraffecf.maps.arcgis.com/apps/dashboards/572591b7353b4c1db3a4e85d200ed2de
 
-1. Go to your app settings on Streamlit Cloud
-2. Navigate to "Secrets"
-3. Add the arcgis credentials as shown above
-4. Save and redeploy
+### Note
 
-**Note:** Users will not see any authentication prompts. The dashboard loads automatically.
+This approach opens the dashboard in a full browser context where ArcGIS authentication works properly, avoiding the limitations of iframe embedding.
 
 ## Password
 
