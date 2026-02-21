@@ -85,12 +85,19 @@ def main():
         return
     
     # Page title
-    st.title("🔑 KEEP Dashboard")
-    st.markdown("Key Elephant & Environmental Pressures")
+    st.title("🎓 KEEP Dashboard")
     st.markdown("---")
     
     # ArcGIS Dashboard URL
     dashboard_url = "https://giraffecf.maps.arcgis.com/apps/dashboards/572591b7353b4c1db3a4e85d200ed2de"
+    
+    # Try to add token if available in secrets for automatic authentication
+    try:
+        if "arcgis" in st.secrets and "token" in st.secrets["arcgis"]:
+            token = st.secrets["arcgis"]["token"]
+            dashboard_url = f"{dashboard_url}?token={token}"
+    except:
+        pass
     
     # Embed the dashboard
     st.components.v1.iframe(
