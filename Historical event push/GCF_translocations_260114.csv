@@ -1,0 +1,161 @@
+organisation_1,organisation_2,organisation_3,trans_type,trans_range,origin_country,origin_site,origin_longitude,origin_latitude,capture_date,departure_time,destination_country,destination_site,destination_longitude,destination_latitude,release_time,species,total_individuals,males,females,notes
+Government of Senegal,,,founder,extralimital,cmr,,12.7328,5.57,01-01-71,,sen,Niokola-Koba National Park,-12.9601,12.9886,,northern_kordofan,7,,,"all subsequently died; assumed historically Kordofan, out of range. Malyjurkova et al. 2013"
+Big Game Parks,,Giraffe Conservation Foundation,founder,range,swz,KaMsholo,31.9416,-26.9786,01-01-22,,swz,Mnjoli Game Reserve,,,,southern_southafrican,5,,,KaMsholo (old Nisela lodge) / Umfomoti Ranch (Mnjoli)
+Big Game Parks,,Giraffe Conservation Foundation,augmentation,range,swz,KaMsholo,31.9416,-26.9786,01-01-22,,swz,Panata Ranch,,,,southern_southafrican,2,,,KaMsholo (old Nisela lodge)
+Uganda Wildlife Authority,Kenya Wildlife Service,,augmentation,range,ken,Lake Nakuru National Park,36.1211,-0.38,,,uga,Kidepo Valley National Park ,33.75179365,3.830215418,,northern_nubian,3,1,2,"Kalema, G. (1998)"
+Kenya Wildlife Service,,,founder,extralimital,ken,Soy Ranch,,,01-01-79,,ken,Girafffe Centre,36.7443,-1.3763,,northern_nubian,3,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Soy Ranch,,,01-01-67,,ken,Maralal National Sanctuary,,,,northern_nubian,11,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Soy Ranch,,,01-01-77,,ken,Lake Nakuru National Park,36.1211,-0.38,,northern_nubian,26,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Soy Ranch,,,01-01-83,,ken,Yonder Flower Farm,,,,northern_nubian,7,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Soy Ranch,,,01-01-83,,ken,Ruma National Park,,,,northern_nubian,27,5,22,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Soy Ranch,,,01-01-83,,ken,Lake Nakuru National Park,36.1211,-0.38,,northern_nubian,17,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Soy Ranch,,,01-01-84,,ken,Mount Elgon National Park,,,,northern_nubian,21,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Soy Ranch,,,01-01-80,,ken,Kitale Farm,,,,northern_nubian,10,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Soy Ranch,,,01-01-93,,ken,Soysambu Wildlife Conservancy,36.2344,-0.4066,,northern_nubian,2,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Lake Nakuru National Park,36.1211,-0.38,01-01-95,,ken,Soysambu Wildlife Conservancy,36.2344,-0.4066,,northern_nubian,7,3,4,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Lake Nakuru National Park,36.1211,-0.38,01-01-97,,uga,Kidepo Valley National Park,33.75179365,3.830215418,,northern_nubian,3,1,2,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Lake Nakuru National Park,36.1211,-0.38,01-01-02,,ken,Kigio Wildlife Conservancy,36.3934,-0.5675,,northern_nubian,9,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Giraffe Centre,36.7443,-1.3763,,,ken,Haller Nature Park,39.7177,-4.015,,northern_nubian,4,,,1984-1992. Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Giraffe Centre,36.7443,-1.3763,01-01-98,,ken,Soysambu Wildlife Conservancy,36.2344,-0.4066,,northern_nubian,1,,1,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Giraffe Centre,36.7443,-1.3763,01-01-03,,ken,Soysambu Wildlife Conservancy,36.2344,-0.4066,,northern_nubian,3,,3,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Giraffe Centre,36.7443,-1.3763,01-01-08,,ken,Lake Nakuru National Park,36.1211,-0.38,,northern_nubian,2,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Giraffe Centre,36.7443,-1.3763,01-01-07,,ken,Mwea National Reserve,37.61733,-0.8233,,northern_nubian,3,2,1,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Giraffe Centre,36.7443,-1.3763,01-01-11,,ken,Mwea National Reserve,37.61733,-0.8233,,northern_nubian,1,1,,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Giraffe Centre,36.7443,-1.3763,01-01-15,,ken,Mwea National Reserve,37.61733,-0.8233,,northern_nubian,1,1,,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Giraffe Centre,36.7443,-1.3763,01-01-18,,ken,Mwea National Reserve,37.61733,-0.8233,,northern_nubian,3,1,2,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Giraffe Centre,36.7443,-1.3763,01-01-19,,ken,Mwea National Reserve,37.61733,-0.8233,,northern_nubian,3,2,1,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Giraffe Centre,36.7443,-1.3763,01-01-21,,ken,Rimoi National Reserve,35.6169,0.6424,,northern_nubian,3,,3,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Giraffe Centre,36.7443,-1.3763,01-01-22,,ken,Rimoi National Reserve,35.6169,0.6424,,northern_nubian,3,2,1,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Soy Ranch,,,01-01-00,,ken,Mwea National Reserve,37.61733,-0.8233,,northern_nubian,9,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Yonder Flower Farm,,,01-01-04,,ken,Mwea National Reserve,37.61733,-0.8233,,northern_nubian,6,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Soysambu Wildlife Conservancy,36.2344,-0.4066,01-01-12,,ken,Rimoi National Reserve,35.6169,0.6424,,northern_nubian,7,3,4,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Soysambu Wildlife Conservancy,36.2344,-0.4066,01-01-16,,ken,Rimoi National Reserve,35.6169,0.6424,,northern_nubian,8,1,7,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Kitale Farm,,,,,ken,Sergoit Farm,,,,northern_nubian,10,,,2002-2005. Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Kigio Wildlife Conservancy,36.3933,-0.5674,01-01-18,,ken,Girafffe Centre,36.7443,-1.3763,,northern_nubian,2,,2,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Haller Nature Park,39.7177,-4.015,01-01-04,,ken,Nguuni Nature Sanctuary,,,,northern_nubian,7,,,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Soysambu Wildlife Conservancy,36.2344,-0.4066,01-01-11,,ken,Ruko Community Sanctuary,,,,northern_nubian,8,1,7,Muneza et al. (2024)
+Kenya Wildlife Service,,,founder,extralimital,ken,Marula Farm,,,,,ken,Tindress Farm,,,,northern_nubian,3,,,2011-2012. Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Soysambu Wildlife Conservancy,36.2344,-0.4066,01-01-20,,ken,Tindress Farm,,,,northern_nubian,2,1,1,Muneza et al. (2024)
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Soysambu Wildlife Conservancy,36.2344,-0.4066,01-01-22,,ken,Tindress Farm,,,,northern_nubian,5,1,4,
+Kenya Wildlife Service,,,,extralimital,ken,Giraffe Centre,36.7443,-1.3763,,,ken,Soysambu Widlife Conservancy,36.2344,-0.4066,,northern_nubian,,,,
+Kenya Wildlife Service,,,,extralimital,ken,Giraffe Centre,36.7443,-1.3763,,,ken,Kigio Wildlife Conservancy,36.3934,-0.5675,,northern_nubian,,,,
+Kenya Wildlife Service,,,augmentation,extralimital,ken,Giraffe Centre,36.7443,-1.3763,,,ken,Lake Nakuru National Park,36.1211,-0.38,,northern_nubian,,,,
+Kenya Wildlife Service,,,,extralimital,ken,Giraffe Centre,36.7443,-1.3763,,,ken,Mwea Nature Reserve,37.61733,-0.8233,,northern_nubian,,,,
+Kenya Wildlife Service,Solio Game Reserve,,founder,extralimital,ken,Giraffe Centre,36.7443,-1.3763,28-01-25,28-10-25,ken,Solio Game Reserve,,,,northern_nubian,2,,2,Out of range - moved into reticulated range
+Kenya Wildlife Service,The Safari Collection,,augmentation,range,ken,Kedong Ranch,36.4239,-0.8813,22-08-25,22-08-25,ken,Nairobi National Park,36.861,-1.382,,masai_masai,2,1,1,
+Kenya Wildlife Service,The Safari Collection,,augmentation,range,ken,Kedong Ranch,36.4239,-0.8813,23-08-25,23-08-25,ken,Loldia Farm,,,,masai_masai,2,1,1,
+Kenya Wildlife Service,The Safari Collection,,augmentation,range,ken,Manera Farm,,,04-11-25,04-11-25,ken,WRTI Upper Annex,,,,masai_masai,9,,,
+Kenya Wildlife Service,The Safari Collection,,augmentation,range,ken,Manera Farm,,,04-11-25,04-11-25,ken,Nairobi National Park,36.861,-1.382,,masai_masai,5,,,
+Kenya Wildlife Service,The Safari Collection,,augmentation,range,ken,Kedong Ranch,36.4239,-0.8813,05-11-25,05-11-25,ken,Oserian Conservancy,,,,masai_masai,9,,,
+Kenya Wildlife Service,The Safari Collection,,augmentation,range,ken,Kedong Ranch,36.4239,-0.8813,05-11-25,05-11-25,ken,Nairobi National Park,36.861,-1.382,,masai_masai,2,,,
+Kenya Wildlife Service,The Safari Collection,,augmentation,range,ken,Kedong Ranch,36.4239,-0.8813,05-12-25,05-12-25,ken,Nairobi Animal Orphanage,,,,masai_masai,1,,,
+,,,founder,extralimital,ken,,,,01-01-86,,rwa,Akagera National Park,30.6502,-1.5459,,masai_masai,6,,,
+"Ministry of Environment, Forestry & Tourism",Giraffe Conservation Foundation,,augmentation,range,nam,Waterburg Plateau Park,17.3376,-20.3528,01-01-20,,nam,Okongo Conservancy,,,,southern_angolan,3,,,Mass Capture - not sure sex ratio or capture location 
+Doro !nawas Conservancy,Giraffe Conservation Foundation,,augmentation,range,nam,Otjiwarango,16.6822,-20.4622,01-01-20,,nam,Doro !nawas Conservancy,,,,southern_angolan,14,,,Mass Capture - not sure sex ratio or capture location 
+"Ministry of Environment, Forestry & Tourism",Giraffe Conservation Foundation,,augmentation,range,nam,Waterburg Plateau Park,17.3376,-20.3528,01-01-20,,nam,Mangetti National Park,19.0417,-18.6963,,southern_angolan,13,,,Mass Capture (?) 
+//Huab Conservancy,Giraffe Conservation Foundation,,augmentation,range,nam,Otjiwarango,16.6822,-20.4622,01-01-21,,nam,//Huab Conservancy,,,,southern_angolan,14,,,"Mass Capture, unsure sex ratio and capture site "
+ProNamib Conservancy,African Wildlife Services,,augmentation,range,nam,Nomtsas,,,26-04-22,27-04-22,nam,ProNamib Nature Reserve,,,,southern_angolan,6,3,3,
+"Ministry of Environment, Forestry & Tourism",Giraffe Conservation Foundation,,augmentation,range,nam,Waterburg Plateau Park,17.3376,-20.3528,01-08-22,,nam,Mangetti National Park,19.0417,-18.6963,,southern_angolan,19,,,"Mass Capture, unsure sex ration and capture site "
+Cuatir Nature Reserve,Wildlife Vets Namibia,Mt Etjo Safaris,founder,range,nam,Okonjati Game Reserve,16.4567,-21.0266,28-11-22,28-11-22,ago,Cuatir Nature Reserve,18.1978,-16.4839,,southern_angolan,4,2,2,Mt Etjo (Okonjati)
+ProNamib Conservancy,African Wildlife Services,Giraffe Conservation Foundation,augmentation,range,nam,Bitterwasser,,,28-05-23,28-05-23,nam,ProNamib Nature Reserve,,,,southern_angolan,5,2,3,"Nam-PRPC-23-1, Nam-PNPC-23-2, Nam-PNPC-23-3, Nam-PNPC, Nam-PNPC-23-5, Nam-PNPC-23-6"
+Ongongo Conservancy,Giraffe Conservation Foundation,"Ministry of Environment, Forestry & Tourism",augmentation,range,nam,Etosha Heights Private Reserve,15.2852,-19.2428,01-01-23,,nam,Ongongo Conservancy,,,,southern_angolan,4,2,2,
+Otjiu West Conservancy,Giraffe Conservation Foundation,Du Preez Wild,augmentation,range,nam,Kamanab farm,,,21-05-24,,nam,Otjiu West Conservancy,,,21-05-24,southern_angolan,14,,,Ongongo - Otjiu West Conservancy
+Giraffe Conservation Foundation,African Parks,Du Preez Wild,founder,range,nam,Otjiwarango,16.6822,-20.4622,01-07-23,,ago,Iona National Park,12.2547,-16.363,05-07-23,southern_angolan,14,6,8,need to check sex ratio - Mass Capture 
+Giraffe Conservation Foundation,African Parks,Du Preez Wild,augmentation,range,nam,Otjiwarango,16.6822,-20.4622,16-05-24,,ago,Iona National Park,12.2547,-16.363,18-05-24,southern_angolan,14,,,need to check sex ratio - Mass Capture 
+Christo's Game Dealers,INBAC,,founder,range,nam,Private land,,,01-08-24,,ago,Parque Nacional do Quicama,13.5833,-9.75,,southern_angolan,3,,,"Kissama NP (Parque Nacional do Quicama). Kissama had S. African giraffe introduced previously, they got up to ~70 giraffe in 2019 or so (have to check) and then all poached. Now AGOn giraffe introduced"
+Christo's Game Dealers,INBAC,,founder,range,nam,Private land,,,01-08-24,,ago,Benguela District,14.0119,-12.8489,,southern_angolan,4,,,
+"Ministry of Environment, Forestry & Tourism",,,,range,nam,,,,,,nam,Mudumu National Park,23.5252,-18.0964,,southern_angolan,,,,
+Peace Parks Foundation,Du Preez Wild,,founder,extralimital,nam,Otjiwarango,16.6822,-20.4622,01-01-15,,zmb,Simalaha Conservancy,,,,southern_angolan,8,,,
+Peace Parks Foundation,Du Preez Wild,,,extralimital,nam,Otjiwarango,16.6822,-20.4622,01-01-21,,zmb,Simalaha Conservancy,,,,southern_angolan,,,,
+,,,,extralimital,nam,,,,,,zmb,Kyindu Ranch,,,,southern_angolan,,,,
+,,,,extralimital,nam,Otjiwarongo,16.6822,-20.4622,,,zmb,Kalumbila Farm,,,,southern_angolan,5,2,3,
+,,,,extralimital,nam,,,,,,cod,Muyambo Park,,,,southern_southafrican,,,,
+,,,,extralimital,nam,,,,,,cod,Parc de Kashamata,,,,southern_southafrican,,,,
+,,,,range,nam,,,,,,bwa,BWA (west),,,,southern_angolan,,,,western BWA
+,,,,extralimital,nam,,,,,,zaf,"ZAF (Public, Private)",,,,southern_angolan,,,,
+"Ministry of Environment, Forestry & Tourism",Government of NGA,,founder,extralimital,nam,,,,01-01-15,,nga,Sumu Wildlife Park,10.6521,9.6603,,southern_angolan,10,,,
+Government of DRC,Wildlife Vets NAM,Herholdt Family Trust,founder,extralimital,nam,,,,01-01-17,,cod,Parc de la Vallee de la Nsele,15.6301,-4.2571,,southern_angolan,11,,,
+Government of DRC,Wildlife Vets NAM,Herholdt Family Trust,founder,extralimital,nam,,,,01-01-17,,cod,Mateba Island,,,,southern_angolan,4,,,all subsequently died. out of range
+ProNamib,African Wildlife Services,Giraffe Conservation Foundation,founder,range,nam,Nomtsas,,,27-04-22,,nam,ProNamib Nature Reserve,,,,southern_angolan,,,,
+ProNamib,African Wildlife Services,Giraffe Conservation Foundation,augmentation,range,nam,Bitterwasser,,,29-05-23,,nam,ProNamib Nature Reserve,,,,southern_angolan,,,,
+Uganda Wildlife Authority,Giraffe Conservation Foundation,,founder,range,ner,Koure (Giraffe Zone),2.5953,13.3146,02-11-18,11-11-18,ner,Gadabedji Biosphere Reserve,8.2568,14.2447,2018-11,northern_westafrican,8,3,5,"Ditch/Green Giant, Flat Tyre/New Belgium, Crescant, PC/Charm, Hitch"
+Government of Niger,Giraffe Conservation Foundation,,augmentation,range,ner,Koure (Giraffe Zone),2.5953,13.3146,09-11-22,11-11-22,ner,Gadabedji Biosphere Reserve,8.2568,14.2447,,northern_westafrican,4,0,4,
+,,,captivity,extralimital,nga,Sumu Wildlife Park,10.6521,9.6603,,,nga,Small captive facilities,,,,southern_angolan,,,,
+,,,founder,extralimital,sen,Reserve de Bandia,-17.0076,14.5602,,,sen,Fathala Wildlife Reserve,-16.4465,13.6536,,southern_southafrican,4,,,
+,,,founder,extralimital,sen,Reserve de Bandia,-17.0076,14.5602,01-01-25,,mli,Tienfala,-7.7496,12.7324,,southern_southafrican,5,1,4,
+,,,founder,extralimital,sen,Reserve de Bandia,-17.0076,14.5602,01-01-03,,sen,Fathala Wildlife Reserve,-16.4465,13.6536,,southern_southafrican,2,,,Malyjurkova et al. 2014
+,,,augmentation,extralimital,sen,Reserve de Bandia,-17.0076,14.5602,01-01-06,,sen,Fathala Wildlife Reserve,-16.4465,13.6536,,southern_southafrican,2,,,Malyjurkova et al. 2014
+,,,augmentation,extralimital,sen,Reserve de Bandia,-17.0076,14.5602,01-01-08,,sen,Fathala Wildlife Reserve,-16.4465,13.6536,,southern_southafrican,2,,,Malyjurkova et al. 2015
+,,,augmentation,extralimital,sen,Reserve de Bandia,-17.0076,14.5602,01-01-12,,sen,Fathala Wildlife Reserve,-16.4465,13.6536,,southern_southafrican,2,,,Malyjurkova et al. 2016
+Giraffe Conservation Foundation,,,augmentation,range,zaf,Mount Verde,30.3108,-29.5396,29-08-23,29-08-23,moz,Karingani Game Reserve,32.0663,-24.2522,,southern_southafrican,12,4,8,translocation report
+Giraffe Conservation Foundation,,,founder,extralimital,zaf,KwaZulu Natal,31.1388,-28.4361,01-10-18,,mwi,Majete Wildlife Reserve,34.7422,-15.9093,05-10-20,southern_southafrican,13,5,8,translocation report
+Giraffe Conservation Foundation,Wildlands Trust,Grant Tracy Game Capture,augmentation,range,zaf,KwaZulu Natal,31.1388,-28.4361,01-01-20,,zaf,Somkhanda Game Reserve,31.844,-27.5912,,southern_southafrican,10,,,Unsure method/sex ratio 
+African Parks,Grant Tracy Game Capture,Giraffe Conservation Foundation,augmentation,extralimital,zaf,Mount Verde,30.3108,-29.5396,01-01-21,01-08-21,mwi,Majete Wildlife Reserve,34.7422,-15.9093,2021-10,southern_southafrican,10,4,6,One female died (disappeared) immediately after release. One female died from lion predation in June 2024. Craig Majete pers comm
+,,,,extralimital,zaf,,,,,,ago,Parque Nacional do Quicama,13.5833,-9.75,,southern_southafrican,,,,all died
+,,,,range,zaf,,,,,,bwa,BWA (southeast),,,,southern_southafrican,,,,ZAF to south-eastern BWA (Private)
+,,,founder,extralimital,zaf,,,,01-01-97,,sen,Reserve de Bandia,-17.0076,14.5602,,southern_southafrican,4,,,
+SANParks,Peace Parks Foundation,ANAC,,range,zaf,,,,01-01-12,,moz,Maputo National Park,32.7218,-26.5308,,southern_southafrican,8,,,
+SANParks,Peace Parks Foundation,ANAC,augmentation,range,zaf,,,,01-01-13,,moz,Maputo National Park,32.7218,-26.5308,,southern_southafrican,12,,,
+SANParks,Peace Parks Foundation,ANAC,augmentation,range,zaf,,,,01-01-17,,moz,Maputo National Park,32.7218,-26.5308,,southern_southafrican,12,,,
+SANParks,Peace Parks Foundation,ANAC,founder,range,zaf,Kruger National Park,31.7871,-24.0981,01-01-11,,moz,Zinave National Park,33.5481,-21.6788,,southern_southafrican,7,,,
+SANParks,Peace Parks Foundation,ANAC,augmentation,range,zaf,,,,01-01-19,,moz,Zinave National Park,33.5481,-21.6788,,southern_southafrican,11,,,
+SANParks,Peace Parks Foundation,ANAC,augmentation,range,zaf,Kruger National Park,31.7871,-24.0981,01-01-02,,moz,Limpopo National Park ,32.1746,-23.6548,,southern_southafrican,4,,,
+SANParks,Peace Parks Foundation,ANAC,augmentation,range,zaf,Kruger National Park,31.7871,-24.0981,01-01-03,,moz,Limpopo National Park ,32.1746,-23.6548,,southern_southafrican,13,,,
+SANParks,Peace Parks Foundation,ANAC,augmentation,range,zaf,Kruger National Park,31.7871,-24.0981,01-01-04,,moz,Limpopo National Park ,32.1746,-23.6548,,southern_southafrican,15,,,
+SANParks,Peace Parks Foundation,ANAC,augmentation,range,zaf,Kruger National Park,31.7871,-24.0981,01-01-05,,moz,Limpopo National Park ,32.1746,-23.6548,,southern_southafrican,14,,,
+SANParks,Peace Parks Foundation,ANAC,augmentation,range,zaf,Kruger National Park,31.7871,-24.0981,01-01-06,,moz,Limpopo National Park ,32.1746,-23.6548,,southern_southafrican,15,,,
+SANParks,Peace Parks Foundation,ANAC,augmentation,range,zaf,Kruger National Park,31.7871,-24.0981,01-01-07,,moz,Limpopo National Park ,32.1746,-23.6548,,southern_southafrican,20,,,
+SANParks,Peace Parks Foundation,ANAC,augmentation,range,zaf,Kruger National Park,31.7871,-24.0981,01-01-08,,moz,Limpopo National Park ,32.1746,-23.6548,,southern_southafrican,33,,,
+,,,founder,extralimital,zaf,,,,01-01-97,,sen,Reserve de Bandia,-17.0076,14.5602,,southern_southafrican,4,2,2,Malyjurkova et al. (2013)
+Uganda Wildlife Authority,Kenya Wildlife Service,,founder,range,uga,Murchison Falls National Park (north),31.65827868,2.424292085,01-07-15,,uga,Lake Mburo National Park,30.97232267,-0.596347396,,northern_nubian,15,4,11,UWA translocation with KWS; GCF did assessment 
+Uganda Wildlife Authority,Giraffe Conservation Foundation,,founder,range,uga,Murchison Falls National Park (north),31.65827868,2.424292085,18-01-16,29-01-16,uga,Murchison Falls National Park (South),31.68536474,2.190267322,,northern_nubian,18,5,13,https://www.zotero.org/groups/5147971/gcf_reportsinternal/collections/IFA67YAS/items/HC76WH6N/attachment/TXT4N7I5/reader
+Uganda Wildlife Authority,Giraffe Conservation Foundation,,augmentation,range,uga,Murchison Falls National Park (north),31.65827868,2.424292085,08-10-17,23-10-17,uga,Murchison Falls National Park (South),31.68536474,2.190267322,,northern_nubian,19,13,6,
+Uganda Wildlife Authority,Giraffe Conservation Foundation,,augmentation,range,uga,Murchison Falls National Park (north),31.65827868,2.424292085,08-08-18,18-08-18,uga,Kidepo Valley National Park ,33.75179365,3.830215418,,northern_nubian,14,1,13,"Kabim, Katrina, Lucky was a snared giraffe and released , Miss Kidepo, Pakuba, Murchison, Saba, Kabalega, Acacia, Lulu, Piggly Wiggly, Freckles was released, Petunia, Tangi, Victoria, Loware"
+Uganda Wildlife Authority,Giraffe Conservation Foundation,,founder,range,uga,Murchison Falls National Park (north),31.65827868,2.424292085,23-10-19,01-11-19,uga,Pian Upe Wildlife Reserve,34.2421743,1.838403162,2019-11,northern_nubian,14,10,4,"Angel, Dan, Dawn, Okolim, Pian, Buligi, Jamie, Upe, Ufufuo, Kevin, Ujasiri, Chepsikunya, Robert, Kadam, Hannah"
+Uganda Wildlife Authority,Giraffe Conservation Foundation,,augmentation,range,uga,Murchison Falls National Park (north),31.65827868,2.424292085,19-11-20,30-11-20,uga,Pian Upe Wildlife Reserve,34.2421743,1.838403162,2020-11,northern_nubian,15,11,4,"Steph, Lira, Rii, Kamdini, Pakwach, Bumblefoot, Soroti, Corona, Mandazi, Kumi, Malkia, Fupi, Kahawa, Mama Kubwa, Chapati"
+Uganda Wildlife Authority,Kenya Wildlife Service,,augmentation,range,uga,Murchison Falls National Park (north),31.65827868,2.424292085,01-04-97,,uga,Kidepo Valley National Park ,33.75179365,3.830215418,,northern_nubian,3,1,2,
+Uganda Wildlife Authority,,,,range,uga,Murchison Falls National Park (north),31.65827868,2.424292085,01-01-24,,uga,Ziwa Rhino and Wildlife Ranch,32.07766,1.44826,,northern_nubian,,,,
+Uganda Wildlife Authority,,,captivity,range,uga,Murchison Falls National Park (north),31.65827868,2.424292085,01-01-20,,uga,Entebbe Zoo,32.47939864,0.0545,,northern_nubian,,,,UGA Wildlife Education Centre (Entebbe Zoo)
+,,,founder,extralimital,zmb,,,,01-01-10,,cod,Society Virginia,,,,southern_southafrican,3,1,2,
+,,,founder,extralimital,zmb,,,,01-01-07,,cod,Mikembo Sanctuary,27.661,-11.4687,,southern_southafrican,2,1,1,
+,,,founder,range,zwe,Nuanetsi / Bubye Valley / Save Valley,,,01-01-91,,zwe,Cawston Wildlife Estate,,,,southern_southafrican,68,,,
+Great Plains Foundation,African Wildlife Management & Conservation,,augmentation,range,zwe,Nuanetsi,30.9832,-21.5367,01-05-24,,zwe,Sikumi-Ngamo Forest Reserve,,,28-05-24,southern_southafrican,69,,,
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Cawston,,,01-01-10,,zwe,"Wild Horizons, Zambezi NP, Victoria Falls",,,4,southern_southafrican,4,,,Nyamandlovu
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Cawston,,,01-01-10,,zwe,Bulawayo Area,,,8,southern_southafrican,8,,,Nyamandlovu
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Chengeta,,,01-01-10,,zwe,Harare Area,,,3,southern_southafrican,3,,,Selous
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Sarahata,,,01-01-11,,zwe,"Norton Ranch, Matopos, Burton",,,2,southern_southafrican,2,,,Raffingora
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Hillbre,,,01-01-11,,zwe,"Garura Eco, Murewa",,,3,southern_southafrican,3,,,Darwendale 
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Hillbre,,,01-01-11,,zwe,"Bushman Rock, Bromley",,,2,southern_southafrican,2,,,Darwendale 
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Swartfontein Farm,,,01-01-11,,zwe,"Brooklands, Odzi",,,3,southern_southafrican,3,,,Masvingo
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Cawston Ranch,,,01-01-11,,zwe,"Longueville Farm, Gwanda",,,3,southern_southafrican,3,,,Darwendale 
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Cawston Ranch,,,01-01-11,,zwe,"Matopos, Burton",,,5,southern_southafrican,5,,,Darwendale 
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Bishopstone Ranch,,,01-01-12,,zwe,"Umfurudzi, Shamva",,,10,southern_southafrican,10,,,Beitbridge
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Bishopstone Ranch,,,01-01-12,,zwe,"Umfurudzi, Shamva",,,8,southern_southafrican,8,,,Beitbridge
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Bishopstone Ranch,,,01-01-12,,zwe,"Umfurudzi, Shamva",,,7,southern_southafrican,7,,,Beitbridge
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Thetford,,,01-01-12,,zwe,"Eco Game Farm, Headlands",,,5,southern_southafrican,5,,,Mazowe
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Irvine's,,,01-01-12,,zwe,Mazowe Game Park,,,3,southern_southafrican,3,,,Beatrice
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Irvine's,,,01-01-12,,zwe,"Bally Vaughan, Shamva",,,1,southern_southafrican,1,,,Beatrice
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Cawston Block,,,01-01-13,,zwe,"Umfurudzi, Shamva",,,7,southern_southafrican,7,,,Nyamandlovu
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Sondelani,,,01-01-13,,zwe,"Umfurudzi, Shamva",,,11,southern_southafrican,11,,,West Nicholson
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Sango Ranch,,,01-01-13,,zwe,Zambezi National Park,25.7102,-17.9783,7,southern_southafrican,7,,,Save Valley Conservancy
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Sango Ranch,,,01-01-13,,zwe,Zambezi National Park,25.7102,-17.9783,3,southern_southafrican,3,,,Save Valley Conservancy
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Sango Ranch,,,01-01-13,,zwe,Gonarezhou National Park,31.9065,-21.2676,7,southern_southafrican,7,,,Save Valley Conservancy
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Sango Ranch,,,01-01-13,,zwe,Gonarezhou National Park,31.9065,-21.2676,7,southern_southafrican,7,,,Save Valley Conservancy
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Sango Ranch,,,01-01-13,,zwe,Gonarezhou National Park,31.9065,-21.2676,7,southern_southafrican,7,,,Save Valley Conservancy
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Sango Ranch,,,01-01-13,,zwe,Gonarezhou National Park,31.9065,-21.2676,11,southern_southafrican,11,,,Save Valley Conservancy
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Sango Ranch,,,01-01-13,,zwe,Gonarezhou National Park,31.9065,-21.2676,3,southern_southafrican,3,,,Save Valley Conservancy
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Bishopstone Ranch,,,01-01-14,,zwe,"Bally Vaughan, Shamva",,,4,southern_southafrican,4,,,Beitbridge
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Bishopstone Ranch,,,01-01-14,,zwe,"Village Place, Murewa",,,2,southern_southafrican,2,,,Beitbridge
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Canonkop,,,01-01-18,,zwe,"Bally Vaughan, Shamva",,,3,southern_southafrican,3,,,Mutorashanga
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Canonkop,,,01-01-18,,zwe,"Lanark, Beatrica",,,2,southern_southafrican,2,,,Mutorashanga
+ZimParks,African Wildlife Management & Conservation,,,range,zwe,Dobropoulos,,,01-01-19,,zwe,"Nyamuswa Farm, Chinhoyi",,,2,southern_southafrican,2,,,Odzi
+ZimParks,,,founder,range,zwe,Hwange National Park,26.5896,-19.1292,,,zwe,Lake Mutirikwi,,,,southern_southafrican,,,,Lake Mutirikwi (formerly Kyle Recreation Park)
+ZimParks,,,founder,range,zwe,Hwange National Park,26.5896,-19.1292,,,zwe,Lake Chivero,,,,southern_southafrican,,,,
+ZimParks,,,founder,range,zwe,Hwange National Park,26.5896,-19.1292,,,zwe,Muchandike,,,,southern_southafrican,,,,
+ZimParks,,,founder,range,zwe,Hwange National Park,26.5896,-19.1292,,,zwe,Various private farms,,,,southern_southafrican,,,,
+,,,,range,zwe,Bubye Valley Conservancy ,,,,,zwe,Save Valley Conservancy,32.0837,-20.5422,,southern_southafrican,,,,1980-90
+,,,,range,zwe,Bubye Valley Conservancy,,,,,zwe,"Nottingham Estates, Limpopo River",,,,southern_southafrican,,,,
+,,,,range,zwe,Bubye Valley Conservancy,,,,,zwe,"Falcon College, Esigodini",,,,southern_southafrican,,,,
+,Elcombe Transport,,,range,zwe,"Driehoek Ranch, West Nicholson",,,01-01-89,,zwe,Save Valley Conservancy,32.0837,-20.5422,,southern_southafrican,7,,,Save Valley Conservancy (Humani)
+,,,,range,zwe,"Driehoek Ranch, West Nicholson",,,01-01-89,,zwe,Save Valley Conservancy,32.0837,-20.5422,,southern_southafrican,13,,,Save Valley Conservancy (Humani)
+,,,,range,zwe,"Broekman Ranch, West Nicholson",,,01-01-89,,zwe,Save Valley Conservancy,32.0837,-20.5422,,southern_southafrican,6,,,Save Valley Conservancy (Humani)

@@ -474,6 +474,93 @@ def site_selection():
     
     return False
 
+def handle_fast_stream_upload(uploaded_file):
+    """Handle fast streaming upload directly from ZIP to GCS"""
+    from streaming_upload import stream_upload_from_zip
+    
+    st.subheader("🚀 Fast Stream Upload")
+    
+    # Get bucket
+    bucket_name = f"gcf_{st.session_state.metadata['country'].lower()}_{st.session_state.metadata['site'].lower()}"
+    
+    # Show configuration
+    st.info(f"📂 **Uploading to:** gs://{bucket_name}/camera_trap/{st.session_state.camera_type}/...")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(f"**Station:** {st.session_state.metadata['station']}")
+        st.write(f"**Camera:** {st.session_state.metadata['camera']}")
+    with col2:
+        st.write(f"**Type:** {st.session_state.camera_type.replace('_', ' ').title()}")
+        st.write(f"**Site:** {st.session_state.metadata['site']}")
+    
+    st.warning("⚠️ **Fast mode**: Images upload directly without preview. Files with duplicate names will be skipped.")
+    
+    if st.button("✅ Start Upload", type="primary"):
+        try:
+            bucket = st.session_state.storage_client.bucket(bucket_name)
+            
+            # Create progress tracking
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            stats_container = st.empty()
+            
+            def progress_callback(current, total, filename, status):
+                progress_bar.progress(current / total)
+                status_icon = {'success': '✅', 'exists': '⏭️', 'skipped': '⚠️', 'error': '❌'}.get(status, '📤')
+                status_text.text(f"{status_icon} [{current}/{total}] {filename}")
+            
+            # Stream upload
+            st.info("🚀 Streaming upload in progress...")
+            results = stream_upload_from_zip(
+                uploaded_file,
+                bucket,
+                {
+                    'country': st.session_state.metadata['country'],
+                    'site': st.session_state.metadata['site'],
+                    'station': st.session_state.metadata['station'],
+                    'camera': st.session_state.metadata['camera'],
+                    'camera_type': st.session_state.camera_type,
+                    'survey_date': st.session_state.metadata['survey_date']
+                },
+                progress_callback
+            )
+            
+            # Clear progress
+            progress_bar.empty()
+            status_text.empty()
+            
+            # Show results
+            st.success(f"🎉 Upload complete!")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Files", results['total'])
+            with col2:
+                st.metric("✅ Uploaded", results['uploaded'])
+            with col3:
+                st.metric("⏭️ Skipped", results['skipped'])
+            with col4:
+                st.metric("❌ Failed", results['failed'])
+            
+            # Detailed results
+            if st.checkbox("Show detailed results"):
+                import pandas as pd
+                df = pd.DataFrame(results['details'])
+                st.dataframe(df, use_container_width=True)
+            
+            st.session_state.processed_images = []
+            st.session_state.site_selection_complete = False
+            
+            if st.button("🔄 Upload Another Folder"):
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"❌ Upload failed: {str(e)}")
+            st.info("Please check your bucket permissions and try again.")
+    
+    return False
+
 def image_processing():
     """Handle image folder upload, renaming, and processing"""
     st.header("Image Processing")
@@ -481,6 +568,13 @@ def image_processing():
     if not st.session_state.selected_site:
         st.warning("Please select a site first!")
         return False
+    
+    # Upload mode selection
+    upload_mode = st.radio(
+        "Select upload mode:",
+        ["🚀 Fast Stream (Recommended)", "📦 Standard (Preview & Validate)"],
+        help="Fast Stream uploads directly from ZIP to cloud without preview. Standard mode shows preview but slower for large folders."
+    )
     
     # File upload for ZIP files only
     uploaded_files = st.file_uploader(
@@ -491,9 +585,18 @@ def image_processing():
     )
     
     # Display upload limits
-    st.caption("💾 **Upload Limits**: Maximum 2GB total, 50MB per image")
+    if upload_mode == "🚀 Fast Stream (Recommended)":
+        st.caption("💾 **Upload Limits**: Maximum 5GB total, 50MB per image | ⚡ Streams directly to cloud")
+    else:
+        st.caption("💾 **Upload Limits**: Maximum 2GB total, 50MB per image | 🔍 Shows preview before upload")
     
     if uploaded_files:
+        # Check if fast stream mode
+        if upload_mode == "🚀 Fast Stream (Recommended)":
+            # Fast streaming upload - no preview, direct to cloud
+            return handle_fast_stream_upload(uploaded_files)
+        
+        # Standard mode continues below
         # Convert single file to list for consistency with existing code
         uploaded_files_list = [uploaded_files]
         

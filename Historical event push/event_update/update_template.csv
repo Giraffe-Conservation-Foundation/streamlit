@@ -1,0 +1,2 @@
+event_id,detail_status,detail_sample_type,priority,state,title
+your-event-uuid-here,processed,blood,300,active,Biological Sample - Processed

@@ -1,0 +1,3 @@
+event_id,girsam_status,girsam_notes
+your-event-uuid-here,processed,Updated status to processed
+another-event-uuid,analyzed,Sample analysis complete

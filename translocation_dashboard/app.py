@@ -132,6 +132,99 @@ def authenticate_earthranger():
             st.info("💡 Please check your username and password")
 
 @st.cache_data(ttl=1800, show_spinner=False)  # Cache for 30 minutes
+def get_mortality_events(start_date=None, end_date=None, _debug=False):
+    """Fetch mortality events from EarthRanger using ecoscope"""
+    if not ECOSCOPE_AVAILABLE:
+        st.error("❌ Ecoscope package is required but not available.")
+        return pd.DataFrame()
+        
+    if not st.session_state.get('username') or not st.session_state.get('password'):
+        return pd.DataFrame()
+    
+    try:
+        # Create EarthRanger connection using stored credentials
+        er_io = EarthRangerIO(
+            server=st.session_state.server_url,
+            username=st.session_state.username,
+            password=st.session_state.password
+        )
+        
+        # Build parameters for ecoscope get_events
+        kwargs = {
+            'event_category': 'veterinary',
+            'include_details': True,
+            'include_notes': True,
+            'max_results': 1000,
+            'drop_null_geometry': False
+        }
+        
+        # Add date filters if provided
+        if start_date:
+            if isinstance(start_date, date):
+                since_str = start_date.strftime('%Y-%m-%dT00:00:00Z')
+            else:
+                since_str = str(start_date)
+            kwargs['since'] = since_str
+            if _debug:
+                st.write(f"Debug: since = {since_str}")
+                
+        if end_date:
+            if isinstance(end_date, date):
+                until_str = end_date.strftime('%Y-%m-%dT23:59:59Z')
+            else:
+                until_str = str(end_date)
+            kwargs['until'] = until_str
+            if _debug:
+                st.write(f"Debug: until = {until_str}")
+        
+        # Get events using ecoscope (all veterinary events)
+        gdf_events = er_io.get_events(**kwargs)
+        
+        if gdf_events.empty:
+            return pd.DataFrame()
+        
+        # Convert GeoDataFrame to regular DataFrame
+        df = pd.DataFrame(gdf_events.drop(columns='geometry', errors='ignore'))
+        
+        # Filter by event_type for mortality events
+        if 'event_type' in df.columns:
+            df = df[df['event_type'] == 'giraffe_mortality']
+        
+        if df.empty:
+            return pd.DataFrame()
+        
+        # Process the data
+        if 'time' in df.columns:
+            df['time'] = pd.to_datetime(df['time'])
+            df['date'] = df['time'].dt.date
+            df['year'] = df['time'].dt.year
+            df['month'] = df['time'].dt.month
+            df['month_name'] = df['time'].dt.strftime('%B')
+            
+            # Apply client-side date filtering
+            if start_date is not None:
+                df = df[df['date'] >= start_date]
+            if end_date is not None:
+                df = df[df['date'] <= end_date]
+            
+            if _debug and not df.empty:
+                st.write(f"Debug: After date filtering, {len(df)} events remain")
+                st.write(f"Debug: Date range in data: {df['date'].min()} to {df['date'].max()}")
+        
+        # Add location information if geometry was available
+        if not gdf_events.empty and 'geometry' in gdf_events.columns:
+            gdf_events['latitude'] = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
+            gdf_events['longitude'] = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
+            df['latitude'] = gdf_events['latitude']
+            df['longitude'] = gdf_events['longitude']
+        
+        return df
+        
+    except Exception as e:
+        st.error(f"Error fetching mortality events: {str(e)}")
+        return pd.DataFrame()
+
+@st.cache_data(ttl=1800, show_spinner=False)  # Cache for 30 minutes
 def get_translocation_events(start_date=None, end_date=None, _debug=False):
     """Fetch translocation events from EarthRanger using ecoscope"""
     if not ECOSCOPE_AVAILABLE:
@@ -372,6 +465,465 @@ def display_event_details(event):
                         st.write(f"  - {note}")
             else:
                 st.write(f"  {notes}")
+
+def mortality_dashboard():
+    """Main mortality dashboard interface"""
+    
+    # Date filter controls
+    st.subheader("📅 Filters")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        start_date = st.date_input(
+            "Start Date",
+            value=date.today() - timedelta(days=365),
+            help="Select the earliest date for mortality events"
+        )
+    
+    with col2:
+        end_date = st.date_input(
+            "End Date", 
+            value=date.today(),
+            help="Select the latest date for mortality events"
+        )
+    
+    # Fetch all events to get available filters
+    with st.spinner("🔄 Loading mortality data..."):
+        all_events = get_mortality_events(start_date, end_date)
+    
+    # Extract unique countries and mortality causes
+    all_countries = ['All Countries']
+    all_causes = ['All Causes']
+    all_species = ['All Species']
+    
+    if not all_events.empty:
+        for idx, event in all_events.iterrows():
+            event_details = event.get('event_details', {})
+            if isinstance(event_details, dict):
+                # Country
+                country = event_details.get('country')
+                if country:
+                    if isinstance(country, dict):
+                        country = country.get('name') or country.get('country') or country.get('code')
+                    if country:
+                        country_upper = str(country).upper()
+                        if country_upper not in all_countries:
+                            all_countries.append(country_upper)
+                
+                # Mortality cause
+                cause = event_details.get('cause_of_death') or event_details.get('mortality_cause')
+                if cause:
+                    if isinstance(cause, dict):
+                        cause = cause.get('name') or cause.get('cause')
+                    if cause:
+                        cause_title = str(cause).title()
+                        if cause_title not in all_causes:
+                            all_causes.append(cause_title)
+                
+                # Species
+                species = event_details.get('species')
+                if species:
+                    if isinstance(species, dict):
+                        species = species.get('name') or species.get('species')
+                    if species:
+                        species_title = str(species).title()
+                        if species_title not in all_species:
+                            all_species.append(species_title)
+    
+    with col3:
+        selected_country = st.selectbox(
+            "Country",
+            options=all_countries,
+            index=0,
+            help="Filter by country"
+        )
+    
+    with col4:
+        if st.button("🔄 Refresh Data", type="primary"):
+            get_mortality_events.clear()
+            st.rerun()
+    
+    # Additional filters
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        selected_cause = st.selectbox(
+            "Mortality Cause",
+            options=all_causes,
+            index=0,
+            help="Filter by cause of death"
+        )
+    
+    with col2:
+        selected_species = st.selectbox(
+            "Species",
+            options=all_species,
+            index=0,
+            help="Filter by species"
+        )
+    
+    # Validate date range
+    if start_date > end_date:
+        st.error("❌ Start date cannot be after end date")
+        return
+    
+    # Apply filters
+    df_events = all_events.copy()
+    
+    # Country filter
+    if selected_country != 'All Countries' and not df_events.empty:
+        filtered_events = []
+        for idx, event in df_events.iterrows():
+            event_details = event.get('event_details', {})
+            if isinstance(event_details, dict):
+                country = event_details.get('country')
+                if isinstance(country, dict):
+                    country = country.get('name') or country.get('country') or country.get('code')
+                if country and str(country).upper() == selected_country.upper():
+                    filtered_events.append(event)
+        df_events = pd.DataFrame(filtered_events) if filtered_events else pd.DataFrame()
+    
+    # Mortality cause filter
+    if selected_cause != 'All Causes' and not df_events.empty:
+        filtered_events = []
+        for idx, event in df_events.iterrows():
+            event_details = event.get('event_details', {})
+            if isinstance(event_details, dict):
+                cause = event_details.get('cause_of_death') or event_details.get('mortality_cause')
+                if isinstance(cause, dict):
+                    cause = cause.get('name') or cause.get('cause')
+                if cause and str(cause).title() == selected_cause:
+                    filtered_events.append(event)
+        df_events = pd.DataFrame(filtered_events) if filtered_events else pd.DataFrame()
+    
+    # Species filter
+    if selected_species != 'All Species' and not df_events.empty:
+        filtered_events = []
+        for idx, event in df_events.iterrows():
+            event_details = event.get('event_details', {})
+            if isinstance(event_details, dict):
+                species = event_details.get('species')
+                if isinstance(species, dict):
+                    species = species.get('name') or species.get('species')
+                if species and str(species).title() == selected_species:
+                    filtered_events.append(event)
+        df_events = pd.DataFrame(filtered_events) if filtered_events else pd.DataFrame()
+    
+    if df_events.empty:
+        st.warning("No mortality events found for the selected filters.")
+        return
+    
+    # Summary metrics
+    st.subheader("📊 Summary Statistics")
+    
+    # Calculate metrics
+    total_mortalities = len(df_events)
+    country_counts = {}
+    cause_counts = {}
+    species_counts = {}
+    sex_counts = {'Male': 0, 'Female': 0, 'Unknown': 0}
+    
+    for idx, event in df_events.iterrows():
+        event_details = event.get('event_details', {})
+        if isinstance(event_details, dict):
+            # Country
+            country = event_details.get('country')
+            if country:
+                if isinstance(country, dict):
+                    country = country.get('name') or country.get('country') or country.get('code')
+                country_str = str(country).upper() if country else 'Unknown'
+                country_counts[country_str] = country_counts.get(country_str, 0) + 1
+            else:
+                country_counts['Unknown'] = country_counts.get('Unknown', 0) + 1
+            
+            # Cause
+            cause = event_details.get('cause_of_death') or event_details.get('mortality_cause') or 'Unknown'
+            if isinstance(cause, dict):
+                cause = cause.get('name') or cause.get('cause') or 'Unknown'
+            cause_str = str(cause).title() if cause else 'Unknown'
+            cause_counts[cause_str] = cause_counts.get(cause_str, 0) + 1
+            
+            # Species
+            species = event_details.get('species') or 'Unknown'
+            if isinstance(species, dict):
+                species = species.get('name') or species.get('species') or 'Unknown'
+            species_str = str(species).title() if species else 'Unknown'
+            species_counts[species_str] = species_counts.get(species_str, 0) + 1
+            
+            # Sex
+            sex = event_details.get('sex', 'Unknown')
+            if sex and str(sex).lower() in ['male', 'm']:
+                sex_counts['Male'] += 1
+            elif sex and str(sex).lower() in ['female', 'f']:
+                sex_counts['Female'] += 1
+            else:
+                sex_counts['Unknown'] += 1
+    
+    # Key metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Mortalities", total_mortalities)
+    with col2:
+        st.metric("Countries", len([k for k in country_counts.keys() if k != 'Unknown']))
+    with col3:
+        st.metric("Mortality Causes", len([k for k in cause_counts.keys() if k != 'Unknown']))
+    with col4:
+        st.metric("Species", len([k for k in species_counts.keys() if k != 'Unknown']))
+    
+    st.markdown("---")
+    
+    # Visualizations
+    col1, col2 = st.columns(2)
+    
+    org_colors = ['#DB580F', '#3E0000', '#CCCCCC', '#999999', '#FF7F3F', '#5D1010', '#E6E6E6', '#B8860B', '#8B4513', '#A0522D']
+    
+    with col1:
+        if country_counts:
+            country_df = pd.DataFrame(list(country_counts.items()), columns=['Country', 'Count'])
+            country_df = country_df.sort_values('Count', ascending=False)
+            fig_country = px.bar(
+                country_df,
+                x='Count',
+                y='Country',
+                orientation='h',
+                title="Mortalities by Country",
+                color='Count',
+                color_continuous_scale=['#DB580F', '#3E0000'],
+                height=400
+            )
+            fig_country.update_layout(yaxis={'categoryorder': 'total ascending'})
+            st.plotly_chart(fig_country, use_container_width=True)
+    
+    with col2:
+        if cause_counts:
+            cause_df = pd.DataFrame(list(cause_counts.items()), columns=['Cause', 'Count'])
+            cause_df = cause_df.sort_values('Count', ascending=False)
+            fig_cause = px.pie(
+                cause_df,
+                values='Count',
+                names='Cause',
+                title="Mortality Causes",
+                color_discrete_sequence=org_colors,
+                height=400
+            )
+            fig_cause.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig_cause, use_container_width=True)
+    
+    # Species and Sex distribution
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if species_counts:
+            species_df = pd.DataFrame(list(species_counts.items()), columns=['Species', 'Count'])
+            species_df = species_df.sort_values('Count', ascending=False)
+            fig_species = px.pie(
+                species_df,
+                values='Count',
+                names='Species',
+                title="Species Distribution",
+                color_discrete_sequence=org_colors,
+                height=350
+            )
+            fig_species.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig_species, use_container_width=True)
+    
+    with col2:
+        sex_df = pd.DataFrame(list(sex_counts.items()), columns=['Sex', 'Count'])
+        sex_df = sex_df[sex_df['Count'] > 0]  # Only show non-zero
+        if not sex_df.empty:
+            fig_sex = px.pie(
+                sex_df,
+                values='Count',
+                names='Sex',
+                title="Sex Distribution",
+                color_discrete_map={'Male': '#3E0000', 'Female': '#DB580F', 'Unknown': '#999999'},
+                height=350
+            )
+            fig_sex.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig_sex, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # Map visualization
+    st.subheader("🗺️ Mortality Locations Map")
+    
+    events_with_location = []
+    for idx, event in df_events.iterrows():
+        event_details = event.get('event_details', {})
+        if isinstance(event_details, dict):
+            # Check for location in event_details
+            location = event_details.get('location')
+            if isinstance(location, dict) and location.get('latitude') and location.get('longitude'):
+                events_with_location.append(event)
+            # Also check for direct lat/lon fields
+            elif event.get('latitude') and event.get('longitude'):
+                events_with_location.append(event)
+    
+    if events_with_location:
+        fig_map = go.Figure()
+        
+        for event_idx, event in enumerate(events_with_location):
+            event_details = event.get('event_details', {})
+            
+            # Get coordinates
+            location = event_details.get('location') if isinstance(event_details, dict) else {}
+            if isinstance(location, dict):
+                lat = location.get('latitude')
+                lon = location.get('longitude')
+                location_name = location.get('name', 'Unknown')
+            else:
+                lat = event.get('latitude')
+                lon = event.get('longitude')
+                location_name = event_details.get('location_name', 'Unknown') if isinstance(event_details, dict) else 'Unknown'
+            
+            if lat and lon:
+                try:
+                    lat_float, lon_float = float(lat), float(lon)
+                    
+                    # Get event info for hover
+                    country = 'Unknown'
+                    cause = 'Unknown'
+                    species = 'Unknown'
+                    
+                    if isinstance(event_details, dict):
+                        country_val = event_details.get('country')
+                        if isinstance(country_val, dict):
+                            country = country_val.get('name') or country_val.get('code') or 'Unknown'
+                        elif country_val:
+                            country = str(country_val)
+                        
+                        cause_val = event_details.get('cause_of_death') or event_details.get('mortality_cause')
+                        if isinstance(cause_val, dict):
+                            cause = cause_val.get('name') or 'Unknown'
+                        elif cause_val:
+                            cause = str(cause_val)
+                        
+                        species_val = event_details.get('species')
+                        if isinstance(species_val, dict):
+                            species = species_val.get('name') or 'Unknown'
+                        elif species_val:
+                            species = str(species_val)
+                    
+                    fig_map.add_trace(go.Scattermapbox(
+                        lat=[lat_float],
+                        lon=[lon_float],
+                        mode='markers',
+                        marker=dict(size=12, color='#DB580F', symbol='circle'),
+                        name='Mortality Event' if event_idx == 0 else '',
+                        showlegend=(event_idx == 0),
+                        hovertemplate=f"<b>Location:</b> {location_name}<br>" +
+                                    f"<b>Country:</b> {country}<br>" +
+                                    f"<b>Species:</b> {species}<br>" +
+                                    f"<b>Cause:</b> {cause}<br>" +
+                                    f"<b>Date:</b> {event['time'].strftime('%Y-%m-%d')}<extra></extra>"
+                    ))
+                except (ValueError, TypeError):
+                    pass
+        
+        fig_map.update_layout(
+            mapbox=dict(
+                style="open-street-map",
+                zoom=2.5,
+                center=dict(lat=0, lon=20)
+            ),
+            height=600,
+            showlegend=True
+        )
+        
+        st.plotly_chart(fig_map, use_container_width=True)
+    else:
+        st.info("No location data available for mortality events.")
+    
+    # Detailed event list
+    st.subheader("📋 Detailed Event List")
+    
+    export_data = []
+    for idx, event in df_events.iterrows():
+        event_details = event.get('event_details', {})
+        
+        row = {
+            'Date & Time': event['time'].strftime('%Y-%m-%d %H:%M') if 'time' in event else 'N/A',
+            'Serial Number': event.get('serial_number', 'N/A'),
+            'Country': '',
+            'Location': '',
+            'Species': '',
+            'Cause of Death': '',
+            'Sex': '',
+            'Age Class': '',
+            'Subject ID': '',
+            'Latitude': '',
+            'Longitude': '',
+            'Notes': ''
+        }
+        
+        if isinstance(event_details, dict):
+            # Country
+            country = event_details.get('country')
+            if isinstance(country, dict):
+                row['Country'] = country.get('name') or country.get('code') or ''
+            elif country:
+                row['Country'] = str(country)
+            
+            # Location
+            location = event_details.get('location')
+            if isinstance(location, dict):
+                row['Location'] = location.get('name', '')
+                row['Latitude'] = location.get('latitude', '')
+                row['Longitude'] = location.get('longitude', '')
+            else:
+                row['Location'] = event_details.get('location_name', '')
+            
+            # Species
+            species = event_details.get('species')
+            if isinstance(species, dict):
+                row['Species'] = species.get('name') or ''
+            elif species:
+                row['Species'] = str(species)
+            
+            # Cause
+            cause = event_details.get('cause_of_death') or event_details.get('mortality_cause')
+            if isinstance(cause, dict):
+                row['Cause of Death'] = cause.get('name') or ''
+            elif cause:
+                row['Cause of Death'] = str(cause)
+            
+            row['Sex'] = event_details.get('sex', '')
+            row['Age Class'] = event_details.get('age_class', '')
+            row['Subject ID'] = event_details.get('subject_id', '')
+        
+        # Also check for direct lat/lon on event
+        if not row['Latitude'] and event.get('latitude'):
+            row['Latitude'] = event.get('latitude')
+        if not row['Longitude'] and event.get('longitude'):
+            row['Longitude'] = event.get('longitude')
+        
+        # Notes
+        if event.get('notes'):
+            notes_list = event['notes']
+            if isinstance(notes_list, list) and notes_list:
+                note_texts = []
+                for note in notes_list:
+                    if isinstance(note, dict):
+                        text = note.get('text', '')
+                        if text:
+                            note_texts.append(text)
+                row['Notes'] = ' | '.join(note_texts) if note_texts else ''
+            else:
+                row['Notes'] = str(notes_list) if notes_list else ''
+        
+        export_data.append(row)
+    
+    export_df = pd.DataFrame(export_data)
+    st.dataframe(export_df, use_container_width=True)
+    
+    # Download button
+    csv = export_df.to_csv(index=False)
+    st.download_button(
+        label="📥 Download Data as CSV",
+        data=csv,
+        file_name=f"mortality_events_{start_date}_{end_date}.csv",
+        mime="text/csv"
+    )
 
 def translocation_dashboard():
     """Main translocation dashboard interface"""
@@ -1221,6 +1773,10 @@ def _main_implementation():
     """Main application logic"""
     init_session_state()
     
+    # Initialize page selection in session state
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = 'Translocation'
+    
     # Header with logo
     with st.container():
         # Try to load and display logo
@@ -1235,16 +1791,18 @@ def _main_implementation():
                 col1, col2, col3 = st.columns([1, 2, 1])
                 with col2:
                     st.image(logo_path, width=300)
-                    st.markdown('<div class="logo-title" style="text-align: center;">Translocation Dashboard</div>', unsafe_allow_html=True)
-                    st.markdown('<div class="logo-subtitle" style="text-align: center;">Giraffe Translocation Event Monitoring</div>', unsafe_allow_html=True)
+                    # Update title based on current page
+                    page_title = f"{st.session_state.current_page} Dashboard"
+                    st.markdown(f'<div class="logo-title" style="text-align: center;">{page_title}</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="logo-subtitle" style="text-align: center;">Giraffe Conservation Event Monitoring</div>', unsafe_allow_html=True)
                     logo_displayed = True
             except Exception as e:
                 st.error(f"Error loading logo: {str(e)}")
         
         # Fallback header without logo
         if not logo_displayed:
-            st.title("🚁 Translocation Dashboard")
-            st.markdown("Giraffe translocation event monitoring and analytics")
+            st.title(f"🦒 {st.session_state.current_page} Dashboard")
+            st.markdown("Giraffe conservation event monitoring and analytics")
     
     # Landing page (only shown if not authenticated yet)
     if not st.session_state.authenticated:
@@ -1260,16 +1818,36 @@ def _main_implementation():
     if st.session_state.get('username'):
         st.sidebar.write(f"**User:** {st.session_state.username}")
     
-    # Show dashboard
-    translocation_dashboard()
+    st.sidebar.markdown("---")
+    
+    # Page selection
+    st.sidebar.subheader("📊 Dashboards")
+    page = st.sidebar.radio(
+        "Select Dashboard:",
+        options=['Translocation', 'Mortality'],
+        index=['Translocation', 'Mortality'].index(st.session_state.current_page),
+        help="Switch between different dashboards"
+    )
+    
+    # Update current page if changed
+    if page != st.session_state.current_page:
+        st.session_state.current_page = page
+        st.rerun()
+    
+    # Show appropriate dashboard
+    if st.session_state.current_page == 'Translocation':
+        translocation_dashboard()
+    elif st.session_state.current_page == 'Mortality':
+        mortality_dashboard()
     
     # Sidebar options
     st.sidebar.markdown("---")
     st.sidebar.subheader("🔧 Options")
     
     if st.sidebar.button("🔄 Refresh Data"):
-        # Clear cached data
+        # Clear cached data for both dashboards
         get_translocation_events.clear()
+        get_mortality_events.clear()
         st.rerun()
     
     if st.sidebar.button("🔓 Logout"):

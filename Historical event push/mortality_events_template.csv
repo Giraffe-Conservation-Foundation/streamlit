@@ -1,0 +1,6 @@
+serial_number,event_datetime,latitude,longitude,details_giraffe_mortality_cause,details_gir_species,details_gir_sex,details_gir_age,details_country,details_individual_id,details_location_name,details_notes
+1,2024-01-15T10:30:00Z,-15.123456,28.456789,natural_predation,Giraffa giraffa,Female,Adult,NAM,G001_NAM_2024,Etosha National Park,Lion predation - carcass found near waterhole
+2,2024-02-20T14:15:00Z,-16.234567,29.567890,natural_disease,Giraffa giraffa,Male,Juvenile,NAM,G002_NAM_2024,Caprivi Strip,Suspected anthrax - no trauma observed
+3,2024-03-05T09:45:00Z,-17.345678,30.678901,natural_old_age,Giraffa camelopardalis,Male,Elderly,ZAF,G003_ZAF_2024,Kruger National Park,Natural death - elderly individual found near rest site
+4,2024-04-18T16:20:00Z,-18.456789,31.789012,unnatural_vehicle_collision,Giraffa tippelskirchi,Female,Adult,BWA,G004_BWA_2024,Okavango Delta,Hit by vehicle on main road - died from injuries
+5,2024-05-10T11:00:00Z,-19.567890,32.890123,unnatural_immobilisation,Giraffa giraffa,Male,Sub-adult,ZWE,G005_ZWE_2024,Hwange National Park,Complications during immobilization for translocation

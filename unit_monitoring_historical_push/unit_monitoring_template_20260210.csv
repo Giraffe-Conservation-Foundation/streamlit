@@ -1,0 +1,4 @@
+unit_id,action,country,notes,subject_id,latitude,longitude,date_time,name
+TAIL-ST1386,deployment,NAM,Initial deployment in conservancy,subject-uuid-123,-22.5,17.1,2024-01-15 10:30:00,johndoe
+TAIL-ST1387,maintenance,BWA,Battery replacement completed,subject-uuid-124,-24.2,21.4,2024-02-20 14:15:00,janedoe
+TAIL-ST1388,battery_change,ZAF,Routine battery maintenance,,,,2024-03-10 09:00:00,fieldtech

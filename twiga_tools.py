@@ -104,14 +104,15 @@ Navigate using the sidebar to access:
 - **GAD** - review, download, or submit giraffe population to the Giraffe Africa Database
 - **Translocation dashboard** - monitor and review giraffe translocation events
 - **Genetic dashboard** - monitor and review biological sample events
+- **Mortality Dashboard** - track and analyze giraffe mortality events with timeline and location mapping
 - **Create ID Book** - create and download an ID book using a GiraffeSpotter export
+- **SECR Population Analysis** - spatially-explicit capture-recapture and Bailey's Triple Catch population estimation
 
 ### 🚧 Coming soon
             
 - **Life history** - see all events linked with an individual giraffe (sightings, immobilisations, etc)
 - **Impact reports**
 - **Patrol Download** - download patrol tracks as shapefiles from EarthRanger for GIS analysis
-- **Mortality Dashboard** - track and analyze giraffe mortality events with timeline and location mapping
 - **ER2WB Converter** - convert EarthRanger giraffe encounter data to GiraffeSpotter bulk import format
 - **ER Backup** - comprehensive backup of all EarthRanger data
 

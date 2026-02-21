@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import time
 import plotly.express as px
 import plotly.graph_objects as go
 from ecoscope.io.earthranger import EarthRangerIO
@@ -53,7 +54,219 @@ def init_session_state():
     if 'stock_data' not in st.session_state:
         st.session_state.stock_data = load_stock_data()
 
-# --- Stock Management Functions ---
+# --- Stock Management with EarthRanger Events ---
+STOCK_EVENT_TYPE = 'ab2912ed-b89f-4873-9586-866aa29287bd'  # unit_stock
+DEPLOYMENT_PLAN_EVENT_TYPE = '3957b3a7-97f2-4d94-a6de-5f171ab041f6'  # unit_plan (may need to be updated based on actual event type)
+# Note: If unit_plan events are stored under a different event_type, update DEPLOYMENT_PLAN_EVENT_TYPE above
+
+def get_stock_from_earthranger(er_io):
+    """Get GPS unit stock from EarthRanger events"""
+    try:
+        since_date = datetime.now() - timedelta(days=180)
+        
+        events = er_io.get_events(
+            event_type=[STOCK_EVENT_TYPE],
+            since=since_date.isoformat(),
+            include_details=True
+        )
+        
+        stock_by_office = {
+            'Namibia': {'spoortrack': 0, 'gsatsolar': 0, 'ordered_st': 0, 'ordered_gs': 0},
+            'Kenya': {'spoortrack': 0, 'gsatsolar': 0, 'ordered_st': 0, 'ordered_gs': 0},
+            'South Africa': {'spoortrack': 0, 'gsatsolar': 0, 'ordered_st': 0, 'ordered_gs': 0}
+        }
+        
+        if not events.empty:
+            events_df = events.copy()
+            events_df['time'] = pd.to_datetime(events_df['time'])
+            events_df = events_df.sort_values('time')
+            
+            for idx, event_row in events_df.iterrows():
+                # Handle event_details which might be None
+                if 'event_details' not in event_row or event_row['event_details'] is None:
+                    continue
+                    
+                details = event_row['event_details']
+                
+                # Map office codes to full names
+                office_code = details.get('unit_office', 'kenya').lower()
+                office_map = {
+                    'nam': 'Namibia',
+                    'namibia': 'Namibia',
+                    'kenya': 'Kenya',
+                    'ken': 'Kenya',
+                    'south africa': 'South Africa',
+                    'zaf': 'South Africa',
+                    'rsa': 'South Africa'
+                }
+                office = office_map.get(office_code, 'Kenya')
+                
+                # Map unit type codes to full names
+                unit_type_code = details.get('unit_manufac', 'spoortrack').lower()
+                unit_type_map = {
+                    'spoortrack': 'SpoorTrack',
+                    'gsatsolar': 'GSatSolar',
+                    'gsat': 'GSatSolar'
+                }
+                unit_type = unit_type_map.get(unit_type_code, 'SpoorTrack')
+                
+                quantity = int(details.get('unit_number', 0))
+                
+                # Map transaction codes
+                stock_action_code = details.get('unit_transaction', 'stock_count').lower()
+                stock_action_map = {
+                    'stock_count': 'stock_count',
+                    'count': 'stock_count',
+                    'order_placed': 'order_placed',
+                    'order': 'order_placed',
+                    'order_received': 'order_received',
+                    'received': 'order_received'
+                }
+                stock_action = stock_action_map.get(stock_action_code, 'stock_count')
+                
+                if office not in stock_by_office:
+                    continue
+                
+                if stock_action == 'stock_count':
+                    if unit_type == 'SpoorTrack':
+                        stock_by_office[office]['spoortrack'] = quantity
+                    elif unit_type == 'GSatSolar':
+                        stock_by_office[office]['gsatsolar'] = quantity
+                elif stock_action == 'order_placed':
+                    if unit_type == 'SpoorTrack':
+                        stock_by_office[office]['ordered_st'] += quantity
+                    elif unit_type == 'GSatSolar':
+                        stock_by_office[office]['ordered_gs'] += quantity
+                elif stock_action == 'order_received':
+                    if unit_type == 'SpoorTrack':
+                        stock_by_office[office]['spoortrack'] += quantity
+                        stock_by_office[office]['ordered_st'] = max(0, stock_by_office[office]['ordered_st'] - quantity)
+                    elif unit_type == 'GSatSolar':
+                        stock_by_office[office]['gsatsolar'] += quantity
+                        stock_by_office[office]['ordered_gs'] = max(0, stock_by_office[office]['ordered_gs'] - quantity)
+        
+        return stock_by_office
+    except Exception as e:
+        st.error(f"❌ Error loading stock from EarthRanger: {e}")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
+        return {
+            'Namibia': {'spoortrack': 0, 'gsatsolar': 0, 'ordered_st': 0, 'ordered_gs': 0},
+            'Kenya': {'spoortrack': 0, 'gsatsolar': 0, 'ordered_st': 0, 'ordered_gs': 0},
+            'South Africa': {'spoortrack': 0, 'gsatsolar': 0, 'ordered_st': 0, 'ordered_gs': 0}
+        }
+
+def get_deployment_plans_from_earthranger(er_io):
+    """Get deployment plans from EarthRanger events"""
+    try:
+        since_date = datetime.now() - timedelta(days=365)
+        
+        events = er_io.get_events(
+            event_type=[DEPLOYMENT_PLAN_EVENT_TYPE],
+            since=since_date.isoformat(),
+            include_details=True
+        )
+        
+        plans = []
+        if not events.empty:
+            for idx, event_row in events.iterrows():
+                # Handle event_details which might be None
+                if 'event_details' not in event_row or event_row['event_details'] is None:
+                    continue
+                    
+                details = event_row['event_details']
+                status = details.get('deployment_status', 'planned')
+                if status != 'cancelled':
+                    # Map office codes to full names
+                    office_code = details.get('unit_office', 'kenya').lower() if details.get('unit_office') else 'kenya'
+                    office_map = {
+                        'nam': 'Namibia',
+                        'namibia': 'Namibia',
+                        'kenya': 'Kenya',
+                        'ken': 'Kenya',
+                        'south africa': 'South Africa',
+                        'zaf': 'South Africa',
+                        'rsa': 'South Africa'
+                    }
+                    office = office_map.get(office_code, 'Kenya')
+                    
+                    # Map country codes
+                    country_code = details.get('unit_plan_country', '').lower()
+                    country = office_map.get(country_code, details.get('unit_plan_country', ''))
+                    
+                    # Map manufacturer codes
+                    manufacturer_code = details.get('unit_plan_manufac', 'spoortrack').lower()
+                    manufacturer_map = {
+                        'spoortrack': 'SpoorTrack',
+                        'gsatsolar': 'GSatSolar',
+                        'gsat': 'GSatSolar'
+                    }
+                    manufacturer = manufacturer_map.get(manufacturer_code, 'SpoorTrack')
+                    
+                    plans.append({
+                        'event_id': event_row.get('id', '') if 'id' in event_row else '',
+                        'country': country,
+                        'site': details.get('unit_plan_site', ''),
+                        'manufacturer': manufacturer,
+                        'office': office,
+                        'date': details.get('unit_plan_date', ''),
+                        'spoortrack': int(details.get('unit_plan_number', 0)) if manufacturer == 'SpoorTrack' else 0,
+                        'gsatsolar': int(details.get('unit_plan_number', 0)) if manufacturer == 'GSatSolar' else 0,
+                        'status': status,
+                        'notes': details.get('notes', '')
+                    })
+        
+        return plans
+    except Exception as e:
+        st.error(f"❌ Could not load deployment plans: {e}")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
+        return []
+
+def create_stock_event(er_io, office, unit_type, quantity, stock_action, notes=""):
+    """Create a stock event in EarthRanger"""
+    try:
+        event_data = {
+            'event_type': STOCK_EVENT_TYPE,
+            'time': datetime.now().isoformat(),
+            'event_details': {
+                'unit_office': office,
+                'unit_manufac': unit_type,
+                'unit_number': quantity,
+                'unit_transaction': stock_action,
+                'notes': notes
+            }
+        }
+        er_io.post_event(event_data)
+        return True
+    except Exception as e:
+        st.error(f"Failed to create stock event: {e}")
+        return False
+
+def create_deployment_plan_event(er_io, country, site, office, manufacturer, planned_date, quantity, notes=""):
+    """Create a deployment plan event in EarthRanger"""
+    try:
+        event_data = {
+            'event_type': DEPLOYMENT_PLAN_EVENT_TYPE,
+            'time': datetime.now().isoformat(),
+            'event_details': {
+                'unit_plan_country': country,
+                'unit_plan_site': site,
+                'unit_office': office,
+                'unit_plan_manufac': manufacturer,
+                'unit_plan_number': quantity,
+                'unit_plan_date': planned_date,
+                'deployment_status': 'planned',
+                'notes': notes
+            }
+        }
+        er_io.post_event(event_data)
+        return True
+    except Exception as e:
+        st.error(f"Failed to create deployment plan: {e}")
+        return False
+
+# --- Stock Management Functions (Google Sheets - deprecated) ---
 SHEET_NAME = 'GPS_Unit_Stock_Planning'
 
 def get_google_sheets_client():
@@ -314,194 +527,141 @@ def save_stock_data(data):
         st.code(traceback.format_exc())
         return False
 
-def deployment_planning_dashboard():
-    """Deployment planning and stock management dashboard"""
+def deployment_planning_dashboard(er_io):
+    """Deployment planning and stock management dashboard using EarthRanger events"""
     st.header("📊 Deployment Planning & Stock Management")
+    st.caption("Stock and plans tracked via EarthRanger events")
     
-    # Create tabs in main area
-    tab1, tab2 = st.tabs(["📋 Stock & Deployment Plans", "📊 Summary"])
+    with st.spinner("Loading data from EarthRanger..."):
+        stock_data = get_stock_from_earthranger(er_io)
+        deployment_plans = get_deployment_plans_from_earthranger(er_io)
     
-    # Tab 1: Stock & Deployment Plans (Combined)
+    # Check if deployment plans exist
+    if not deployment_plans or len(deployment_plans) == 0:
+        st.info("💡 No deployment plans found. Create unit_plan events in EarthRanger to see them here.")
+    
+    tab1, tab2 = st.tabs(["📋 Stock & Plans", "📊 Summary"])
+    
     with tab1:
         st.subheader("📋 Stock & Deployment Plans")
         
-        # Initialize office_stock if not exists
-        if 'office_stock' not in st.session_state.stock_data:
-            st.session_state.stock_data['office_stock'] = {
-                'Namibia': {'spoortrack': 0, 'gsatsolar': 0},
-                'Kenya': {'spoortrack': 0, 'gsatsolar': 0},
-                'South Africa': {'spoortrack': 0, 'gsatsolar': 0}
-            }
-        
-        # Stock by office - simple and clear
         st.markdown("### 📦 Current Stock by Office")
+        st.caption("📊 Calculated from EarthRanger stock events")
+        
         col1, col2, col3 = st.columns(3)
         
         with col1:
             st.markdown("**🇳🇦 Namibia**")
-            nam_st = st.number_input("SpoorTrack", min_value=0, value=st.session_state.stock_data['office_stock']['Namibia']['spoortrack'], key="nam_st_input")
-            nam_gs = st.number_input("GSatSolar", min_value=0, value=st.session_state.stock_data['office_stock']['Namibia']['gsatsolar'], key="nam_gs_input")
+            st.metric("SpoorTrack", stock_data['Namibia']['spoortrack'])
+            st.metric("GSatSolar", stock_data['Namibia']['gsatsolar'])
+            if stock_data['Namibia']['ordered_st'] > 0 or stock_data['Namibia']['ordered_gs'] > 0:
+                st.caption(f"📬 Ordered: ST:{stock_data['Namibia']['ordered_st']} GS:{stock_data['Namibia']['ordered_gs']}")
         
         with col2:
             st.markdown("**🇰🇪 Kenya**")
-            ken_st = st.number_input("SpoorTrack ", min_value=0, value=st.session_state.stock_data['office_stock']['Kenya']['spoortrack'], key="ken_st_input")
-            ken_gs = st.number_input("GSatSolar ", min_value=0, value=st.session_state.stock_data['office_stock']['Kenya']['gsatsolar'], key="ken_gs_input")
+            st.metric("SpoorTrack", stock_data['Kenya']['spoortrack'])
+            st.metric("GSatSolar", stock_data['Kenya']['gsatsolar'])
+            if stock_data['Kenya']['ordered_st'] > 0 or stock_data['Kenya']['ordered_gs'] > 0:
+                st.caption(f"📬 Ordered: ST:{stock_data['Kenya']['ordered_st']} GS:{stock_data['Kenya']['ordered_gs']}")
         
         with col3:
             st.markdown("**🇿🇦 South Africa**")
-            sa_st = st.number_input("SpoorTrack  ", min_value=0, value=st.session_state.stock_data['office_stock']['South Africa']['spoortrack'], key="sa_st_input")
-            sa_gs = st.number_input("GSatSolar  ", min_value=0, value=st.session_state.stock_data['office_stock']['South Africa']['gsatsolar'], key="sa_gs_input")
-        
-        # Ordered/In Transit section
-        st.markdown("---")
-        st.markdown("### 📬 Ordered / In Transit")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**SpoorTrack**")
-            ordered_st = st.number_input("Units ordered/in transit", min_value=0, value=st.session_state.stock_data['stock_summary']['spoortrack']['in_mail'], key="ordered_st_input")
-        
-        with col2:
-            st.markdown("**GSatSolar**")
-            ordered_gs = st.number_input("Units ordered/in transit ", min_value=0, value=st.session_state.stock_data['stock_summary']['gsatsolar']['in_mail'], key="ordered_gs_input")
-        
-        if st.button("💾 Update Stock", type="primary"):
-            st.session_state.stock_data['office_stock']['Namibia']['spoortrack'] = nam_st
-            st.session_state.stock_data['office_stock']['Namibia']['gsatsolar'] = nam_gs
-            st.session_state.stock_data['office_stock']['Kenya']['spoortrack'] = ken_st
-            st.session_state.stock_data['office_stock']['Kenya']['gsatsolar'] = ken_gs
-            st.session_state.stock_data['office_stock']['South Africa']['spoortrack'] = sa_st
-            st.session_state.stock_data['office_stock']['South Africa']['gsatsolar'] = sa_gs
-            
-            # Update total stock summary
-            st.session_state.stock_data['stock_summary']['spoortrack']['in_hand'] = nam_st + ken_st + sa_st
-            st.session_state.stock_data['stock_summary']['gsatsolar']['in_hand'] = nam_gs + ken_gs + sa_gs
-            
-            # Update ordered/in mail
-            st.session_state.stock_data['stock_summary']['spoortrack']['in_mail'] = ordered_st
-            st.session_state.stock_data['stock_summary']['gsatsolar']['in_mail'] = ordered_gs
-            
-            save_stock_data(st.session_state.stock_data)
-            st.success("✅ Stock updated!")
-            st.rerun()
+            st.metric("SpoorTrack", stock_data['South Africa']['spoortrack'])
+            st.metric("GSatSolar", stock_data['South Africa']['gsatsolar'])
+            if stock_data['South Africa']['ordered_st'] > 0 or stock_data['South Africa']['ordered_gs'] > 0:
+                st.caption(f"📬 Ordered: ST:{stock_data['South Africa']['ordered_st']} GS:{stock_data['South Africa']['ordered_gs']}")
         
         st.markdown("---")
         st.markdown("### 📋 Deployment Plans")
         
-        # Add new deployment
-        with st.expander("➕ Add Deployment Plan", expanded=False):
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                new_country = st.text_input("Country", key="new_plan_country")
-            with col2:
-                new_site = st.text_input("Site/Project", key="new_plan_site")
-            with col3:
-                new_office = st.selectbox("Deploy from Office", ["Namibia", "Kenya", "South Africa"], key="new_plan_office")
-            with col4:
-                new_quarter = st.selectbox("Quarter/Date", ["Q1 2026", "Q2 2026", "Q3 2026", "Q4 2026", "Q1 2027", "Other"], key="new_plan_quarter")
+        if deployment_plans:
+            df_plan = pd.DataFrame(deployment_plans)
             
-            if new_quarter == "Other":
-                new_date = st.date_input("Specific Date", key="new_plan_date")
-            else:
-                new_date = new_quarter
-            
-            col4, col5 = st.columns(2)
-            with col4:
-                new_spoortrack = st.number_input("SpoorTrack units", min_value=0, value=0, key="new_plan_spoortrack")
-            with col5:
-                new_gsatsolar = st.number_input("GSatSolar units", min_value=0, value=0, key="new_plan_gsatsolar")
-            
-            new_notes_plan = st.text_area("Notes", key="new_plan_notes", height=80)
-            
-            if st.button("Add Plan", key="add_plan"):
-                if new_country and new_site:
-                    new_plan = {
-                        'country': new_country,
-                        'site': new_site,
-                        'office': new_office,
-                        'date': str(new_date),
-                        'spoortrack': new_spoortrack,
-                        'gsatsolar': new_gsatsolar,
-                        'spoortrack_assigned': 0,
-                        'gsatsolar_assigned': 0,
-                        'notes': new_notes_plan,
-                        'date_added': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    }
-                    st.session_state.stock_data['deployment_plan'].append(new_plan)
-                    save_stock_data(st.session_state.stock_data)
-                    st.success("Deployment plan added!")
-                    st.rerun()
-                else:
-                    st.warning("Please enter country and site")
-        
-        # Display deployment plans grouped by office
-        if st.session_state.stock_data['deployment_plan']:
-            df_plan = pd.DataFrame(st.session_state.stock_data['deployment_plan'])
-            
-            # Ensure office column exists
-            if 'office' not in df_plan.columns:
-                df_plan['office'] = 'Kenya'
-            
-            # Group by office and display
             for office in ['Namibia', 'Kenya', 'South Africa']:
                 office_plans = df_plan[df_plan['office'] == office]
                 if len(office_plans) > 0:
                     with st.expander(f"📍 {office} Office - {len(office_plans)} plans", expanded=True):
                         for idx, row in office_plans.iterrows():
-                            col1, col2, col3 = st.columns([3, 2, 1])
+                            col1, col2 = st.columns([5, 1])
                             with col1:
                                 st.write(f"**{row['country']} - {row['site']}**")
-                                st.caption(f"Date: {row['date']}")
+                                st.caption(f"Date: {row['date']} | Status: {row['status']}")
+                                st.caption(f"📦 {row['manufacturer']}: {row.get('spoortrack', 0) + row.get('gsatsolar', 0)} units")
+                                if row['notes']:
+                                    st.caption(f"📝 {row['notes']}")
                             with col2:
-                                st.write(f"📦 ST: {row['spoortrack']} | GS: {row['gsatsolar']}")
-                            with col3:
-                                if st.button("🗑️", key=f"del_{idx}"):
-                                    del st.session_state.stock_data['deployment_plan'][idx]
-                                    save_stock_data(st.session_state.stock_data)
-                                    st.rerun()
-            
-            st.markdown("---")
-            if st.button("💾 Save All Changes", type="primary", key="save_all_plans"):
-                save_stock_data(st.session_state.stock_data)
-                st.success("✅ Saved to Google Sheets!")
+                                st.caption(f"ID: {row['event_id'][:8]}...")
         else:
-            st.info("No deployment plans yet. Add your planned deployments above.")
+            st.info("No deployment plans found in EarthRanger.")
     
-    # Tab 2: Simple Summary
     with tab2:
         st.subheader("📊 Summary: Do I Need to Order More?")
         
-        # Calculate totals
-        total_st_in_stock = st.session_state.stock_data['office_stock']['Namibia']['spoortrack'] + \
-                            st.session_state.stock_data['office_stock']['Kenya']['spoortrack'] + \
-                            st.session_state.stock_data['office_stock']['South Africa']['spoortrack']
+        total_st_in_stock = sum([stock_data[office]['spoortrack'] for office in ['Namibia', 'Kenya', 'South Africa']])
+        total_gs_in_stock = sum([stock_data[office]['gsatsolar'] for office in ['Namibia', 'Kenya', 'South Africa']])
         
-        total_gs_in_stock = st.session_state.stock_data['office_stock']['Namibia']['gsatsolar'] + \
-                            st.session_state.stock_data['office_stock']['Kenya']['gsatsolar'] + \
-                            st.session_state.stock_data['office_stock']['South Africa']['gsatsolar']
+        total_st_ordered = sum([stock_data[office]['ordered_st'] for office in ['Namibia', 'Kenya', 'South Africa']])
+        total_gs_ordered = sum([stock_data[office]['ordered_gs'] for office in ['Namibia', 'Kenya', 'South Africa']])
         
-        # Get ordered units
-        total_st_ordered = st.session_state.stock_data['stock_summary']['spoortrack']['in_mail']
-        total_gs_ordered = st.session_state.stock_data['stock_summary']['gsatsolar']['in_mail']
-        
-        # Calculate total available (in stock + ordered)
         total_st_available = total_st_in_stock + total_st_ordered
         total_gs_available = total_gs_in_stock + total_gs_ordered
         
-        # Calculate needed from plans
-        if st.session_state.stock_data['deployment_plan']:
-            df_plan = pd.DataFrame(st.session_state.stock_data['deployment_plan'])
+        if deployment_plans:
+            df_plan = pd.DataFrame(deployment_plans)
             total_st_needed = df_plan['spoortrack'].sum()
             total_gs_needed = df_plan['gsatsolar'].sum()
         else:
             total_st_needed = 0
             total_gs_needed = 0
         
-        # Calculate gaps (considering both in stock and ordered)
         st_gap = max(0, total_st_needed - total_st_available)
         gs_gap = max(0, total_gs_needed - total_gs_available)
         
-        # Display summary
+        # Debug Report
+        with st.expander("🔍 Debug Report - Calculation Details", expanded=False):
+            st.markdown("#### Stock Data")
+            st.json(stock_data)
+            
+            st.markdown("#### Calculated Totals")
+            debug_data = {
+                "SpoorTrack": {
+                    "In Stock": total_st_in_stock,
+                    "Ordered": total_st_ordered,
+                    "Available": total_st_available,
+                    "Needed": total_st_needed,
+                    "Gap": st_gap
+                },
+                "GSatSolar": {
+                    "In Stock": total_gs_in_stock,
+                    "Ordered": total_gs_ordered,
+                    "Available": total_gs_available,
+                    "Needed": total_gs_needed,
+                    "Gap": gs_gap
+                }
+            }
+            st.json(debug_data)
+            
+            if deployment_plans:
+                st.markdown("#### Deployment Plans (Raw Data)")
+                st.dataframe(df_plan)
+                
+                st.markdown("#### Sum Verification")
+                st.write(f"**SpoorTrack column sum:** {df_plan['spoortrack'].sum()}")
+                st.write(f"**GSatSolar column sum:** {df_plan['gsatsolar'].sum()}")
+                st.write(f"**Total plans:** {len(df_plan)}")
+                
+                # Show breakdown by manufacturer
+                st.markdown("#### Plans by Manufacturer")
+                st.write(f"**SpoorTrack plans:** {len(df_plan[df_plan['manufacturer'] == 'SpoorTrack'])}")
+                st.write(f"**GSatSolar plans:** {len(df_plan[df_plan['manufacturer'] == 'GSatSolar'])}")
+                
+                # Show individual values
+                st.markdown("#### Individual Plan Quantities")
+                for idx, row in df_plan.iterrows():
+                    st.write(f"Plan {idx}: {row['site']} - Mfr: {row['manufacturer']} | ST: {row['spoortrack']} | GS: {row['gsatsolar']}")
+            else:
+                st.write("No deployment plans found")
+        
         st.markdown("### Overall Stock Status")
         
         col1, col2 = st.columns(2)
@@ -538,7 +698,6 @@ def deployment_planning_dashboard():
                     surplus = total_gs_available - total_gs_needed
                     st.metric("✅ Surplus", surplus, delta=f"+{surplus}", delta_color="normal")
         
-        # Clear message
         st.markdown("---")
         total_gap = st_gap + gs_gap
         if total_gap == 0:
@@ -546,18 +705,15 @@ def deployment_planning_dashboard():
         else:
             st.error(f"⚠️ **ACTION NEEDED:** Order {total_gap} more units ({st_gap} SpoorTrack, {gs_gap} GSatSolar)")
         
-        # Breakdown by office
         st.markdown("---")
         st.markdown("### Stock by Office")
         
-        if st.session_state.stock_data['deployment_plan']:
-            df_plan = pd.DataFrame(st.session_state.stock_data['deployment_plan'])
-            if 'office' not in df_plan.columns:
-                df_plan['office'] = 'Kenya'
+        if deployment_plans:
+            df_plan = pd.DataFrame(deployment_plans)
             
             for office in ['Namibia', 'Kenya', 'South Africa']:
                 office_plans = df_plan[df_plan['office'] == office]
-                office_stock = st.session_state.stock_data['office_stock'][office]
+                office_stock_data = stock_data[office]
                 
                 st.markdown(f"#### {office}")
                 
@@ -570,29 +726,30 @@ def deployment_planning_dashboard():
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.write(f"**SpoorTrack:** {office_stock['spoortrack']} in stock | {office_st_needed} needed")
-                    if office_st_needed > office_stock['spoortrack']:
-                        st.warning(f"⚠️ Short by {office_st_needed - office_stock['spoortrack']}")
+                    st.write(f"**SpoorTrack:** {office_stock_data['spoortrack']} in stock | {office_st_needed} needed")
+                    if office_st_needed > office_stock_data['spoortrack']:
+                        st.warning(f"⚠️ Short by {office_st_needed - office_stock_data['spoortrack']}")
                 with col2:
-                    st.write(f"**GSatSolar:** {office_stock['gsatsolar']} in stock | {office_gs_needed} needed")
-                    if office_gs_needed > office_stock['gsatsolar']:
-                        st.warning(f"⚠️ Short by {office_gs_needed - office_stock['gsatsolar']}")
+                    st.write(f"**GSatSolar:** {office_stock_data['gsatsolar']} in stock | {office_gs_needed} needed")
+                    if office_gs_needed > office_stock_data['gsatsolar']:
+                        st.warning(f"⚠️ Short by {office_gs_needed - office_stock_data['gsatsolar']}")
         else:
             st.info("Add deployment plans to see breakdown by office.")
 
 def er_login(username, password):
-    """Test EarthRanger login credentials"""
+    """Create EarthRanger connection and return connection object"""
     try:
-        er = EarthRangerIO(
+        er_io = EarthRangerIO(
             server="https://twiga.pamdas.org",
             username=username,
             password=password
         )
-        # Try a simple call to check credentials
-        er.get_sources(limit=1)
-        return True
-    except Exception:
-        return False
+        # Test connection
+        er_io.get_sources(limit=1)
+        return er_io
+    except Exception as e:
+        st.error(f"Failed to connect to EarthRanger: {e}")
+        return None
 
 def authenticate_earthranger():
     """Handle EarthRanger authentication with username/password"""
@@ -729,7 +886,15 @@ def unit_dashboard():
         unit_check_tab()
     
     with main_tab2:
-        deployment_planning_dashboard()
+        # Create EarthRanger connection for deployment planning
+        username = st.session_state.username
+        password = st.session_state.password
+        er_io = er_login(username, password)
+        if er_io:
+            deployment_planning_dashboard(er_io)
+        else:
+            st.error("⚠️ Cannot load deployment planning without EarthRanger connection")
+            st.info("Please check your credentials and try again")
 
 def unit_check_tab():
     """Unit check functionality"""
