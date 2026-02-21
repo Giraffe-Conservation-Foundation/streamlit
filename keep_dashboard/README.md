@@ -14,28 +14,27 @@ https://giraffecf.maps.arcgis.com/apps/dashboards/572591b7353b4c1db3a4e85d200ed2
 
 ## ArcGIS Authentication
 
-The dashboard may show a "Please sign in to ArcGIS Online" prompt. Users can simply click "OK" or "Cancel" and the dashboard will load.
+The dashboard uses the same ArcGIS token as the GAD dashboard for authentication.
 
-### To Permanently Remove the Sign-In Prompt:
+### Setup
 
-**Make the Dashboard Public (Strongly Recommended):**
-1. Log in to ArcGIS Online at https://www.arcgis.com
-2. Go to "Content" and find your KEEP Dashboard
-3. Click on the dashboard, then click "Share"
-4. Select "Everyone (public)" 
-5. Click "Save"
-
-After making the dashboard public, the sign-in prompt will no longer appear for any users.
-
-### Alternative: Token Authentication (Private Dashboards Only)
-If you must keep the dashboard private, add an ArcGIS token to your Streamlit secrets:
+The token is automatically loaded from Streamlit secrets (same configuration as GAD):
 
 ```toml
 [arcgis]
 token = "your-arcgis-token-here"
 ```
 
-**Note:** Making the dashboard public is the recommended solution as it provides the best user experience.
+The app will automatically append the token to the dashboard URL for seamless viewing without sign-in prompts.
+
+### For Streamlit Cloud
+
+1. Go to your app settings on Streamlit Cloud
+2. Navigate to "Secrets"
+3. Ensure the arcgis.token is configured (should already be set for GAD dashboard)
+4. Save and redeploy
+
+**Note:** This uses the same token configuration as the GAD dashboard, so if GAD works, KEEP should work automatically.
 
 ## Password
 

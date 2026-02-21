@@ -17,6 +17,12 @@ except ImportError:
     def add_sidebar_logo():
         pass
 
+# Get token from secrets (same as GAD dashboard)
+try:
+    TOKEN = st.secrets.get("arcgis", {}).get("token", None)
+except Exception:
+    TOKEN = None  # For local development without secrets
+
 # Custom CSS for full-page iframe
 st.markdown("""
 <style>
@@ -86,26 +92,20 @@ def main():
     
     # Page title
     st.title("🎓 KEEP Dashboard")
-    
-    st.info("💡 If you see a sign-in prompt, simply click 'OK' or 'Cancel' - the dashboard will load automatically.")
-    
     st.markdown("---")
     
-    # ArcGIS Dashboard URL with embed parameter
+    # ArcGIS Dashboard URL
     dashboard_url = "https://giraffecf.maps.arcgis.com/apps/dashboards/572591b7353b4c1db3a4e85d200ed2de"
     
-    # Add embed parameter for better iframe display
-    dashboard_url = f"{dashboard_url}?embed=true"
+    # Add token to URL if available (same token as GAD dashboard)
+    if TOKEN:
+        dashboard_url = f"{dashboard_url}?token={TOKEN}"
+        st.success("✅ Connected with ArcGIS token")
+    else:
+        st.warning("⚠️ No ArcGIS token found. Dashboard may require sign-in.")
+        st.info("Configure arcgis.token in Streamlit secrets to enable automatic authentication.")
     
-    # Try to add token if available in secrets for automatic authentication
-    try:
-        if "arcgis" in st.secrets and "token" in st.secrets["arcgis"]:
-            token = st.secrets["arcgis"]["token"]
-            dashboard_url = f"{dashboard_url}&token={token}"
-    except:
-        pass
-    
-    # Embed the dashboard with larger height
+    # Embed the dashboard
     st.components.v1.iframe(
         dashboard_url,
         height=1000,
