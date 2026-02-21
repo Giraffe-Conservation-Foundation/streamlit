@@ -241,7 +241,7 @@ def main():
     # Summary metrics
     st.markdown('<div class="section-header">📊 Publication Summary</div>', unsafe_allow_html=True)
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.markdown(f"""
@@ -260,7 +260,7 @@ def main():
     sorted_years = sorted(year_counts.keys())
     
     with col2:
-        latest_year = sorted_years[0] if sorted_years else "N/A"
+        latest_year = sorted_years[-1] if sorted_years else "N/A"
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value">{latest_year}</div>
@@ -274,6 +274,15 @@ def main():
         <div class="metric-card">
             <div class="metric-value">{num_years}</div>
             <div class="metric-label">Years Covered</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        num_types = len(set([pub['item_type'] for pub in publications]))
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{num_types}</div>
+            <div class="metric-label">Publication Types</div>
         </div>
         """, unsafe_allow_html=True)
     
