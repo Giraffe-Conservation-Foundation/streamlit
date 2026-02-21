@@ -14,27 +14,32 @@ https://giraffecf.maps.arcgis.com/apps/dashboards/572591b7353b4c1db3a4e85d200ed2
 
 ## ArcGIS Authentication
 
-The dashboard uses the same ArcGIS token as the GAD dashboard for authentication.
+The dashboard automatically authenticates using ArcGIS credentials stored in Streamlit secrets.
 
 ### Setup
 
-The token is automatically loaded from Streamlit secrets (same configuration as GAD):
+Add your ArcGIS credentials to Streamlit secrets:
 
 ```toml
 [arcgis]
-token = "your-arcgis-token-here"
+username = "your-arcgis-username"
+password = "your-arcgis-password"
+portal_url = "https://giraffecf.maps.arcgis.com"  # Optional, defaults to this value
 ```
 
-The app will automatically append the token to the dashboard URL for seamless viewing without sign-in prompts.
+The app will:
+1. Automatically authenticate with ArcGIS using the provided credentials
+2. Get an access token
+3. Load the dashboard with the token - no user interaction required
 
 ### For Streamlit Cloud
 
 1. Go to your app settings on Streamlit Cloud
 2. Navigate to "Secrets"
-3. Ensure the arcgis.token is configured (should already be set for GAD dashboard)
+3. Add the arcgis credentials as shown above
 4. Save and redeploy
 
-**Note:** This uses the same token configuration as the GAD dashboard, so if GAD works, KEEP should work automatically.
+**Note:** Users will not see any authentication prompts. The dashboard loads automatically.
 
 ## Password
 
