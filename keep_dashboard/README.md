@@ -14,23 +14,28 @@ https://giraffecf.maps.arcgis.com/apps/dashboards/572591b7353b4c1db3a4e85d200ed2
 
 ## ArcGIS Authentication
 
-To avoid the "Please sign in to ArcGIS Online" prompt, you have two options:
+The dashboard may show a "Please sign in to ArcGIS Online" prompt. Users can simply click "OK" or "Cancel" and the dashboard will load.
 
-### Option 1: Make Dashboard Public (Recommended)
-1. Go to your ArcGIS Dashboard
-2. Click "Share" 
-3. Select "Everyone (public)" or "Organization"
-4. Save the sharing settings
+### To Permanently Remove the Sign-In Prompt:
 
-### Option 2: Use Token Authentication
-If you need to keep the dashboard private, add an ArcGIS token to your Streamlit secrets:
+**Make the Dashboard Public (Strongly Recommended):**
+1. Log in to ArcGIS Online at https://www.arcgis.com
+2. Go to "Content" and find your KEEP Dashboard
+3. Click on the dashboard, then click "Share"
+4. Select "Everyone (public)" 
+5. Click "Save"
+
+After making the dashboard public, the sign-in prompt will no longer appear for any users.
+
+### Alternative: Token Authentication (Private Dashboards Only)
+If you must keep the dashboard private, add an ArcGIS token to your Streamlit secrets:
 
 ```toml
 [arcgis]
 token = "your-arcgis-token-here"
 ```
 
-The app will automatically append the token to the dashboard URL for authentication.
+**Note:** Making the dashboard public is the recommended solution as it provides the best user experience.
 
 ## Password
 
