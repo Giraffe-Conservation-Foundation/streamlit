@@ -1,9 +1,13 @@
 ﻿"""
-SECR Analysis Dashboard
-=======================
+Multi-Model SECR Analysis Dashboard
+====================================
 
-Spatially-Explicit Capture-Recapture analysis for population estimation.
-Demonstrates the complete workflow from EarthRanger field data → Wildbook photo-ID → SECR analysis.
+Spatially-Explicit Capture-Recapture analysis with multiple model comparison.
+Uses Murray Efford's 'secr' CRAN package to fit and compare detection function models
+(HN, HR, EX) crossed with density and behavioural-response structures.
+
+REQUIRED R PACKAGE: secr  (CRAN — no GitHub compilation needed)
+Installation: R -e "install.packages(c('secr','jsonlite'))"
 
 Author: Giraffe Conservation Foundation
 Date: February 2026
@@ -64,33 +68,114 @@ except ImportError:
     PATROL_DOWNLOAD_AVAILABLE = False
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# R PACKAGE AUTO-INSTALLER
+# Runs once per deployment/session (cached). Works locally and on Streamlit Cloud.
+# Streamlit Cloud provides R via packages.txt (r-base); this installs secr/jsonlite.
+# ─────────────────────────────────────────────────────────────────────────────
+@st.cache_resource(show_spinner=False)
+def ensure_r_packages():
+    """Install secr and jsonlite into the current R installation if missing."""
+    import subprocess
+    import shutil
+    import glob
+
+    # Locate Rscript
+    rscript = shutil.which('Rscript')
+    if not rscript:
+        candidates = sorted(
+            glob.glob(r'C:\Program Files\R\R-*\bin\Rscript.exe'), reverse=True
+        ) + sorted(
+            glob.glob(r'C:\Program Files (x86)\R\R-*\bin\Rscript.exe'), reverse=True
+        )
+        for c in candidates:
+            if Path(c).exists():
+                rscript = c
+                break
+
+    if not rscript:
+        return {
+            'ok': False,
+            'rscript': None,
+            'message': 'Rscript not found. Install R from https://www.r-project.org/'
+        }
+
+    # Check if both packages are already present (fast path)
+    check = subprocess.run(
+        [rscript, '--vanilla', '-e',
+         "missing <- setdiff(c('secr','jsonlite'), rownames(installed.packages())); "
+         "cat(if(length(missing)==0) 'OK' else paste('MISSING', paste(missing, collapse=',')))"],
+        capture_output=True, text=True, timeout=30
+    )
+    if 'OK' in check.stdout:
+        return {'ok': True, 'rscript': rscript, 'message': 'R packages already installed'}
+
+    # Install missing packages
+    install = subprocess.run(
+        [rscript, '--vanilla', '-e',
+         "options(repos=c(CRAN='https://cloud.r-project.org'), timeout=600); "
+         "pkgs <- setdiff(c('secr','jsonlite'), rownames(installed.packages())); "
+         "if(length(pkgs)>0){ cat('Installing:', paste(pkgs,collapse=', '),'\\n'); "
+         "install.packages(pkgs, quiet=FALSE) }; "
+         "ok <- all(c('secr','jsonlite') %in% rownames(installed.packages())); "
+         "cat(if(ok) 'INSTALL_OK' else 'INSTALL_FAILED', '\\n')"],
+        capture_output=True, text=True, timeout=600
+    )
+
+    success = 'INSTALL_OK' in install.stdout
+    msg = install.stdout.strip() + ('\n' + install.stderr.strip() if install.stderr.strip() else '')
+    return {'ok': success, 'rscript': rscript, 'message': msg}
+
+
 def main():
     """Main Streamlit app"""
     
     # Page title
-    st.title("📊 SECR Population Analysis")
-    st.caption("Build: 2026-02-18-UNIDENT-v22")
-    st.markdown("*Spatially-Explicit Capture-Recapture*")
+    st.title("📊 Multi-Model SECR Analysis")
+    st.caption("Build: 2026-02-21-MULTI-MODEL-v1")
+    st.markdown("*Spatially-Explicit Capture-Recapture with Detection Function Comparison*")
     st.markdown("---")
     
     # Introduction
     st.markdown("""
-    ### 🦒 Bailey's Triple Catch Analysis
+    ### 🦒 Multiple SECR Models Comparison
     
-    **Residents-Only Population Estimation**
+    **Compare detection function models to find the best fit**
     
-    This method:
+    This analysis:
     1. Downloads patrol tracks from EarthRanger (survey effort)
     2. Downloads encounter data from GiraffeSpotter
-    3. Classifies individuals as **residents** (2+ captures) vs **transients** (1 capture)
-    4. Applies Chapman's estimator to residents only
-    5. Adds transients for total population estimate
+    3. Matches encounters to patrol occasions (spatial-temporal)
+    4. Fits multiple SECR models — detection function × g0 structure:
+       - **HN** (Half-normal) × null / time / behavioural response
+       - **HR** (Hazard-rate) × null / time / behavioural response
+       - **EX** (Exponential) × null / time / behavioural response
+    5. Compares **9+ models by AICc** and computes Akaike weights
+    6. Reports model-averaged population estimate + best-model CIs
     
-    **Best for:** Short-term surveys (3+ days) in areas with transient individuals
+    **Package:** Murray Efford's `secr` (CRAN) — installs in seconds, no GitHub required
     """)
     
+    # ── R environment check (runs once, cached) ─────────────────────────────────
+    with st.spinner("🔧 Checking R environment — first run installs secr (~2 min on cold start)..."):
+        r_env = ensure_r_packages()
+
+    if not r_env['ok']:
+        st.error(f"❌ R not ready: {r_env['message']}")
+        st.markdown("""
+        **Install R** from https://www.r-project.org/ then open R and run:
+        ```r
+        install.packages(c('secr', 'jsonlite'))
+        ```
+        Then refresh this page.
+        """)
+        return
+    else:
+        label = '✅ R ready' if 'already' in r_env['message'] else '✅ secr installed'
+        st.success(f"{label} — `{Path(r_env['rscript']).parent.parent.name}`")
+
     st.markdown("---")
-    
+
     # Check if SECR is available
     if not SECR_AVAILABLE:
         st.error("❌ Bailey analysis module not available")
@@ -103,19 +188,19 @@ def main():
         """)
         return
     
-    # Initialize session state for Bailey's analysis
-    if 'bailey_results' not in st.session_state:
-        st.session_state.bailey_results = None
-    if 'bailey_data' not in st.session_state:
-        st.session_state.bailey_data = None
-    if 'bailey_patrols' not in st.session_state:
-        st.session_state.bailey_patrols = None
+    # Initialize session state for multi-model SECR analysis
+    if 'secr_results' not in st.session_state:
+        st.session_state.secr_results = None
+    if 'secr_data' not in st.session_state:
+        st.session_state.secr_data = None
+    if 'secr_patrols' not in st.session_state:
+        st.session_state.secr_patrols = None
     if 'all_patrols' not in st.session_state:
         st.session_state.all_patrols = None
     if 'patrol_leaders_list' not in st.session_state:
         st.session_state.patrol_leaders_list = []
     
-    # ===== BAILEY'S TRIPLE CATCH ANALYSIS =====
+    # ===== MULTI-MODEL SECR ANALYSIS =====
     st.markdown("---")
     
     # Step 1: EarthRanger Connection
@@ -219,12 +304,12 @@ def main():
         if selected_leaders:
             # Filter patrols by selected leaders
             filtered_patrols = st.session_state.all_patrols[st.session_state.all_patrols['patrol_leader'].isin(selected_leaders)]
-            st.session_state.bailey_patrols = filtered_patrols
+            st.session_state.secr_patrols = filtered_patrols
             
             st.info(f"Using {len(filtered_patrols)} patrols from {len(selected_leaders)} leader(s)")
         else:
             st.warning("⚠️ Please select at least one patrol leader")
-            st.session_state.bailey_patrols = None
+            st.session_state.secr_patrols = None
     
     st.markdown("---")
     
@@ -291,23 +376,52 @@ When unchecked, only encounters with identified individuals will be used (strict
                             
                             if encounters and len(encounters) > 0:
                                 # Prepare data for Bailey analysis
-                                bailey_data = prepare_bailey_data(encounters, include_unidentified=include_unidentified)
+                                secr_data = prepare_bailey_data(encounters, include_unidentified=include_unidentified)
                                 
-                                if bailey_data is not None and not bailey_data.empty:
-                                    st.session_state.bailey_data = bailey_data
-                                    st.success(f"✅ Downloaded {len(bailey_data)} encounters with identified individuals")
+                                if secr_data is not None and not secr_data.empty:
+                                    # --- Project lat/lon → metric x/y for SECR ---
+                                    has_latlon = ('latitude' in secr_data.columns and
+                                                  'longitude' in secr_data.columns and
+                                                  secr_data['latitude'].notna().any())
+                                    if has_latlon:
+                                        try:
+                                            import math
+                                            # Equirectangular projection — accurate to <1% over survey areas up to ~200 km
+                                            valid = secr_data['latitude'].notna() & secr_data['longitude'].notna()
+                                            lat_ref = float(secr_data.loc[valid, 'latitude'].mean())
+                                            lon_ref = float(secr_data.loc[valid, 'longitude'].mean())
+                                            M = 111319.9  # metres per degree latitude
+                                            cos_lat = math.cos(math.radians(lat_ref))
+                                            secr_data['x'] = np.where(
+                                                valid,
+                                                (secr_data['longitude'] - lon_ref) * cos_lat * M,
+                                                np.nan
+                                            )
+                                            secr_data['y'] = np.where(
+                                                valid,
+                                                (secr_data['latitude'] - lat_ref) * M,
+                                                np.nan
+                                            )
+                                            st.info(f"📍 Coordinates projected to metres (ref: {lat_ref:.4f}°, {lon_ref:.4f}°)")
+                                        except Exception as proj_err:
+                                            st.warning(f"⚠️ Could not project coordinates: {proj_err}. Using raw lat/lon (density unreliable).")
+                                            secr_data['x'] = secr_data['longitude']
+                                            secr_data['y'] = secr_data['latitude']
+                                    
+                                    st.session_state.secr_data = secr_data
+                                    st.success(f"✅ Downloaded {len(secr_data)} encounters with identified individuals")
                                     
                                     # Show date breakdown
-                                    date_counts = bailey_data['date'].dt.date.value_counts().sort_index()
+                                    date_counts = secr_data['date'].dt.date.value_counts().sort_index()
                                     st.info("📅 **Encounter Distribution by Date:**")
                                     for date, count in date_counts.items():
                                         st.text(f"  • {date}: {count} encounters")
                                     
                                     if date_counts.min() < 3:
-                                        st.warning("⚠️ Some dates have very few encounters. Bailey's analysis works best with 10+ encounters per occasion.")
+                                        st.warning("⚠️ Some dates have very few encounters. SECR analysis works best with 5+ encounters per occasion.")
                                     
                                     with st.expander("📋 Data Preview"):
-                                        st.dataframe(bailey_data.head(10))
+                                        st.dataframe(secr_data.head(10))
                                 else:
                                     st.warning("⚠️ No valid encounters found. Possible reasons:")
                                     st.write("  • No encounters with identified individuals in the date range")
@@ -322,17 +436,15 @@ When unchecked, only encounters with identified individuals will be used (strict
                     st.error(f"❌ Error: {str(e)}")
                     st.exception(e)
     
-    st.markdown("---")
-    # ============ CRITICAL CHECKPOINT ============
-    st.error("🚨 IF YOU SEE THIS, STEP 3 CODE IS LOADING 🚨")
+    
     st.markdown("---")
     st.markdown("# " + "="*50)
     st.markdown("# 📍 STEP 3: SPATIAL MATCHING (REQUIRED)")
     st.markdown("# " + "="*50)
     
     # Check if we have both data sources
-    has_encounter_data = 'bailey_data' in st.session_state and st.session_state.bailey_data is not None
-    has_patrol_data = 'bailey_patrols' in st.session_state and st.session_state.bailey_patrols is not None
+    has_encounter_data = 'secr_data' in st.session_state and st.session_state.secr_data is not None
+    has_patrol_data = 'secr_patrols' in st.session_state and st.session_state.secr_patrols is not None
     
     if not has_encounter_data:
         st.error("❌ No encounter data. Complete Step 2 first.")
@@ -341,13 +453,13 @@ When unchecked, only encounters with identified individuals will be used (strict
     elif not PATROL_DOWNLOAD_AVAILABLE:
         st.error("❌ Spatial matching requires geopandas. Install: pip install geopandas ecoscope-release")
     else:
-        bailey_data = st.session_state.bailey_data
-        patrols_df = st.session_state.bailey_patrols
+        secr_data = st.session_state.secr_data
+        patrols_df = st.session_state.secr_patrols
         
         # Check if already matched
-        if 'occasion' in bailey_data.columns:
-            n_matched = bailey_data['occasion'].notna().sum()
-            n_occasions = bailey_data['occasion'].nunique()
+        if 'occasion' in secr_data.columns:
+            n_matched = secr_data['occasion'].notna().sum()
+            n_occasions = secr_data['occasion'].nunique()
             st.success(f"✅ Already matched! {n_matched} encounters assigned to {n_occasions} occasions")
         else:
             st.info("🗺️ Match encounters to patrol tracks to assign occasion numbers")
@@ -459,14 +571,14 @@ When unchecked, only encounters with identified individuals will be used (strict
                                 st.info(f"🔵 Applied {buffer_meters}m buffer to patrol lines")
                             
                             # Prepare encounter points
-                            bailey_data_with_occasions = bailey_data.copy()
+                            secr_data_with_occasions = secr_data.copy()
                             
                             # Drop existing occasion column if present
-                            if 'occasion' in bailey_data_with_occasions.columns:
-                                bailey_data_with_occasions = bailey_data_with_occasions.drop(columns=['occasion'])
+                            if 'occasion' in secr_data_with_occasions.columns:
+                                secr_data_with_occasions = secr_data_with_occasions.drop(columns=['occasion'])
                             
-                            bailey_data_with_occasions['date'] = pd.to_datetime(bailey_data_with_occasions['date'])
-                            bailey_data_with_occasions['enc_date'] = bailey_data_with_occasions['date'].dt.date
+                            secr_data_with_occasions['date'] = pd.to_datetime(secr_data_with_occasions['date'])
+                            secr_data_with_occasions['enc_date'] = secr_data_with_occasions['date'].dt.date
                             
                             # Create date-to-occasion mapping from patrol data
                             # Use the DATE from patrol titles (YYYYMMDD in name) as the primary occasion determinant
@@ -493,20 +605,21 @@ When unchecked, only encounters with identified individuals will be used (strict
                                 st.text(f"  • {date} → Occasion {occ} ({patrol_count} patrol(s))")
                             
                             # Assign occasions based on date
-                            bailey_data_with_occasions['occasion'] = bailey_data_with_occasions['enc_date'].map(date_to_occasion)
+                            secr_data_with_occasions['occasion'] = secr_data_with_occasions['enc_date'].map(date_to_occasion)
                             
                             # Debug: Show encounter date distribution with occasion assignments
                             st.info("🔍 **Encounter Date Distribution with Occasion Assignment:**")
-                            enc_dist = bailey_data_with_occasions.groupby(['enc_date', 'occasion']).size().reset_index()
+                            enc_dist = secr_data_with_occasions.groupby(['enc_date', 'occasion']).size().reset_index()
                             enc_dist.columns = ['date', 'occasion', 'count']
                             for _, row in enc_dist.iterrows():
                                 occ_str = f"Occasion {row['occasion']}" if pd.notna(row['occasion']) else "NO OCCASION"
                                 st.text(f"  • {row['date']} → {occ_str}: {row['count']} encounters")
                             
-                            matched = bailey_data_with_occasions[bailey_data_with_occasions['occasion'].notna()].copy()
+                            matched = secr_data_with_occasions[secr_data_with_occasions['occasion'].notna()].copy()
                             
                             if not matched.empty:
-                                st.session_state.bailey_data = matched
+                                st.session_state.secr_data = matched
+                                st.session_state.secr_patrols = patrols_gdf
                                 n_occasions = matched['occasion'].nunique()
                                 st.success(f"✅ Matched {len(matched)} encounters to {n_occasions} occasions by date!")
                                 
@@ -519,11 +632,11 @@ When unchecked, only encounters with identified individuals will be used (strict
                                     occasion_summary = occasion_summary.sort_values('Occasion')
                                     st.dataframe(occasion_summary, use_container_width=True)
                                     
-                                    if n_occasions < 3:
-                                        st.error(f"⚠️ Only {n_occasions} occasions found. Need at least 3!")
-                                        st.info("Check that encounters span at least 3 patrol dates")
+                                    if n_occasions < 2:
+                                        st.error(f"⚠️ Only {n_occasions} occasions found. Need at least 2!")
+                                        st.info("Check that encounters span multiple patrol dates")
                                     else:
-                                        st.success(f"✅ {n_occasions} occasions - sufficient for Bailey's analysis!")
+                                        st.success(f"✅ {n_occasions} occasions - sufficient for SECR analysis!")
                                 
                                 # Create visualization map
                                 if FOLIUM_AVAILABLE:
@@ -562,7 +675,7 @@ When unchecked, only encounters with identified individuals will be used (strict
                                                     ).add_to(m)
                                                 
                                                 # Add encounter points (all encounters, not just matched)
-                                                for _, enc in bailey_data_with_occasions.iterrows():
+                                                for _, enc in secr_data_with_occasions.iterrows():
                                                     if pd.notna(enc['latitude']) and pd.notna(enc['longitude']):
                                                         has_occasion = pd.notna(enc['occasion'])
                                                         color = occasion_colors.get(str(enc.get('occasion', '')), 'gray') if has_occasion else 'black'
@@ -578,7 +691,7 @@ When unchecked, only encounters with identified individuals will be used (strict
                                                         ).add_to(m)
                                                 
                                                 # Add legend
-                                                num_encounters = len(bailey_data_with_occasions)
+                                                num_encounters = len(secr_data_with_occasions)
                                                 legend_html = f'''
                                                 <div style="position: fixed; bottom: 50px; left: 50px; width: 250px; 
                                                 background-color: white; border:2px solid grey; z-index:9999; font-size:14px;
@@ -600,7 +713,7 @@ When unchecked, only encounters with identified individuals will be used (strict
                                                 
                                                 st_folium(m, width=700, height=500)
                                                 
-                                                st.info(f"📍 Map shows {len(patrols_viz)} patrol lines and {len(bailey_data_with_occasions)} encounters with identified individuals")
+                                                st.info(f"📍 Map shows {len(patrols_viz)} patrol lines and {len(secr_data_with_occasions)} encounters with identified individuals")
                                                 st.warning("⚠️ Black dots = encounters missing April 23 date. Check GiraffeSpotter for unidentified individuals.")
                                         except Exception as e:
                                             st.error(f"Could not create map: {str(e)}")
@@ -611,7 +724,7 @@ When unchecked, only encounters with identified individuals will be used (strict
                             else:
                                 st.error("❌ No encounters matched to patrol dates")
                                 st.info(f"Patrol dates: {sorted(date_to_occasion.keys())}")
-                                st.info(f"Encounter dates: {sorted(bailey_data_with_occasions['enc_date'].unique())}")
+                                st.info(f"Encounter dates: {sorted(secr_data_with_occasions['enc_date'].unique())}")
                     
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
@@ -623,24 +736,24 @@ When unchecked, only encounters with identified individuals will be used (strict
     st.markdown("---")
     st.markdown("# " + "="*50)
     
-    # Step 4: Run Bailey's Analysis
-    if 'bailey_data' in st.session_state and st.session_state.bailey_data is not None:
-        st.markdown("# 📊 STEP 4: RUN BAILEY'S ANALYSIS")
+    # Step 4: Run SECR Multi-Model Analysis
+    if 'secr_data' in st.session_state and st.session_state.secr_data is not None:
+        st.markdown("# 📊 STEP 4: RUN SECR MULTI-MODEL ANALYSIS")
         st.markdown("# " + "="*50)
         
-        bailey_data = st.session_state.bailey_data
+        secr_data = st.session_state.secr_data
         
         # Check if occasion matching was completed
-        has_occasions = 'occasion' in bailey_data.columns
-        has_patrol_data = 'bailey_patrols' in st.session_state and st.session_state.bailey_patrols is not None
+        has_occasions = 'occasion' in secr_data.columns
+        has_patrol_data = 'secr_patrols' in st.session_state and st.session_state.secr_patrols is not None
         
         if has_patrol_data and not has_occasions:
             st.error("❌ **BLOCKED: Complete Step 3 first!**")
             st.warning("""
-            ⚠️ You have patrol data, so you MUST complete Step 3 spatial matching before running Bailey's analysis.
+            ⚠️ You have patrol data, so you MUST complete Step 3 spatial matching before running SECR analysis.
             
             **Why?** The system uses patrol track names to define occasions (e.g., Line1 = Occasion 1).
-            Without spatial matching, it would use encounter timestamps as occasions (creating 28+ occasions instead of 3).
+            Without spatial matching, it would use encounter timestamps as occasions (creating many occasions instead of few).
             
             **Solution:** Scroll up to Step 3 and click "🔗 Match Encounters to Patrol Occasions"
             """)
@@ -650,13 +763,17 @@ When unchecked, only encounters with identified individuals will be used (strict
         occasion_label = "Occasions" if has_occasions else "Survey Dates"
         
         # Summary
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Total Encounters", len(bailey_data))
+            st.metric("Total Captures", len(secr_data), help="Number of individual detections")
         with col2:
-            st.metric("Unique Individuals", bailey_data['individual_id'].nunique())
+            st.metric("Unique Individuals", secr_data['individual_id'].nunique(), help="Number of identified subjects")
         with col3:
-            st.metric(occasion_label, bailey_data[occasion_col].nunique())
+            st.metric(occasion_label, secr_data[occasion_col].nunique(), help="Number of survey occasions")
+        with col4:
+            if 'x' in secr_data.columns and 'y' in secr_data.columns:
+                n_locations = len(secr_data[['x', 'y']].drop_duplicates())
+                st.metric("Detector Locations", n_locations, help="Number of unique capture locations")
         
         if has_occasions:
             st.success(f"✅ Using patrol-based occasions from Step 3 spatial matching")
@@ -664,297 +781,300 @@ When unchecked, only encounters with identified individuals will be used (strict
             st.info(f"ℹ️ Using survey dates as occasions (no patrol data)")
         
         # Check if we have enough occasions
-        unique_occasions = bailey_data[occasion_col].nunique()
-        if unique_occasions < 3:
-            st.error(f"❌ Need at least 3 {occasion_label.lower()} for Bailey's Triple Catch. Found: {unique_occasions}")
-            if has_occasions:
-                st.info("💡 Check that your patrol tracks have at least 3 different occasion numbers")
-            else:
-                st.info("💡 Download data covering at least 3 separate survey days")
+        unique_occasions = secr_data[occasion_col].nunique()
+        if unique_occasions < 2:
+            st.error(f"❌ Need at least 2 {occasion_label.lower()} for SECR analysis. Found: {unique_occasions}")
+            st.info("💡 Download data covering at least 2 separate survey occasions")
         else:
-            # Show occasions/dates
-            st.markdown(f"### {occasion_label}:")
-            occasion_counts = bailey_data.groupby(occasion_col).size().reset_index(name='encounters')
+            # Show occasions distribution
+            st.markdown(f"### {occasion_label} Distribution:")
+            occasion_counts = secr_data.groupby(occasion_col).size().reset_index(name='captures')
             occasion_counts = occasion_counts.sort_values(occasion_col)
-            st.dataframe(occasion_counts)
             
-            # Parameters
-            min_captures = st.slider(
-                "Minimum captures to classify as 'resident'",
-                min_value=2,
-                max_value=5,
-                value=2,
-                help="Individuals with fewer captures are classified as transients"
-            )
+            # Create capture history summary
+            ch_summary = secr_data.groupby([occasion_col, 'individual_id']).size().unstack(fill_value=0)
+            st.dataframe(occasion_counts, use_container_width=True)
             
-            if st.button("🔬 Run Bailey's Triple Catch Analysis", type="primary", use_container_width=True, key="run_bailey"):
-                with st.spinner("Running Bailey's analysis..."):
+            st.markdown("**Models to Fit:**")
+            st.info("""
+            Will compare up to **9 models** (detection function × g0 structure):
+            
+            | Detection function | Null | Time-varying | Behavioural response |
+            |---|---|---|---|
+            | **HN** Half-normal: g(d) = g₀·exp(−d²/2σ²) | ✓ | ✓ | ✓ |
+            | **HR** Hazard-rate: 1−exp(−(d/σ)−z) | ✓ | ✓ | ✓ |
+            | **EX** Exponential: g(d) = g₀·exp(−d/σ) | ✓ | ✓ | ✓ |
+            
+            Models ranked by **AICc** with Akaike weights. Model-averaged N̂ also reported.
+            """)
+            
+            # Run models button
+            r_env = ensure_r_packages()  # guaranteed cached — instant
+            if not r_env['ok']:
+                st.error("❌ R is not available — see banner at top of page")
+            elif st.button("🚀 Fit SECR Models (Compare Detection Functions)", type="primary", use_container_width=True, key="run_oscr"):
+                with st.spinner("Fitting SECR models (this may take 1–3 minutes)..."):
                     try:
-                        # Initialize Bailey analysis with proper occasion column
-                        bailey = BaileyAnalysis(bailey_data, occasion_col=occasion_col)
+                        import tempfile
+                        import json
+                        import subprocess
                         
-                        # Run analysis
-                        results = bailey.bailey_triple_catch(residents_only=True)
-                        
-                        if results:
-                            st.session_state.bailey_results = results
-                            st.success("✅ Analysis complete!")
+                        # Prepare data for R (secr format)
+                        with tempfile.TemporaryDirectory() as tmpdir:
+                            tmpdir = Path(tmpdir)
                             
-                            # Display results
-                            display_bailey_results(results)
-                        else:
-                            st.error("❌ Could not complete analysis (insufficient recaptures)")
+                            individuals = sorted(secr_data['individual_id'].unique())
+                            occasions   = sorted(secr_data[occasion_col].unique())
+                            occ_map     = {o: i + 1 for i, o in enumerate(occasions)}  # 1-indexed
                             
+                            # Build trap lookup: unique (x,y) → trap_id
+                            has_xy = 'x' in secr_data.columns and 'y' in secr_data.columns
+                            if has_xy:
+                                traps_xy = secr_data[['x', 'y']].drop_duplicates().reset_index(drop=True)
+                                traps_xy.index = traps_xy.index + 1  # 1-indexed trap IDs
+                                trap_key = {(r.x, r.y): idx for idx, r in traps_xy.iterrows()}
+
+                                # captures.csv: Session, ID, Occasion, Detector
+                                cap_rows = []
+                                for _, row in secr_data.iterrows():
+                                    det_id = trap_key.get((row['x'], row['y']), 1)
+                                    cap_rows.append({
+                                        'Session':  'S1',
+                                        'ID':       str(row['individual_id']),
+                                        'Occasion': occ_map[row[occasion_col]],
+                                        'Detector': det_id
+                                    })
+                                pd.DataFrame(cap_rows).to_csv(tmpdir / 'captures.csv', index=False)
+
+                                # traps.csv: Detector, x, y
+                                traps_out = traps_xy.copy()
+                                traps_out.index.name = 'Detector'
+                                traps_out.reset_index().to_csv(tmpdir / 'traps.csv', index=False)
+                            else:
+                                # No x/y — stop and tell user to re-download
+                                st.error("❌ No coordinate data found in encounter records.")
+                                st.warning("""
+                                **Action required:** Your GiraffeSpotter encounters are missing GPS coordinates,
+                                or the data was downloaded before the coordinate fix was applied.
+
+                                **Please go back to Step 2 and re-download the encounters.**
+                                SECR requires real spatial coordinates — a dummy grid cannot produce
+                                meaningful density or abundance estimates.
+                                """)
+                                st.stop()
+
+                            # Call R script
+                            r_script = Path(__file__).parent / "secr_multi_model.R"
+                            
+                            if not r_script.exists():
+                                st.error(f"❌ R script not found: {r_script}")
+                                st.info("Make sure secr_multi_model.R is in the secr_analysis directory")
+                                st.info(f"**Expected location:** {r_script}")
+                            else:
+                                # Run R script
+                                output_dir = tmpdir / "results"
+                                output_dir.mkdir()
+                                
+                                # Use the already-verified Rscript path from ensure_r_packages()
+                                rscript_cmd = r_env['rscript']
+                                cmd = [rscript_cmd, str(r_script), str(tmpdir), str(output_dir)]
+                                
+                                st.info(f"🔧 Running R SECR analysis (may take 1–5 minutes)...")
+                                st.code(f"Command: {rscript_cmd} secr_multi_model.R")
+                                
+                                # Write stdout/stderr to temp files to avoid Windows pipe-buffer deadlock
+                                stdout_file = tmpdir / "r_stdout.txt"
+                                stderr_file = tmpdir / "r_stderr.txt"
+                                with open(stdout_file, 'w') as fout, open(stderr_file, 'w') as ferr:
+                                    proc = subprocess.run(cmd, stdout=fout, stderr=ferr, timeout=600)
+                                stdout_txt = stdout_file.read_text(errors='replace')
+                                stderr_txt = stderr_file.read_text(errors='replace')
+                                
+                                class _result:
+                                    returncode = proc.returncode
+                                    stdout = stdout_txt
+                                    stderr = stderr_txt
+                                result = _result()
+                                
+                                if result.returncode != 0:
+                                    st.error("❌ R script failed")
+                                    st.warning("**R stderr:**")
+                                    st.code(result.stderr)
+                                    st.warning("**R stdout:**")
+                                    st.code(result.stdout)
+                                    st.info(f"**Full command:** {' '.join(cmd)}")
+                                    # The auto-installer should have caught this, but just in case:
+                                    if "there is no package called 'secr'" in result.stderr:
+                                        st.error("⚠️ secr package missing from R library. "
+                                                 "Clear the Streamlit cache and reload to re-run the installer.")
+                                else:
+                                    # Load results
+                                    results_file = output_dir / "secr_results.json"
+                                    aic_file = output_dir / "aic_table.csv"
+                                        
+                                    if results_file.exists() and aic_file.exists():
+                                        with open(results_file) as f:
+                                            results_dict = json.load(f)
+                                        
+                                        aic_df = pd.read_csv(aic_file)
+                                        
+                                        # Store results
+                                        st.session_state.secr_results = {
+                                            'results_dict': results_dict,
+                                            'aic_table': aic_df
+                                        }
+                                        
+                                        st.success("✅ Model fitting complete!")
+                                        st.balloons()
+                                        
+                                    else:
+                                        st.error("❌ Could not load results from R")
+                                        st.info(f"Expected files not found in {output_dir}")
+                                    
                     except Exception as e:
                         st.error(f"❌ Analysis failed: {str(e)}")
                         st.exception(e)
+
     else:
-        st.info("👆 Please download GiraffeSpotter encounter data to continue")
+        st.info("👆 Please download and prepare GiraffeSpotter encounter data to continue")
     
-    # Display previous results if available
-    if 'bailey_results' in st.session_state and st.session_state.bailey_results is not None:
-        if 'bailey_data' not in st.session_state or st.session_state.bailey_data is None:
-            st.markdown("---")
-            st.markdown("## 📊 Previous Analysis Results")
-            display_bailey_results(st.session_state.bailey_results)
+    # Display results if available
+    if 'secr_results' in st.session_state and st.session_state.secr_results is not None:
+        display_oscr_results(st.session_state.secr_results)
 
 
-def display_bailey_results(results):
-    """Display Bailey's Triple Catch analysis results"""
+def display_oscr_results(results):
+    """Display oSCR multi-model analysis results"""
+    
+    results_dict = results.get('results_dict', {})
+    aic_table = results.get('aic_table')
+    
+    if aic_table is None:
+        st.error("No results available")
+        return
+    
+    # Import visualization functions
+    from secr_analysis.oscr_visualization import (
+        display_model_comparison_table,
+        plot_model_aic_comparison,
+        plot_delta_aicc,
+        display_best_model_summary,
+        display_model_uncertainty,
+        display_analysis_summary,
+        export_results_buttons
+    )
     
     st.markdown("---")
-    st.markdown("## 📊 Bailey's Triple Catch Results")
+    st.markdown("# 📊 SECR Multi-Model Results")
+    st.markdown("Spatially Explicit Capture-Recapture Analysis (Efford `secr` package)")
     
-    # Main estimate
-    st.markdown("### 🦒 Population Estimate")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric(
-            "Total Population (N̂)",
-            f"{results['total_estimate']['N']:.0f}",
-            help="Residents + transients"
-        )
-    
-    with col2:
-        st.metric(
-            "Resident Estimate",
-            f"{results['resident_estimate']['N']:.1f}",
-            delta=f"SE: {results['resident_estimate']['SE']:.1f}"
-        )
-    
-    with col3:
-        st.metric(
-            "Transients",
-            f"{results['transients']}"
-        )
-    
-    with col4:
-        cv = results['resident_estimate']['CV']
-        st.metric(
-            "Precision (CV)",
-            f"{cv:.1f}%",
-            help="Coefficient of Variation - lower is better"
-        )
-    
-    # Confidence interval
-    ci_lower = results['resident_estimate']['CI_lower']
-    ci_upper = results['resident_estimate']['CI_upper']
-    st.info(f"**95% Confidence Interval (residents):** [{ci_lower:.1f}, {ci_upper:.1f}]")
+    # Summary statistics
+    display_analysis_summary(results_dict)
     
     st.markdown("---")
     
-    # Classification breakdown
-    st.markdown("### 📋 Classification")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Total Individuals", results['total_individuals'])
-    with col2:
-        st.metric("Residents (2+ captures)", results['residents'])
-    with col3:
-        st.metric("Transients (1 capture)", results['transients'])
-    
-    # Pie chart
-    try:
-        import matplotlib.pyplot as plt
-        
-        fig, ax = plt.subplots(figsize=(8, 6))
-        
-        sizes = [results['residents'], results['transients']]
-        labels = [f"Residents\n({results['residents']})", f"Transients\n({results['transients']})"]
-        colors = ['#4CAF50', '#FFC107']
-        explode = (0.05, 0)
-        
-        ax.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%',
-               shadow=True, startangle=90, textprops={'fontsize': 12, 'weight': 'bold'})
-        ax.axis('equal')
-        ax.set_title('Residents vs Transients Classification', fontsize=14, fontweight='bold', pad=20)
-        
-        st.pyplot(fig)
-        
-    except:
-        pass
+    # Model comparison table
+    display_model_comparison_table(aic_table)
     
     st.markdown("---")
     
-    # Sample statistics
-    st.markdown("### 📊 Sample Statistics")
-    
-    stats = results['sample_statistics']
-    dates = results['dates']
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown(f"**Day 1** ({dates['day1']})")
-        st.metric("Individuals", stats['n1'])
-    
-    with col2:
-        st.markdown(f"**Day 2** ({dates['day2']})")
-        st.metric("Individuals", stats['n2'])
-    
-    with col3:
-        st.markdown(f"**Day 3** ({dates['day3']})")
-        st.metric("Individuals", stats['n3'])
-    
-    st.markdown("#### Recapture Patterns")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Days 1 & 2", stats['m12'])
-    with col2:
-        st.metric("Days 1 & 3", stats['m13'])
-    with col3:
-        st.metric("Days 2 & 3", stats['m23'])
-    with col4:
-        st.metric("All 3 Days", stats['m123'])
+    # Visualizations
+    st.markdown("### 📈 Model Comparison Visualizations")
+    plot_model_aic_comparison(aic_table)
     
     st.markdown("---")
     
-    # Chapman estimator details
-    with st.expander("🔬 Chapman Estimator Details"):
-        st.markdown("""
-        ### Chapman's Estimator
-        
-        This is a modified Petersen estimator for closed populations:
-        
-        **Formula:**
-        ```
-        N̂ = [(M + 1)(n + 1) / (m + 1)] - 1
-        ```
-        
-        Where:
-        - **M** = Number marked by end of day 2 = n₁ + n₂ - m₁₂
-        - **n** = Sample size on day 3 = n₃
-        - **m** = Recaptures on day 3 from days 1 or 2 = m₂₃
-        
-        **Standard Error (Seber 1982):**
-        ```
-        SE = √[(M+1)(n+1)(M-m)(n-m) / ((m+1)²(m+2))]
-        ```
-        """)
-        
-        st.markdown(f"""
-        ### This Analysis:
-        
-        - M (marked by day 2) = {stats['M']}
-        - n (sample day 3) = {stats['n3']}
-        - m (recaptures day 3) = {stats['m23']}
-        - N̂ (resident estimate) = {results['resident_estimate']['N']:.1f}
-        - SE = {results['resident_estimate']['SE']:.1f}
-        """)
+    plot_delta_aicc(aic_table)
     
-    # Method explanation
-    with st.expander("📖 Residents-Only Approach"):
-        st.markdown("""
-        ### Why Residents Only?
-        
-        The **residents-only approach** improves population estimates when:
-        
-        1. **Transient individuals** pass through the study area but don't reside there
-        2. **Short survey periods** (3-7 days) don't allow time for transients to be recaptured
-        3. **Traditional methods** would underestimate population due to transients inflating sample size
-        
-        ### The Method:
-        
-        1. **Classify** individuals:
-           - Residents: Captured 2+ times (likely live in area)
-           - Transients: Captured once (likely passing through)
-        
-        2. **Apply Chapman's estimator** to residents only
-           - This gives an unbiased estimate of the resident population
-        
-        3. **Add transients** to get total population
-           - Assumes all transients were detected (conservative)
-        
-        ### Assumptions:
-        
-        - Population is **closed** (no births, deaths, immigration, emigration) during survey
-        - All individuals have **equal capture probability** within their class
-        - **Marks are not lost** (photo-ID is permanent)
-        - Residents and transients are correctly classified
-        
-        ### When to Use:
-        
-        ✅ Short-term surveys (3-10 days)  
-        ✅ Areas with known transient movement  
-        ✅ Multiple survey occasions per day  
-        ✅ Good identification success (photo-ID)  
-        
-        ### References:
-        
-        - Bailey, N.T.J. (1951). On estimating the size of mobile populations. *Biometrika* 38:293-306.
-        - Chapman, D.G. (1951). Some properties of the hypergeometric distribution. *University of California Publications in Statistics* 1:131-160.
-        - Seber, G.A.F. (1982). *The Estimation of Animal Abundance and Related Parameters*. 2nd ed. Charles Griffin & Company Ltd.
-        """)
+    st.markdown("---")
+    
+    # Best model details
+    display_best_model_summary(results_dict)
+    
+    st.markdown("---")
+    
+    # Model uncertainty
+    display_model_uncertainty(aic_table)
+    
+    st.markdown("---")
     
     # Download results
+    export_results_buttons(results_dict, aic_table)
+    
+    # Additional information
     st.markdown("---")
-    st.markdown("### 💾 Download Results")
+    st.markdown("### 📚 About SECR & Model Comparison")
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # JSON download
-        import json
-        json_str = json.dumps(results, indent=2)
-        st.download_button(
-            label="📥 Download Results (JSON)",
-            data=json_str,
-            file_name=f"bailey_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            mime="application/json"
-        )
-    
-    with col2:
-        # CSV summary
-        summary_df = pd.DataFrame([{
-            'Method': results['method'],
-            'Total_Individuals': results['total_individuals'],
-            'Residents': results['residents'],
-            'Transients': results['transients'],
-            'Resident_Estimate_N': results['resident_estimate']['N'],
-            'Resident_SE': results['resident_estimate']['SE'],
-            'Resident_CI_Lower': results['resident_estimate']['CI_lower'],
-            'Resident_CI_Upper': results['resident_estimate']['CI_upper'],
-            'Total_Estimate_N': results['total_estimate']['N'],
-            'Day1': dates['day1'],
-            'Day2': dates['day2'],
-            'Day3': dates['day3']
-        }])
+    with st.expander("What is SECR?", expanded=False):
+        st.markdown("""
+        **Spatially-Explicit Capture-Recapture (SECR)**
         
-        csv = summary_df.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Summary (CSV)",
-            data=csv,
-            file_name=f"bailey_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        SECR is a statistical method for estimating animal population densities using 
+        captures/detections at known locations (e.g., camera traps, photo-ID, mark-recapture).
+        
+        Key features:
+        - Uses spatial information (location of detections)
+        - Estimates density (individuals per unit area)
+        - Accounts for detection probability declining with distance
+        - Flexible to different detection function shapes
+        
+        **Advantages over traditional CR:**
+        - Better population estimates in open populations
+        - Estimates population density directly
+        - Uses spatial information for better inference
+        - Can incorporate covariates on density and detection
+        """)
+    
+    with st.expander("Why compare models?", expanded=False):
+        st.markdown("""
+        **Model Selection & Comparison**
+        
+        Different detection functions (HN, EX, UF, HZ) may fit the data differently:
+        
+        1. **Half-normal (HN)** - Standard, gaussian shape, most commonly used
+        2. **Exponential (EX)** - More gradual decline with distance
+        3. **Uniform hazard (UF)** - Good for live trapping, cumulative hazard
+        4. **Hazard-rate (HZ)** - More flexible with shape parameter
+        
+        **Why AICc?**
+        - AIC: Balances fit vs complexity
+        - AICc: AIC corrected for small sample sizes (preferred)
+        - AICc weight: Probability model is best given the data
+        
+        **Model averaging:**
+        - If multiple models have similar support (ΔAICc < 2)
+        - Can average predictions across models
+        - Accounts for model uncertainty in final estimates
+        """)
+    
+    with st.expander("Next steps", expanded=False):
+        st.markdown("""
+        **After selecting the best model:**
+        
+        1. **Check diagnostics**
+           - Fit plots (observed vs predicted captures)
+           - Residual analysis
+        
+        2. **Extract estimates**
+           - Density (individuals per unit area)
+           - Detection parameters (g0, sigma)
+           - Confidence intervals
+        
+        3. **Make predictions**
+           - Population size for whole area
+           - Uncertainty bounds
+        
+        4. **Validate assumptions**
+           - Equal catchability within class
+           - Closed population
+           - Accurate coordinate recording
+        
+        **For more info:**
+        - Royle et al. (2014) "Spatial Capture-Recapture"
+        - Efford et al. SECR package documentation
+        - GitHub: jaroyle/oSCR
+        """)
 
 
-if __name__ == "__main__":
     main()
 
