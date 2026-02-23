@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env Rscript
+#!/usr/bin/env Rscript
 # =============================================================================
 # Multi-Model Spatially Explicit Capture-Recapture (SECR) Analysis
 # Uses Murray Efford's 'secr' package (CRAN) — no GitHub compilation needed
