@@ -59,12 +59,14 @@ def check_password():
             "Password", type="password", on_change=password_entered, key="password"
         )
         st.write("*Please enter password to access the GAD.*")
+        st.caption("Hint: CJ cell")
         return False
     elif not st.session_state["password_correct"]:
         # Password incorrect, show input + error
         st.text_input(
             "Password", type="password", on_change=password_entered, key="password"
         )
+        st.caption("Hint: CJ cell")
         st.error("😕 Password incorrect")
         return False
     else:
