@@ -1,4 +1,4 @@
-#!/usr/bin/env Rscript
+﻿#!/usr/bin/env Rscript
 # =============================================================================
 # Multi-Model Spatially Explicit Capture-Recapture (SECR) Analysis
 # Uses Murray Efford's 'secr' package (CRAN) — no GitHub compilation needed
@@ -332,17 +332,34 @@ pop_est <- list(
   sigma   = NA, g0    = NA
 )
 
-if (!is.null(derived_est)) {
-  if ("N" %in% rownames(derived_est)) {
-    pop_est$N_hat <- derived_est["N", "estimate"]
-    pop_est$N_lcl <- derived_est["N", "lcl"]
-    pop_est$N_ucl <- derived_est["N", "ucl"]
-  }
-  if ("D" %in% rownames(derived_est)) {
-    pop_est$D_hat <- derived_est["D", "estimate"]
-    pop_est$D_lcl <- derived_est["D", "lcl"]
-    pop_est$D_ucl <- derived_est["D", "ucl"]
-  }
+# Method 1: region.N() — most reliable for abundance within mask
+regN <- tryCatch(region.N(best_fit), error = function(e) {
+  cat("  region.N() error:", conditionMessage(e), "\n"); NULL
+})
+if (!is.null(regN)) {
+  cat("  region.N() result:\n"); print(regN)
+  n_col   <- intersect(c("E.N",     "estimate"), colnames(regN))[1]
+  lcl_col <- intersect(c("lcl.E.N", "lcl"),      colnames(regN))[1]
+  ucl_col <- intersect(c("ucl.E.N", "ucl"),      colnames(regN))[1]
+  if (!is.na(n_col))   pop_est$N_hat <- as.numeric(regN[1, n_col])
+  if (!is.na(lcl_col)) pop_est$N_lcl <- as.numeric(regN[1, lcl_col])
+  if (!is.na(ucl_col)) pop_est$N_ucl <- as.numeric(regN[1, ucl_col])
+  cat("  N from region.N()\n")
+} else {
+  cat("  region.N() returned NULL, trying derived()\n")
+}
+
+# Method 2: derived() — fallback if region.N failed
+if (is.na(pop_est$N_hat) && !is.null(derived_est) && "N" %in% rownames(derived_est)) {
+  pop_est$N_hat <- derived_est["N", "estimate"]
+  pop_est$N_lcl <- derived_est["N", "lcl"]
+  pop_est$N_ucl <- derived_est["N", "ucl"]
+  cat("  N from derived()\n")
+}
+if (!is.null(derived_est) && "D" %in% rownames(derived_est)) {
+  pop_est$D_hat <- derived_est["D", "estimate"]
+  pop_est$D_lcl <- derived_est["D", "lcl"]
+  pop_est$D_ucl <- derived_est["D", "ucl"]
 }
 
 # Extract g0 and sigma from predictions
@@ -352,12 +369,10 @@ if (!is.null(pred)) {
   if ("lambda0" %in% rownames(pred)) pop_est$g0   <- pred["lambda0","estimate"]
 }
 
-cat(sprintf("  N̂ (abundance) : %.1f  [%.1f – %.1f] 95%% CI\n",
-            pop_est$N_hat, pop_est$N_lcl, pop_est$N_ucl))
-cat(sprintf("  D̂ (density)   : %.6f  [%.6f – %.6f]\n",
-            pop_est$D_hat, pop_est$D_lcl, pop_est$D_ucl))
-cat(sprintf("  g0 / λ0       : %.4f\n",  pop_est$g0))
-cat(sprintf("  σ (sigma)     : %.2f m\n", pop_est$sigma))
+cat(sprintf("  N_hat=%s  N_lcl=%s  N_ucl=%s\n",
+    ifelse(is.na(pop_est$N_hat), "NA", round(pop_est$N_hat, 1)),
+    ifelse(is.na(pop_est$N_lcl), "NA", round(pop_est$N_lcl, 1)),
+    ifelse(is.na(pop_est$N_ucl), "NA", round(pop_est$N_ucl, 1))))
 
 # ----- 8. Model-averaged N ---------------------------------------------------
 ma_n <- pop_est$N_hat  # default to best model
