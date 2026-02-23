@@ -400,7 +400,7 @@ def display_analysis_summary(results_dict):
     with col2:
         st.metric(
             "Total Individuals",
-            results_dict.get('total_individuals', 'N/A')
+            results_dict.get('n_individuals', results_dict.get('total_individuals', 'N/A'))
         )
     
     with col3:

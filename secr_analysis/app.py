@@ -970,7 +970,41 @@ def display_oscr_results(results):
     
     # Summary statistics
     display_analysis_summary(results_dict)
-    
+
+    # ── Population estimate (top of page) ──────────────────────────────────
+    pop = results_dict.get('population_estimate', {})
+    n_hat = pop.get('N_hat')
+    n_lcl = pop.get('N_lcl')
+    n_ucl = pop.get('N_ucl')
+    ma_n  = results_dict.get('model_averaged_N')
+    g0    = pop.get('g0')
+    sigma = pop.get('sigma')
+
+    st.markdown("---")
+    st.markdown("### 🦒 Population Estimate")
+    pe1, pe2, pe3, pe4 = st.columns(4)
+    with pe1:
+        st.metric("N̂ (best model)",
+                  f"{n_hat:,.0f}" if n_hat and not str(n_hat) == 'nan' else "—")
+    with pe2:
+        if n_lcl and n_ucl and str(n_lcl) != 'nan':
+            st.metric("95% CI", f"{n_lcl:,.0f} – {n_ucl:,.0f}")
+        else:
+            st.metric("95% CI", "—")
+    with pe3:
+        st.metric("Model-averaged N̂",
+                  f"{ma_n:,.0f}" if ma_n and str(ma_n) != 'nan' else "—")
+    with pe4:
+        st.metric("Best model", results_dict.get('best_model', '—'))
+
+    dp1, dp2 = st.columns(2)
+    with dp1:
+        st.metric("g₀ (baseline detection)",
+                  f"{g0:.4f}" if g0 and str(g0) != 'nan' else "—")
+    with dp2:
+        st.metric("σ (detection range, m)",
+                  f"{sigma:.1f}" if sigma and str(sigma) != 'nan' else "—")
+
     st.markdown("---")
     
     # Model comparison table
@@ -1074,7 +1108,4 @@ def display_oscr_results(results):
         - Efford et al. SECR package documentation
         - GitHub: jaroyle/oSCR
         """)
-
-
-    main()
 
