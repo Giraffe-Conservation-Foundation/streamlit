@@ -973,37 +973,42 @@ def display_oscr_results(results):
 
     # ── Population estimate (top of page) ──────────────────────────────────
     pop = results_dict.get('population_estimate', {})
-    n_hat = pop.get('N_hat')
-    n_lcl = pop.get('N_lcl')
-    n_ucl = pop.get('N_ucl')
-    ma_n  = results_dict.get('model_averaged_N')
-    g0    = pop.get('g0')
-    sigma = pop.get('sigma')
+
+    def _f(val):
+        """Safely convert JSON value (str/int/float/None/NaN) to float or None."""
+        try:
+            v = float(val)
+            return None if (v != v) else v  # NaN check via float NaN != itself
+        except (TypeError, ValueError):
+            return None
+
+    n_hat = _f(pop.get('N_hat'))
+    n_lcl = _f(pop.get('N_lcl'))
+    n_ucl = _f(pop.get('N_ucl'))
+    ma_n  = _f(results_dict.get('model_averaged_N'))
+    g0    = _f(pop.get('g0'))
+    sigma = _f(pop.get('sigma'))
 
     st.markdown("---")
     st.markdown("### 🦒 Population Estimate")
     pe1, pe2, pe3, pe4 = st.columns(4)
     with pe1:
-        st.metric("N̂ (best model)",
-                  f"{n_hat:,.0f}" if n_hat and not str(n_hat) == 'nan' else "—")
+        st.metric("N̂ (best model)", f"{n_hat:,.0f}" if n_hat is not None else "—")
     with pe2:
-        if n_lcl and n_ucl and str(n_lcl) != 'nan':
+        if n_lcl is not None and n_ucl is not None:
             st.metric("95% CI", f"{n_lcl:,.0f} – {n_ucl:,.0f}")
         else:
             st.metric("95% CI", "—")
     with pe3:
-        st.metric("Model-averaged N̂",
-                  f"{ma_n:,.0f}" if ma_n and str(ma_n) != 'nan' else "—")
+        st.metric("Model-averaged N̂", f"{ma_n:,.0f}" if ma_n is not None else "—")
     with pe4:
         st.metric("Best model", results_dict.get('best_model', '—'))
 
     dp1, dp2 = st.columns(2)
     with dp1:
-        st.metric("g₀ (baseline detection)",
-                  f"{g0:.4f}" if g0 and str(g0) != 'nan' else "—")
+        st.metric("g₀ (baseline detection)", f"{g0:.4f}" if g0 is not None else "—")
     with dp2:
-        st.metric("σ (detection range, m)",
-                  f"{sigma:.1f}" if sigma and str(sigma) != 'nan' else "—")
+        st.metric("σ (detection range, m)", f"{sigma:.1f}" if sigma is not None else "—")
 
     st.markdown("---")
     
