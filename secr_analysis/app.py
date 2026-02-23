@@ -826,17 +826,35 @@ When unchecked, only encounters with identified individuals will be used (strict
                             individuals = sorted(secr_data['individual_id'].unique())
                             occasions   = sorted(secr_data[occasion_col].unique())
                             occ_map     = {o: i + 1 for i, o in enumerate(occasions)}  # 1-indexed
+
+                            # ── Split residents / transients ─────────────────
+                            occ_per_ind = secr_data.groupby('individual_id')[occasion_col].nunique()
+                            resident_ids  = occ_per_ind[occ_per_ind >= 2].index
+                            transient_ids = occ_per_ind[occ_per_ind < 2].index
+                            n_transients  = len(transient_ids)
+                            residents_data = secr_data[secr_data['individual_id'].isin(resident_ids)]
+
+                            st.info(
+                                f"👥 **Residents** (seen on ≥2 occasions): {len(resident_ids)}  |  "
+                                f"**Transients** (seen once): {n_transients}  |  "
+                                f"**Total unique individuals**: {len(individuals)}"
+                            )
+
+                            if len(resident_ids) < 2:
+                                st.error("❌ Fewer than 2 residents (individuals seen on ≥2 occasions). "
+                                         "SECR cannot run — try a broader date range or different grouping.")
+                                st.stop()
                             
                             # Build trap lookup: unique (x,y) → trap_id
                             has_xy = 'x' in secr_data.columns and 'y' in secr_data.columns
                             if has_xy:
-                                traps_xy = secr_data[['x', 'y']].drop_duplicates().reset_index(drop=True)
+                                traps_xy = residents_data[['x', 'y']].drop_duplicates().reset_index(drop=True)
                                 traps_xy.index = traps_xy.index + 1  # 1-indexed trap IDs
                                 trap_key = {(r.x, r.y): idx for idx, r in traps_xy.iterrows()}
 
-                                # captures.csv: Session, ID, Occasion, Detector
+                                # captures.csv: residents only (Session, ID, Occasion, Detector)
                                 cap_rows = []
-                                for _, row in secr_data.iterrows():
+                                for _, row in residents_data.iterrows():
                                     det_id = trap_key.get((row['x'], row['y']), 1)
                                     cap_rows.append({
                                         'Session':  'S1',
@@ -850,6 +868,9 @@ When unchecked, only encounters with identified individuals will be used (strict
                                 traps_out = traps_xy.copy()
                                 traps_out.index.name = 'Detector'
                                 traps_out.reset_index().to_csv(tmpdir / 'traps.csv', index=False)
+
+                                # transients.txt: single integer for R to pick up
+                                (tmpdir / 'transients.txt').write_text(str(n_transients))
                             else:
                                 # No x/y — stop and tell user to re-download
                                 st.error("❌ No coordinate data found in encounter records.")
@@ -921,7 +942,9 @@ When unchecked, only encounters with identified individuals will be used (strict
                                         # Store results
                                         st.session_state.secr_results = {
                                             'results_dict': results_dict,
-                                            'aic_table': aic_df
+                                            'aic_table': aic_df,
+                                            'n_transients': n_transients,
+                                            'n_residents': len(resident_ids)
                                         }
                                         
                                         st.success("✅ Model fitting complete!")
@@ -946,8 +969,10 @@ When unchecked, only encounters with identified individuals will be used (strict
 def display_oscr_results(results):
     """Display oSCR multi-model analysis results"""
     
-    results_dict = results.get('results_dict', {})
-    aic_table = results.get('aic_table')
+    results_dict  = results.get('results_dict', {})
+    aic_table     = results.get('aic_table')
+    n_transients  = results.get('n_transients', results_dict.get('n_transients', 0))
+    n_residents   = results.get('n_residents', results_dict.get('n_individuals', '?'))
     
     if aic_table is None:
         st.error("No results available")
@@ -988,21 +1013,42 @@ def display_oscr_results(results):
     ma_n  = _f(results_dict.get('model_averaged_N'))
     g0    = _f(pop.get('g0'))
     sigma = _f(pop.get('sigma'))
+    n_t   = int(n_transients) if n_transients else 0
+
+    # Total = residents (SECR) + transients
+    total_n   = (n_hat + n_t)   if n_hat  is not None else None
+    total_lcl = (n_lcl + n_t)   if n_lcl  is not None else None
+    total_ucl = (n_ucl + n_t)   if n_ucl  is not None else None
+    total_ma  = (ma_n  + n_t)   if ma_n   is not None else None
 
     st.markdown("---")
     st.markdown("### 🦒 Population Estimate")
+
+    st.markdown("**Total (residents + transients)**")
     pe1, pe2, pe3, pe4 = st.columns(4)
     with pe1:
-        st.metric("N̂ (best model)", f"{n_hat:,.0f}" if n_hat is not None else "—")
+        st.metric("Total N̂", f"{total_n:,.0f}" if total_n is not None else "—",
+                  help="Residents (SECR) + transients seen once")
     with pe2:
-        if n_lcl is not None and n_ucl is not None:
-            st.metric("95% CI", f"{n_lcl:,.0f} – {n_ucl:,.0f}")
+        if total_lcl is not None and total_ucl is not None:
+            st.metric("95% CI", f"{total_lcl:,.0f} – {total_ucl:,.0f}")
         else:
             st.metric("95% CI", "—")
     with pe3:
-        st.metric("Model-averaged N̂", f"{ma_n:,.0f}" if ma_n is not None else "—")
+        st.metric("Model-averaged total N̂", f"{total_ma:,.0f}" if total_ma is not None else "—")
     with pe4:
         st.metric("Best model", results_dict.get('best_model', '—'))
+
+    st.markdown("**Breakdown**")
+    bd1, bd2, bd3 = st.columns(3)
+    with bd1:
+        st.metric("Residents N̂ (SECR)", f"{n_hat:,.0f}" if n_hat is not None else "—",
+                  help="Individuals seen on ≥2 occasions, estimated by SECR")
+    with bd2:
+        st.metric("Transients", f"{n_t:,}",
+                  help="Individuals seen on exactly 1 occasion — added directly")
+    with bd3:
+        st.metric("Residents in data", str(n_residents))
 
     dp1, dp2 = st.columns(2)
     with dp1:

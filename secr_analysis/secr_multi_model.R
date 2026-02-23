@@ -191,6 +191,14 @@ cat("=============================================================\n")
 cat("FITTING MODELS\n")
 cat("=============================================================\n\n")
 
+# Read transient count injected by Python (if present)
+transient_file <- file.path(data_dir, "transients.txt")
+n_transients   <- 0
+if (file.exists(transient_file)) {
+  n_transients <- as.integer(readLines(transient_file, n = 1))
+  cat(sprintf("  Transients (seen once, added after SECR): %d\n\n", n_transients))
+}
+
 fitted_models <- list()
 fit_results   <- list()
 
@@ -352,16 +360,20 @@ cat(sprintf("  g0 / λ0       : %.4f\n",  pop_est$g0))
 cat(sprintf("  σ (sigma)     : %.2f m\n", pop_est$sigma))
 
 # ----- 8. Model-averaged N ---------------------------------------------------
+ma_n <- pop_est$N_hat  # default to best model
 if (nrow(aic_rows) > 1) {
-  cat("\n  Model-averaged N̂ (all models with weight > 0.001):\n")
-  ma_n <- sum(sapply(aic_rows$model, function(lbl) {
+  cat("\n  Model-averaged N\u0302 (all models with weight > 0.001):\n")
+  ma_vals <- sapply(aic_rows$model, function(lbl) {
     w  <- aic_rows[aic_rows$model == lbl, "weight"]
     fi <- fitted_models[[lbl]]
     if (is.null(fi)) return(0)
+    rn <- tryCatch(region.N(fi), error = function(e) NULL)
+    if (!is.null(rn) && "E.N" %in% colnames(rn)) return(w * rn[1, "E.N"])
     d <- tryCatch(derived(fi), error = function(e) NULL)
-    if (is.null(d) || !"N" %in% rownames(d)) return(0)
-    w * d["N", "estimate"]
-  }))
+    if (!is.null(d) && "N" %in% rownames(d)) return(w * d["N", "estimate"])
+    return(0)
+  })
+  ma_n <- sum(ma_vals)
   cat(sprintf("  Model-averaged N̂ = %.1f\n", ma_n))
 }
 
@@ -380,10 +392,17 @@ results_list <- list(
   n_occasions      = n_occ,
   n_detectors      = n_traps,
   total_captures   = sum(capthist),
+  n_transients     = n_transients,
   population_estimate = pop_est,
+  total_N_with_transients = ifelse(is.na(pop_est$N_hat), NA, pop_est$N_hat + n_transients),
   aic_table        = aic_rows,
-  model_averaged_N = if (nrow(aic_rows) > 1) ma_n else pop_est$N_hat
+  model_averaged_N = ma_n,
+  model_averaged_N_total = ma_n + n_transients
 )
+
+cat(sprintf("  Resident N\u0302 (SECR)  : %.0f\n", ifelse(is.na(pop_est$N_hat), 0, pop_est$N_hat)))
+cat(sprintf("  Transients added  : %d\n", n_transients))
+cat(sprintf("  TOTAL estimate    : %.0f\n\n", ifelse(is.na(pop_est$N_hat), n_transients, pop_est$N_hat + n_transients)))
 
 json_file <- file.path(output_dir, "secr_results.json")
 writeLines(toJSON(results_list, pretty = TRUE, auto_unbox = TRUE), json_file)
