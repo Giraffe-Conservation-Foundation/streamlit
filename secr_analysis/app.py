@@ -367,6 +367,7 @@ When unchecked, only encounters with identified individuals will be used (strict
                         
                         # Download encounters with filters
                         with st.spinner(f"Downloading encounters from {start_date} to {end_date}..."):
+                            st.info(f"📅 Requesting encounters: **{start_date}** → **{end_date}**")
                             encounters = gs_client.download_encounters(
                                 location=location_id.strip() if location_id.strip() else None,
                                 start_date=start_date.strftime('%Y-%m-%d'),
@@ -409,7 +410,18 @@ When unchecked, only encounters with identified individuals will be used (strict
                                             secr_data['y'] = secr_data['latitude']
                                     
                                     st.session_state.secr_data = secr_data
-                                    st.success(f"✅ Downloaded {len(secr_data)} encounters with identified individuals")
+                                    st.success(f"✅ Downloaded {len(secr_data)} encounters ({start_date} → {end_date})")
+                                    
+                                    # Warn if patrol dates aren't covered
+                                    if 'secr_patrols' in st.session_state and st.session_state.secr_patrols is not None:
+                                        patrol_df = st.session_state.secr_patrols
+                                        if 'start_time' in patrol_df.columns:
+                                            patrol_dates = set(pd.to_datetime(patrol_df['start_time'], utc=True).dt.date)
+                                            enc_dates = set(secr_data['date'].dt.date)
+                                            missing = sorted(patrol_dates - enc_dates)
+                                            if missing:
+                                                st.warning(f"⚠️ No encounters downloaded for patrol date(s): {missing}. "
+                                                           f"Your Start Date ({start_date}) may be too late — try setting it to {min(missing)} or earlier.")
                                     
                                     # Show date breakdown
                                     date_counts = secr_data['date'].dt.date.value_counts().sort_index()
@@ -483,6 +495,22 @@ When unchecked, only encounters with identified individuals will be used (strict
             
             st.dataframe(patrol_groups, use_container_width=True)
             
+            # GiraffeSpotter encounter summary
+            if has_encounter_data:
+                with st.expander("🦒 GiraffeSpotter Encounter Summary", expanded=True):
+                    gs_data = st.session_state.secr_data
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("Total Encounters", len(gs_data))
+                    col2.metric("Unique Individuals", gs_data['individual_id'].nunique() if 'individual_id' in gs_data.columns else 'N/A')
+                    col3.metric("Survey Days", gs_data['date'].dt.date.nunique() if 'date' in gs_data.columns else 'N/A')
+                    
+                    if 'date' in gs_data.columns:
+                        st.markdown("**Encounters by date:**")
+                        date_counts = gs_data['date'].dt.date.value_counts().sort_index()
+                        for d, c in date_counts.items():
+                            n_ind = gs_data[gs_data['date'].dt.date == d]['individual_id'].nunique() if 'individual_id' in gs_data.columns else '?'
+                            st.text(f"  • {d}: {c} encounters ({n_ind} individuals)")
+            
             buffer_meters = st.number_input(
                 "Track buffer (meters)",
                 min_value=0,
@@ -522,8 +550,8 @@ When unchecked, only encounters with identified individuals will be used (strict
                             end_time = first_seg.get('time_range', {}).get('end_time')
                             
                             # Extract geometry - LineString from start/end locations
-                            start_loc = first_seg.get('start_location', {})
-                            end_loc = first_seg.get('end_location', {})
+                            start_loc = first_seg.get('start_location') or {}
+                            end_loc = first_seg.get('end_location') or {}
                             
                             if start_loc.get('latitude') and start_loc.get('longitude') and \
                                end_loc.get('latitude') and end_loc.get('longitude'):
@@ -544,8 +572,8 @@ When unchecked, only encounters with identified individuals will be used (strict
                         patrols_with_geom['occasion'] = patrols_with_geom['title'].apply(extract_occasion)
                         
                         # Convert times to datetime
-                        patrols_with_geom['start_time'] = pd.to_datetime(patrols_with_geom['start_time'])
-                        patrols_with_geom['end_time'] = pd.to_datetime(patrols_with_geom['end_time'])
+                        patrols_with_geom['start_time'] = pd.to_datetime(patrols_with_geom['start_time'], format='ISO8601', utc=True)
+                        patrols_with_geom['end_time'] = pd.to_datetime(patrols_with_geom['end_time'], format='ISO8601', utc=True)
                         
                         # Show patrol lines info
                         st.info(f"📋 Extracted {len(patrols_with_geom)} patrol lines:")
@@ -581,27 +609,17 @@ When unchecked, only encounters with identified individuals will be used (strict
                             secr_data_with_occasions['enc_date'] = secr_data_with_occasions['date'].dt.date
                             
                             # Create date-to-occasion mapping from patrol data
-                            # Use the DATE from patrol titles (YYYYMMDD in name) as the primary occasion determinant
-                            def extract_date_from_title(title):
-                                match = re.search(r'(\d{8})', str(title))
-                                if match:
-                                    date_str = match.group(1)
-                                    try:
-                                        return pd.to_datetime(date_str, format='%Y%m%d').date()
-                                    except:
-                                        return None
-                                return None
-                            
-                            patrols_gdf['patrol_date_from_title'] = patrols_gdf['title'].apply(extract_date_from_title)
+                            # Use start_time date directly (titles may not contain YYYYMMDD pattern)
+                            patrols_gdf['patrol_date'] = patrols_gdf['start_time'].dt.date
                             
                             # Map date → occasion (use the most common occasion for each date)
-                            date_to_occasion = patrols_gdf.groupby('patrol_date_from_title')['occasion'].agg(
+                            date_to_occasion = patrols_gdf.dropna(subset=['patrol_date', 'occasion']).groupby('patrol_date')['occasion'].agg(
                                 lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[0]
                             ).to_dict()
                             
-                            st.info("📅 **Date → Occasion Mapping (from patrol titles):**")
+                            st.info("📅 **Date → Occasion Mapping (from patrol start times):**")
                             for date, occ in sorted(date_to_occasion.items()):
-                                patrol_count = len(patrols_gdf[patrols_gdf['patrol_date_from_title'] == date])
+                                patrol_count = len(patrols_gdf[patrols_gdf['patrol_date'] == date])
                                 st.text(f"  • {date} → Occasion {occ} ({patrol_count} patrol(s))")
                             
                             # Assign occasions based on date
