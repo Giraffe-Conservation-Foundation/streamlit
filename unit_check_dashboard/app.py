@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
 from ecoscope.io.earthranger import EarthRangerIO
+import gspread
+from google.oauth2.service_account import Credentials
 import json
 
 
@@ -51,6 +53,230 @@ def init_session_state():
     for key, val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = val
+
+
+# --- Stock & Planning (Google Sheets) ---
+
+@st.cache_data(ttl=900)
+def load_stock_sheet_data(sheet_id):
+    """Load stock, orders, and deployment plan data from Google Sheet (cached 15 min)."""
+    try:
+        if 'gcp_service_account' in st.secrets:
+            creds_dict = dict(st.secrets['gcp_service_account'])
+        elif 'gee_service_account' in st.secrets:
+            creds_dict = dict(st.secrets['gee_service_account'])
+        else:
+            return None, "No service account credentials found in Streamlit secrets."
+
+        credentials = Credentials.from_service_account_info(
+            creds_dict,
+            scopes=[
+                'https://www.googleapis.com/auth/spreadsheets.readonly',
+                'https://www.googleapis.com/auth/drive.readonly',
+            ]
+        )
+        client = gspread.authorize(credentials)
+        spreadsheet = client.open_by_key(sheet_id)
+
+        result = {}
+        for tab in ['stock', 'orders', 'deployment_plans']:
+            try:
+                result[tab] = pd.DataFrame(spreadsheet.worksheet(tab).get_all_records())
+            except gspread.WorksheetNotFound:
+                result[tab] = pd.DataFrame()
+
+        return result, None
+
+    except Exception as e:
+        return None, str(e)
+
+
+def stock_planning_tab():
+    """Stock and deployment planning dashboard, driven by a Google Sheet."""
+    st.header("📦 Stock & Deployment Planning")
+
+    sheet_id = st.secrets.get("gps_stock_sheet_id", "")
+    if not sheet_id:
+        st.warning("Google Sheet not configured yet.")
+        with st.expander("Setup instructions", expanded=True):
+            st.markdown("""
+**Steps to connect your planning sheet:**
+
+1. [Create a new Google Sheet](https://sheets.google.com) with these 3 tabs (exact names):
+
+   **`stock`** — one row per office × device type:
+   `office` | `device_type` | `in_hand` | `notes` | `last_updated`
+
+   **`orders`** — one row per order:
+   `order_date` | `device_type` | `quantity` | `office` | `supplier` | `expected_delivery` | `status` | `notes`
+   *(status values: `ordered`, `received`, `cancelled`)*
+
+   **`deployment_plans`** — one row per planned deployment:
+   `project` | `country` | `site` | `office` | `device_type` | `units_needed` | `planned_date` | `status` | `notes`
+   *(status values: `planned`, `confirmed`, `completed`, `cancelled`)*
+
+2. Share the sheet (view access) with your service account email — find it in the `client_email` field of your GEE/GCP service account JSON in Streamlit secrets.
+
+3. Copy the Sheet ID from the URL:
+   `https://docs.google.com/spreadsheets/d/**SHEET_ID**/edit`
+
+4. Add to your Streamlit secrets (`secrets.toml` or the Streamlit Cloud UI):
+   ```toml
+   gps_stock_sheet_id = "paste_sheet_id_here"
+   ```
+""")
+        return
+
+    if st.button("🔄 Refresh sheet data", key="refresh_stock"):
+        load_stock_sheet_data.clear()
+        st.rerun()
+
+    with st.spinner("Loading sheet data..."):
+        data, error = load_stock_sheet_data(sheet_id)
+
+    if error:
+        st.error(f"Could not load sheet: {error}")
+        st.info("Check that the sheet is shared with your service account and the sheet ID in secrets is correct.")
+        return
+
+    stock_df = data.get('stock', pd.DataFrame())
+    orders_df = data.get('orders', pd.DataFrame())
+    plans_df = data.get('deployment_plans', pd.DataFrame())
+
+    OFFICES = ['Namibia', 'Kenya', 'South Africa']
+
+    # ── Current stock ──────────────────────────────────────────────────────────
+    st.subheader("📦 Current Stock by Office")
+
+    if stock_df.empty:
+        st.info("No stock data found. Add rows to the `stock` tab in your Google Sheet.")
+    else:
+        cols = st.columns(len(OFFICES))
+        for col, office in zip(cols, OFFICES):
+            with col:
+                st.markdown(f"**{office}**")
+                office_rows = stock_df[stock_df['office'] == office] if 'office' in stock_df.columns else pd.DataFrame()
+                if office_rows.empty:
+                    st.caption("No data")
+                else:
+                    for _, row in office_rows.iterrows():
+                        st.metric(row.get('device_type', '—'), int(row.get('in_hand', 0)))
+                        if row.get('notes'):
+                            st.caption(row['notes'])
+
+    # ── Pending orders ─────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("🚚 Pending Orders")
+
+    if orders_df.empty:
+        st.info("No orders found. Add rows to the `orders` tab in your Google Sheet.")
+    else:
+        if 'status' in orders_df.columns:
+            pending = orders_df[~orders_df['status'].str.lower().isin(['received', 'cancelled'])]
+        else:
+            pending = orders_df
+
+        if pending.empty:
+            st.success("No pending orders — all orders received or cancelled.")
+        else:
+            st.dataframe(pending, use_container_width=True, hide_index=True)
+
+        if len(orders_df) > len(pending):
+            with st.expander(f"All orders ({len(orders_df)} total)"):
+                st.dataframe(orders_df, use_container_width=True, hide_index=True)
+
+    # ── Deployment plans ───────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("📋 Deployment Plans")
+
+    if plans_df.empty:
+        st.info("No deployment plans found. Add rows to the `deployment_plans` tab in your Google Sheet.")
+    else:
+        if 'status' in plans_df.columns:
+            active_plans = plans_df[~plans_df['status'].str.lower().isin(['completed', 'cancelled'])]
+        else:
+            active_plans = plans_df
+
+        if not active_plans.empty:
+            st.dataframe(active_plans, use_container_width=True, hide_index=True)
+
+        if len(plans_df) > len(active_plans):
+            with st.expander(f"All plans ({len(plans_df)} total)"):
+                st.dataframe(plans_df, use_container_width=True, hide_index=True)
+
+    # ── Gap analysis ───────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("⚖️ Do I Need to Order?")
+
+    if stock_df.empty and plans_df.empty:
+        st.info("Add stock and deployment plan data to see the gap analysis.")
+        return
+
+    # in_hand per (office, device_type)
+    in_hand = {}
+    if not stock_df.empty and 'office' in stock_df.columns and 'device_type' in stock_df.columns:
+        for _, row in stock_df.iterrows():
+            in_hand[(row['office'], row['device_type'])] = int(row.get('in_hand', 0))
+
+    # on_order per (office, device_type) — orders with status='ordered'
+    on_order = {}
+    if not orders_df.empty and 'office' in orders_df.columns and 'device_type' in orders_df.columns:
+        pending_orders = (
+            orders_df[orders_df['status'].str.lower() == 'ordered']
+            if 'status' in orders_df.columns else orders_df
+        )
+        for _, row in pending_orders.iterrows():
+            key = (row.get('office', ''), row.get('device_type', ''))
+            on_order[key] = on_order.get(key, 0) + int(row.get('quantity', 0))
+
+    # needed per (office, device_type) — plans with status planned/confirmed
+    needed = {}
+    if not plans_df.empty and 'office' in plans_df.columns and 'device_type' in plans_df.columns:
+        active = (
+            plans_df[plans_df['status'].str.lower().isin(['planned', 'confirmed'])]
+            if 'status' in plans_df.columns else plans_df
+        )
+        for _, row in active.iterrows():
+            key = (row.get('office', ''), row.get('device_type', ''))
+            needed[key] = needed.get(key, 0) + int(row.get('units_needed', 0))
+
+    all_keys = sorted(set(in_hand) | set(on_order) | set(needed))
+    if not all_keys:
+        st.info("Not enough data to calculate gaps.")
+        return
+
+    gap_rows = []
+    for office, device in all_keys:
+        key = (office, device)
+        avail = in_hand.get(key, 0) + on_order.get(key, 0)
+        req = needed.get(key, 0)
+        gap_rows.append({
+            'Office': office,
+            'Device Type': device,
+            'In Hand': in_hand.get(key, 0),
+            'On Order': on_order.get(key, 0),
+            'Available': avail,
+            'Needed': req,
+            'Gap': max(0, req - avail),
+            'Surplus': max(0, avail - req),
+        })
+
+    gap_df = pd.DataFrame(gap_rows)
+    total_gap = gap_df['Gap'].sum()
+
+    if total_gap == 0:
+        st.success("✅ You have enough units for all planned deployments.")
+    else:
+        st.error(f"⚠️ You need to order {int(total_gap)} more units across all offices.")
+
+    def _highlight_gap(row):
+        if row['Gap'] > 0:
+            return ['background-color: #ffcccc'] * len(row)
+        elif row['Surplus'] > 0:
+            return ['background-color: #ccffcc'] * len(row)
+        return [''] * len(row)
+
+    st.dataframe(gap_df.style.apply(_highlight_gap, axis=1), use_container_width=True, hide_index=True)
 
 
 # --- EarthRanger connection ---
@@ -534,13 +760,18 @@ def _main_implementation():
         st.sidebar.write(f"**User:** {st.session_state.username}")
         st.sidebar.write("**Server:** https://twiga.pamdas.org")
 
-    unit_check_tab()
+    tab1, tab2 = st.tabs(["🔍 Unit Check", "📦 Stock & Planning"])
+    with tab1:
+        unit_check_tab()
+    with tab2:
+        stock_planning_tab()
 
     st.sidebar.markdown("---")
     st.sidebar.subheader("🔧 Options")
 
     if st.sidebar.button("🔄 Refresh Data"):
         get_all_sources.clear()
+        load_stock_sheet_data.clear()
         st.rerun()
 
     if st.sidebar.button("🔓 Logout"):
