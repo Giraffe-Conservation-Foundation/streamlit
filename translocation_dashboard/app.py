@@ -784,6 +784,201 @@ def mortality_dashboard():
         mime="text/csv"
     )
 
+def translocation_success_tab(df_events, mortality_df):
+    """
+    Track translocation success rates for GCF-affiliated translocations.
+    - Translocation success: survival at 1 month post-release
+    - Short-term success: survival at 1 year post-release
+    Linked via mortality event field 'gir_mortality_trans_serial'.
+    """
+    st.subheader("🎯 GCF Translocation Success")
+    st.caption(
+        "GCF-affiliated translocations only. Mortality linked via the 'Linked Translocation Serial' "
+        "field on mortality events. No linked mortality = assumed 100% survival."
+    )
+
+    today = date.today()
+
+    # Filter to GCF-affiliated translocations
+    gcf_events = []
+    for _, event in df_events.iterrows():
+        event_details = event.get('event_details', {}) or {}
+        if not isinstance(event_details, dict):
+            continue
+        orgs = [
+            str(event_details.get('organisation_1', '') or '').lower(),
+            str(event_details.get('organisation_2', '') or '').lower(),
+            str(event_details.get('organisation_3', '') or '').lower(),
+        ]
+        if any('giraffe conservation foundation' in o for o in orgs):
+            gcf_events.append(event)
+
+    if not gcf_events:
+        st.info("No GCF-affiliated translocations found in the current filter range.")
+        return
+
+    # Build mortality lookup: linked serial → list of mortality events
+    mortality_lookup = {}
+    if not mortality_df.empty:
+        for _, mort in mortality_df.iterrows():
+            mort_details = mort.get('event_details', {}) or {}
+            if isinstance(mort_details, dict):
+                linked_serial = str(mort_details.get('gir_mortality_trans_serial', '') or '').strip()
+                if linked_serial:
+                    mortality_lookup.setdefault(linked_serial, []).append(mort)
+
+    rows = []
+    for event in gcf_events:
+        serial = str(event.get('serial_number', '') or '').strip()
+        trans_date = event.get('date')
+        event_details = event.get('event_details', {}) or {}
+
+        # Cohort size
+        total = 1
+        ti = event_details.get('total_individuals')
+        if ti is not None:
+            try:
+                total = max(1, int(ti))
+            except (ValueError, TypeError):
+                pass
+
+        # Destination
+        dest_country = str(event_details.get('destination_country', '') or '')
+        dest_loc = event_details.get('destination_location')
+        dest_name = dest_loc.get('name', '') if isinstance(dest_loc, dict) else (str(dest_loc) if dest_loc else '')
+        destination = ', '.join(filter(None, [dest_name, dest_country])) or 'Unknown'
+
+        # Species
+        sp = event_details.get('species')
+        species = sp.get('name', '') if isinstance(sp, dict) else (str(sp) if sp else '')
+
+        # Translocation type
+        trans_type = str(event_details.get('translocation_type') or event_details.get('trans_type', '') or '')
+
+        # Linked mortality events
+        linked = mortality_lookup.get(serial, []) if serial else []
+        deaths_30d = 0
+        deaths_365d = 0
+        cause_notes = []
+
+        for mort in linked:
+            mort_date = mort.get('date')
+            mort_details = mort.get('event_details', {}) or {}
+
+            # Count (default 1 per event)
+            mc = 1
+            mc_val = mort_details.get('total_individuals')
+            if mc_val is not None:
+                try:
+                    mc = max(1, int(mc_val))
+                except (ValueError, TypeError):
+                    pass
+
+            days_post = (mort_date - trans_date).days if (mort_date and trans_date) else None
+
+            if days_post is not None and days_post >= 0:
+                if days_post <= 30:
+                    deaths_30d += mc
+                if days_post <= 365:
+                    deaths_365d += mc
+
+            c = mort_details.get('cause_of_death') or mort_details.get('mortality_cause')
+            if c:
+                c = c.get('name', 'Unknown') if isinstance(c, dict) else str(c)
+                cause = str(c).title()
+            else:
+                cause = 'Unknown'
+            days_str = f"{days_post}d" if days_post is not None else "?"
+            cause_notes.append(f"{cause} ({days_str})")
+
+        # Survival rates
+        surv_30d = max(0.0, (total - deaths_30d) / total)
+        surv_365d = max(0.0, (total - deaths_365d) / total)
+
+        # Status (pending if not enough time has elapsed)
+        days_since = (today - trans_date).days if trans_date else None
+        if days_since is None:
+            status_30d = status_365d = '?'
+        elif days_since < 30:
+            status_30d = status_365d = 'Pending'
+        elif days_since < 365:
+            status_30d = f"{surv_30d * 100:.0f}%"
+            status_365d = 'Pending'
+        else:
+            status_30d = f"{surv_30d * 100:.0f}%"
+            status_365d = f"{surv_365d * 100:.0f}%"
+
+        rows.append({
+            'Serial': serial or 'N/A',
+            'Date': trans_date,
+            'Destination': destination,
+            'Species': species,
+            'Type': trans_type,
+            'Cohort': total,
+            '1-Mo Deaths': deaths_30d,
+            '1-Mo Survival': status_30d,
+            '1-Yr Deaths': deaths_365d,
+            '1-Yr Survival': status_365d,
+            '_surv_30d': surv_30d,
+            '_surv_365d': surv_365d,
+            '_pending_30d': status_30d == 'Pending',
+            '_pending_365d': status_365d == 'Pending',
+            'Mortality Notes': ', '.join(cause_notes) if cause_notes else '—',
+        })
+
+    df_results = pd.DataFrame(rows).sort_values('Date', ascending=False)
+
+    # Summary metrics
+    completed_30 = df_results[~df_results['_pending_30d']]
+    completed_365 = df_results[~df_results['_pending_365d']]
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("GCF Translocations", len(df_results))
+    with col2:
+        avg_30 = completed_30['_surv_30d'].mean() * 100 if not completed_30.empty else None
+        st.metric("Avg 1-Month Survival", f"{avg_30:.1f}%" if avg_30 is not None else "—")
+    with col3:
+        avg_365 = completed_365['_surv_365d'].mean() * 100 if not completed_365.empty else None
+        st.metric("Avg 1-Year Survival", f"{avg_365:.1f}%" if avg_365 is not None else "—")
+    with col4:
+        st.metric("Total Individuals", int(df_results['Cohort'].sum()))
+
+    st.markdown("---")
+
+    # Per-translocation table
+    st.subheader("📋 Per-Translocation Breakdown")
+    st.caption("🟢 100%  🟡 80–99%  🔴 <80%  ⬜ Pending — not enough time elapsed yet")
+
+    display_cols = [
+        'Serial', 'Date', 'Destination', 'Species', 'Type', 'Cohort',
+        '1-Mo Deaths', '1-Mo Survival', '1-Yr Deaths', '1-Yr Survival', 'Mortality Notes'
+    ]
+    display_df = df_results[display_cols].copy()
+
+    def _color_survival(val):
+        if val in ('Pending', '?', '—'):
+            return 'background-color: #f0f0f0; color: #888'
+        try:
+            pct = float(str(val).rstrip('%'))
+        except ValueError:
+            return ''
+        if pct == 100:
+            return 'background-color: #e8f5e9'
+        elif pct >= 80:
+            return 'background-color: #fff9c4'
+        else:
+            return 'background-color: #ffebee'
+
+    styled = display_df.style.applymap(
+        _color_survival, subset=['1-Mo Survival', '1-Yr Survival']
+    )
+    st.dataframe(styled, use_container_width=True)
+
+    csv = df_results[display_cols].to_csv(index=False)
+    st.download_button("📥 Download Success Data (CSV)", csv, "gcf_translocation_success.csv", "text/csv")
+
+
 def translocation_dashboard():
     """Main translocation dashboard interface"""
     
@@ -1635,6 +1830,17 @@ def translocation_dashboard():
     # Show the comprehensive table
     st.write("**Comprehensive Event Data Table (Exportable):**")
     st.dataframe(export_df, use_container_width=True)
+
+    # Translocation success tracking
+    st.markdown("---")
+    with st.spinner("🔄 Loading mortality data for success tracking..."):
+        mortality_df = get_mortality_events(
+            start_date, None,
+            username=st.session_state.username,
+            _password=st.session_state.password
+        )
+    translocation_success_tab(df_events, mortality_df)
+
 
 def _main_implementation():
     """Main application logic"""
