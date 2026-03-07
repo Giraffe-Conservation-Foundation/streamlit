@@ -792,6 +792,11 @@ def translocation_success_tab(df_events, mortality_df):
     Linked via mortality event field 'gir_mortality_trans_serial'.
     """
     st.subheader("🎯 GCF Translocation Success")
+    st.warning(
+        "⚠️ **Data in progress** — mortality records for translocated individuals are not yet fully "
+        "populated. Survival rates showing 100% reflect missing data, not confirmed survival. "
+        "Results will update as mortality events are linked."
+    )
     st.caption(
         "GCF-affiliated translocations only. Mortality linked via the 'Linked Translocation Serial' "
         "field on mortality events. No linked mortality = assumed 100% survival."
