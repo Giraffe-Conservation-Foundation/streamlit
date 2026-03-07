@@ -34,6 +34,15 @@ DAILY_RATE = {
 VOLTAGE_PROVIDERS = {'spoortrack', 'savannah_tracking_provider'}
 PERCENTAGE_PROVIDERS = {'mapipedia', 'gsatsolar'}
 
+# Providers to hide from the manufacturer filter (system/integration sources)
+EXCLUDED_PROVIDERS = {
+    'twiga-awe-telemetry',
+    'move_bank',
+    'gundi_awt_push_v2_9c89bde7-2d98-437b-9170-6913906fd9f6',
+    'cereswild-gcf',
+    'SOURCE_PROVIDER',
+}
+
 
 # --- Session state ---
 
@@ -192,8 +201,11 @@ def unit_check_tab():
         st.warning("No tracking device sources found.")
         return
 
-    # Build manufacturer selector with display names
-    raw_providers = sorted(df_sources['provider'].dropna().unique().tolist())
+    # Build manufacturer selector with display names (exclude system/integration providers)
+    raw_providers = sorted(
+        p for p in df_sources['provider'].dropna().unique()
+        if p not in EXCLUDED_PROVIDERS
+    )
     display_names = [MANUFACTURER_DISPLAY.get(p, p) for p in raw_providers]
     manufacturer_options = ['All'] + display_names
 
