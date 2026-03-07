@@ -1,10 +1,8 @@
 import streamlit as st
 import pandas as pd
-import geopandas as gpd
 from datetime import datetime, timedelta, date
 import plotly.express as px
 import plotly.graph_objects as go
-import json
 import os
 
 # Ecoscope imports for EarthRanger integration
@@ -132,21 +130,21 @@ def authenticate_earthranger():
             st.info("💡 Please check your username and password")
 
 @st.cache_data(ttl=1800, show_spinner=False)  # Cache for 30 minutes
-def get_mortality_events(start_date=None, end_date=None, _debug=False):
+def get_mortality_events(start_date=None, end_date=None, username=None, _password=None, _debug=False):
     """Fetch mortality events from EarthRanger using ecoscope"""
     if not ECOSCOPE_AVAILABLE:
         st.error("❌ Ecoscope package is required but not available.")
         return pd.DataFrame()
-        
-    if not st.session_state.get('username') or not st.session_state.get('password'):
+
+    if not username or not _password:
         return pd.DataFrame()
-    
+
     try:
         # Create EarthRanger connection using stored credentials
         er_io = EarthRangerIO(
-            server=st.session_state.server_url,
-            username=st.session_state.username,
-            password=st.session_state.password
+            server="https://twiga.pamdas.org",
+            username=username,
+            password=_password
         )
         
         # Build parameters for ecoscope get_events
@@ -225,21 +223,21 @@ def get_mortality_events(start_date=None, end_date=None, _debug=False):
         return pd.DataFrame()
 
 @st.cache_data(ttl=1800, show_spinner=False)  # Cache for 30 minutes
-def get_translocation_events(start_date=None, end_date=None, _debug=False):
+def get_translocation_events(start_date=None, end_date=None, username=None, _password=None, _debug=False):
     """Fetch translocation events from EarthRanger using ecoscope"""
     if not ECOSCOPE_AVAILABLE:
         st.error("❌ Ecoscope package is required but not available.")
         return pd.DataFrame()
-        
-    if not st.session_state.get('username') or not st.session_state.get('password'):
+
+    if not username or not _password:
         return pd.DataFrame()
-    
+
     try:
         # Create EarthRanger connection using stored credentials
         er_io = EarthRangerIO(
-            server=st.session_state.server_url,
-            username=st.session_state.username,
-            password=st.session_state.password
+            server="https://twiga.pamdas.org",
+            username=username,
+            password=_password
         )
         
         # Build parameters for ecoscope get_events
@@ -323,149 +321,6 @@ def get_translocation_events(start_date=None, end_date=None, _debug=False):
         st.error(f"Error fetching translocation events: {str(e)}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=1800)  # Cache for 30 minutes
-def get_subject_details(subject_ids):
-    """Fetch subject details from EarthRanger using ecoscope"""
-    if not ECOSCOPE_AVAILABLE or not subject_ids:
-        return pd.DataFrame()
-        
-    if not st.session_state.get('username') or not st.session_state.get('password'):
-        return pd.DataFrame()
-    
-    try:
-        # Create EarthRanger connection using stored credentials
-        er_io = EarthRangerIO(
-            server=st.session_state.server_url,
-            username=st.session_state.username,
-            password=st.session_state.password
-        )
-        
-        # Get subjects data
-        subjects_gdf = er_io.get_subjects()
-        
-        if subjects_gdf.empty:
-            return pd.DataFrame()
-        
-        # Convert to DataFrame and filter for our subject IDs
-        subjects_df = pd.DataFrame(subjects_gdf.drop(columns='geometry', errors='ignore'))
-        
-        # Filter for the subjects we're interested in
-        if 'id' in subjects_df.columns:
-            filtered_subjects = subjects_df[subjects_df['id'].isin(subject_ids)]
-        else:
-            return pd.DataFrame()
-        
-        # Get subject tracks/deployments for deployment dates
-        subject_details = []
-        
-        for subject_id in subject_ids:
-            subject_info = filtered_subjects[filtered_subjects['id'] == subject_id]
-            if not subject_info.empty:
-                subject_row = subject_info.iloc[0]
-                
-                # Try to get deployment information
-                try:
-                    # Get subject tracks to find deployment dates
-                    tracks_gdf = er_io.get_subjecttracks(subject_ids=[subject_id])
-                    
-                    deployment_start = None
-                    deployment_end = None
-                    
-                    if not tracks_gdf.empty:
-                        tracks_df = pd.DataFrame(tracks_gdf.drop(columns='geometry', errors='ignore'))
-                        if 'recorded_at' in tracks_df.columns:
-                            tracks_df['recorded_at'] = pd.to_datetime(tracks_df['recorded_at'])
-                            deployment_start = tracks_df['recorded_at'].min()
-                            deployment_end = tracks_df['recorded_at'].max()
-                    
-                    # Determine status based on last location time
-                    status = "Unknown"
-                    if deployment_end:
-                        days_since_last = (pd.Timestamp.now() - deployment_end).days
-                        if days_since_last <= 7:
-                            status = "Active"
-                        elif days_since_last <= 30:
-                            status = "Recent"
-                        else:
-                            status = "Inactive"
-                    
-                    subject_details.append({
-                        'subject_id': subject_id,
-                        'name': subject_row.get('name', 'Unknown'),
-                        'subject_type': subject_row.get('subject_type', 'Unknown'),
-                        'sex': subject_row.get('sex', 'Unknown'),
-                        'deployment_start': deployment_start.strftime('%Y-%m-%d') if deployment_start else 'Unknown',
-                        'deployment_end': deployment_end.strftime('%Y-%m-%d') if deployment_end else 'Unknown',
-                        'last_location_days': (pd.Timestamp.now() - deployment_end).days if deployment_end else None,
-                        'status': status
-                    })
-                    
-                except Exception as e:
-                    # If we can't get deployment info, just add basic subject info
-                    subject_details.append({
-                        'subject_id': subject_id,
-                        'name': subject_row.get('name', 'Unknown'),
-                        'subject_type': subject_row.get('subject_type', 'Unknown'),
-                        'sex': subject_row.get('sex', 'Unknown'),
-                        'deployment_start': 'Unknown',
-                        'deployment_end': 'Unknown',
-                        'last_location_days': None,
-                        'status': 'Unknown'
-                    })
-        
-        return pd.DataFrame(subject_details)
-        
-    except Exception as e:
-        st.error(f"Error fetching subject details: {str(e)}")
-        return pd.DataFrame()
-
-def display_event_details(event):
-    """Display detailed information for a single translocation event"""
-    with st.expander(f"📅 {event['time'].strftime('%Y-%m-%d %H:%M')} - Event ID: {event.get('id', 'Unknown')}", expanded=False):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write(f"**Serial Number:** {event.get('serial_number', 'N/A')}")
-            st.write(f"**Event Type:** {event.get('event_type', 'N/A')}")
-            st.write(f"**Event Category:** {event.get('event_category', 'N/A')}")
-            st.write(f"**Priority:** {event.get('priority', 'N/A')}")
-            st.write(f"**State:** {event.get('state', 'N/A')}")
-            
-        with col2:
-            st.write(f"**Created At:** {pd.to_datetime(event.get('created_at', '')).strftime('%Y-%m-%d %H:%M') if event.get('created_at') else 'N/A'}")
-            st.write(f"**Updated At:** {pd.to_datetime(event.get('updated_at', '')).strftime('%Y-%m-%d %H:%M') if event.get('updated_at') else 'N/A'}")
-            
-            # Location information
-            if event.get('latitude') and event.get('longitude'):
-                st.write(f"**Location:** {event['latitude']:.6f}, {event['longitude']:.6f}")
-            else:
-                st.write("**Location:** Not available")
-        
-        # Event details
-        if event.get('event_details'):
-            st.write("**Event Details:**")
-            details = event['event_details']
-            if isinstance(details, dict):
-                for key, value in details.items():
-                    if value:  # Only show non-empty values
-                        st.write(f"  - **{key.replace('_', ' ').title()}:** {value}")
-            else:
-                st.write(f"  {details}")
-        
-        # Notes
-        if event.get('notes'):
-            st.write("**Notes:**")
-            notes = event['notes']
-            if isinstance(notes, list):
-                for note in notes:
-                    if isinstance(note, dict):
-                        note_time = pd.to_datetime(note.get('created_at', '')).strftime('%Y-%m-%d %H:%M') if note.get('created_at') else 'Unknown time'
-                        st.write(f"  - **{note_time}:** {note.get('text', '')}")
-                    else:
-                        st.write(f"  - {note}")
-            else:
-                st.write(f"  {notes}")
-
 def mortality_dashboard():
     """Main mortality dashboard interface"""
     
@@ -489,7 +344,11 @@ def mortality_dashboard():
     
     # Fetch all events to get available filters
     with st.spinner("🔄 Loading mortality data..."):
-        all_events = get_mortality_events(start_date, end_date)
+        all_events = get_mortality_events(
+            start_date, end_date,
+            username=st.session_state.username,
+            _password=st.session_state.password
+        )
     
     # Extract unique countries and mortality causes
     all_countries = ['All Countries']
@@ -948,7 +807,11 @@ def translocation_dashboard():
     
     # First fetch all events to get available countries
     with st.spinner("🔄 Loading available countries..."):
-        all_events = get_translocation_events(start_date, end_date)
+        all_events = get_translocation_events(
+            start_date, end_date,
+            username=st.session_state.username,
+            _password=st.session_state.password
+        )
     
     # Extract unique destination countries
     all_countries = ['All Countries']
@@ -1072,8 +935,8 @@ def translocation_dashboard():
     # GCF filter on separate row for better visibility
     show_all_events = st.checkbox(
         "Show all events including non-GCF",
-        value=False,
-        help="By default, only GCF events are shown. Check this to include all events."
+        value=True,
+        help="When checked, all events are shown. Uncheck to show only GCF-affiliated events."
     )
     
     # Validate date range
@@ -1083,7 +946,11 @@ def translocation_dashboard():
     
     # Fetch translocation events
     with st.spinner("🔄 Fetching translocation events from EarthRanger..."):
-        df_events = get_translocation_events(start_date, end_date)
+        df_events = get_translocation_events(
+            start_date, end_date,
+            username=st.session_state.username,
+            _password=st.session_state.password
+        )
     
     # Apply GCF organization filter (by default show only GCF, unless show_all_events is checked)
     if not show_all_events and not df_events.empty:
@@ -1254,7 +1121,7 @@ def translocation_dashboard():
         - Access permissions may not include veterinary events
         - Event type might be named differently (use debug option above to check)
         
-        **Event criteria:** event_category='veterinary' AND event_type='giraffe_translocation'
+        **Event criteria:** event_category='veterinary' AND event_type='giraffe_translocation_3'
         """)
         return
     
