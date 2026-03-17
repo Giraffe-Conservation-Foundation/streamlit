@@ -9,6 +9,23 @@ import os
 import requests as req_lib
 from pandas import json_normalize
 
+# ── Sample status constants ────────────────────────────────────────────────
+# Canonical order for all charts, legends, and validation
+STATUS_ORDER = ['collected', 'office', 'shipped', 'received', 'analysed', 'published']
+STATUS_COLORS = {
+    'collected':  '#4683B7',  # Blue
+    'office':     '#6C757D',  # Grey
+    'shipped':    '#28A745',  # Green
+    'received':   '#17A2B8',  # Teal
+    'analysed':   '#DB580F',  # Orange
+    'published':  '#6F42C1',  # Purple
+    'unknown':    '#FFC107',  # Yellow fallback
+}
+
+def _status_color(status: str) -> str:
+    """Return the canonical colour for a status string."""
+    return STATUS_COLORS.get(str(status).lower(), STATUS_COLORS['unknown'])
+
 # Handle NumPy 2.x compatibility warnings and GeoPandas issues
 import warnings
 warnings.filterwarnings("ignore", message=".*copy keyword.*")
@@ -691,144 +708,105 @@ def display_events_map(df_events):
         f"<b>Species:</b> {row.get('details_girsam_species', 'N/A')}<br>" +
         f"<b>Sample Status:</b> {row.get('details_girsam_status', 'N/A')}", axis=1)
     
-    # Use sample status for coloring
+    # ── Status colouring ───────────────────────────────────────────────────
     color_column = 'details_girsam_status'
     if color_column in df_map.columns:
-        # Clean up sample status values (handle NaN and empty values)
-        df_map[color_column] = df_map[color_column].fillna('Unknown')
-        df_map[color_column] = df_map[color_column].replace('', 'Unknown')
-        
-        # Create custom color mapping for specific statuses
-        status_color_map = {
-            'analysed': '#DB580F',  # Orange
-            'office': '#6C757D',    # Grey
-            'shipped': '#28A745',    # Green
-            'collected': '#4683B7' # blue 
-        }
-        
-        # Get unique statuses and create color mapping
-        unique_statuses = df_map[color_column].unique()
-        color_discrete_map = {}
-        for status in unique_statuses:
-            color_discrete_map[status] = status_color_map.get(status.lower(), '#FFC107')  # Default yellow for unknown
-        
-        # Create the map with sample status coloring using custom color mapping
+        df_map[color_column] = df_map[color_column].fillna('unknown').replace('', 'unknown')
+
+        # Order present statuses canonically; any unknown values go to the end
+        present = [s for s in STATUS_ORDER if s in df_map[color_column].values]
+        extras  = sorted(set(df_map[color_column].unique()) - set(STATUS_ORDER))
+        ordered_statuses = present + extras
+        color_discrete_map = {s: _status_color(s) for s in ordered_statuses}
+
         fig = px.scatter_mapbox(
             df_map,
-            lat=lat_col,
-            lon=lon_col,
+            lat=lat_col, lon=lon_col,
             hover_name='serial_number',
             hover_data={
-                lat_col: ':.6f',
-                lon_col: ':.6f',
+                lat_col: ':.6f', lon_col: ':.6f',
                 'time': True,
                 'details_girsam_smpid': True,
                 'details_girsam_species': True,
-                'details_girsam_status': True
+                'details_girsam_status': True,
             },
             color=color_column,
             color_discrete_map=color_discrete_map,
+            category_orders={color_column: ordered_statuses},
             size_max=15,
-            zoom=4,  # Zoom level for Southern Africa region
-            center={"lat": -25.0, "lon": 25.0},  # Center on Southern Africa
+            zoom=4,
+            center={"lat": -25.0, "lon": 25.0},
             height=600,
-            title=f"Biological Sample Events by Sample Status ({len(df_map)} events with coordinates)",
-            labels={color_column: 'Sample Status'}
+            title=f"Biological Sample Events by Status ({len(df_map)} with coordinates)",
+            labels={color_column: 'Sample Status'},
         )
     else:
-        # Fallback if processing status column doesn't exist
         fig = px.scatter_mapbox(
             df_map,
-            lat=lat_col,
-            lon=lon_col,
+            lat=lat_col, lon=lon_col,
             hover_name='serial_number',
-            hover_data={
-                lat_col: ':.6f',
-                lon_col: ':.6f',
-                'time': True,
-                'details_girsam_smpid': True,
-                'details_girsam_species': True,
-                'details_girsam_status': True
-            },
-            size_max=15,
-            zoom=4,  # Zoom level for Southern Africa region
-            center={"lat": -25.0, "lon": 25.0},  # Center on Southern Africa
+            size_max=15, zoom=4,
+            center={"lat": -25.0, "lon": 25.0},
             height=600,
-            title=f"Biological Sample Events Map ({len(df_map)} events with coordinates)"
+            title=f"Biological Sample Events ({len(df_map)} with coordinates)",
         )
-    
-    # Update map layout
+
     fig.update_layout(
         mapbox_style="open-street-map",
         margin={"r": 0, "t": 50, "l": 0, "b": 0},
-        showlegend=True
+        showlegend=True,
     )
-    
-    # Make dots larger and more visible
     fig.update_traces(marker=dict(size=12, opacity=0.8))
-    
-    # Display the map
     st.plotly_chart(fig, use_container_width=True)
-    
-    # Show sample status summary
+
+    # ── Status summary charts ──────────────────────────────────────────────
     if color_column in df_map.columns:
         st.subheader("📊 Sample Status Summary")
-        status_counts = df_map[color_column].value_counts()
+
+        # Build ordered counts (only statuses present in data, in canonical order)
+        ordered_present = [s for s in STATUS_ORDER if s in df_map[color_column].values]
+        ordered_present += sorted(set(df_map[color_column].unique()) - set(STATUS_ORDER))
+        status_counts = (
+            df_map[color_column]
+            .value_counts()
+            .reindex(ordered_present)
+            .dropna()
+            .astype(int)
+        )
+        colors_ordered = [_status_color(s) for s in status_counts.index]
+        cmap = {s: _status_color(s) for s in status_counts.index}
+
         col1, col2, col3 = st.columns(3)
-        
+
         with col1:
-            st.write("**Sample Status Breakdown:**")
+            st.write("**Status Breakdown:**")
+            total = len(df_map)
             for status, count in status_counts.items():
-                percentage = (count / len(df_map) * 100)
-                st.write(f"• {status}: {count} samples ({percentage:.1f}%)")
-        
+                st.write(f"• {status}: **{count}** ({count/total*100:.1f}%)")
+
         with col2:
-            # Create a simple bar chart of sample status with custom color mapping
-            if len(status_counts) > 0:
-                # Create custom color mapping for specific statuses
-                status_color_map = {
-                    'analysed': '#DB580F',  # Orange
-                    'office': '#6C757D',    # Grey
-                    'shipped': '#28A745'    # Green
-                }
-                
-                # Map colors to the actual status values in the data
-                colors = [status_color_map.get(status.lower(), '#FFC107') for status in status_counts.index]
-                
-                fig_bar = px.bar(
-                    x=status_counts.index,
-                    y=status_counts.values,
-                    labels={'x': 'Sample Status', 'y': 'Number of Samples'},
-                    title="Sample Status Distribution",
-                    color=status_counts.index,
-                    color_discrete_map={status: color for status, color in zip(status_counts.index, colors)}
-                )
-                fig_bar.update_layout(height=300, showlegend=False)
-                fig_bar.update_xaxes(title_text="Sample Status")
-                st.plotly_chart(fig_bar, use_container_width=True)
-        
+            fig_bar = px.bar(
+                x=status_counts.index.tolist(),
+                y=status_counts.values.tolist(),
+                labels={'x': 'Sample Status', 'y': 'Count'},
+                title="Status Distribution",
+                color=status_counts.index.tolist(),
+                color_discrete_map=cmap,
+                category_orders={'x': status_counts.index.tolist()},
+            )
+            fig_bar.update_layout(height=300, showlegend=False)
+            st.plotly_chart(fig_bar, use_container_width=True)
+
         with col3:
-            # Create a pie chart of sample status with custom color mapping
-            if len(status_counts) > 0:
-                # Create custom color mapping for specific statuses
-                status_color_map = {
-                    'analysed': '#DB580F',  # Orange
-                    'office': '#6C757D',    # Grey
-                    'shipped': '#28A745'    # Green
-                }
-                
-                # Map colors to the actual status values in the data
-                colors = [status_color_map.get(status.lower(), '#FFC107') for status in status_counts.index]
-                
-                fig_pie = px.pie(
-                    values=status_counts.values,
-                    names=status_counts.index,
-                    title="Sample Status Distribution",
-                    color=status_counts.index,
-                    color_discrete_map={status: color for status, color in zip(status_counts.index, colors)}
-                )
-                fig_pie.update_layout(height=300, showlegend=True)
-                st.plotly_chart(fig_pie, use_container_width=True)
+            fig_pie = px.pie(
+                values=status_counts.values.tolist(),
+                names=status_counts.index.tolist(),
+                title="Status Distribution",
+                color=status_counts.index.tolist(),
+                color_discrete_map=cmap,
+            )
+            fig_pie.update_layout(height=300, showlegend=True)
+            st.plotly_chart(fig_pie, use_container_width=True)
 
 def get_auth_token():
     """Get OAuth2 token using stored credentials"""
@@ -870,7 +848,7 @@ def render_update_tab(df_filtered):
     st.markdown(
         "**Workflow:** Export current events → edit `girsam_status` for each row you want to update "
         "→ upload and click **Apply Updates**. You can update as many events as you like in one go.\n\n"
-        "Valid statuses: `collected` · `received` · `shipped` · `analysed` · `office`\n\n"
+        "Valid statuses: `collected` · `office` · `shipped` · `received` · `analysed` · `published`\n\n"
         "The `country`, `site_name`, and `origin` columns in the export are for reference only — "
         "they are ignored on upload."
     )
@@ -954,7 +932,7 @@ def render_update_tab(df_filtered):
     st.write(f"**{len(df_update)} event(s) queued for update:**")
     st.dataframe(df_update, use_container_width=True, hide_index=True)
 
-    valid_statuses = {"collected", "office", "shipped", "analysed", "received"}
+    valid_statuses = set(STATUS_ORDER)  # collected, office, shipped, received, analysed, published
     invalid = df_update[~df_update['girsam_status'].str.lower().isin(valid_statuses)]
     if not invalid.empty:
         st.warning(
@@ -1174,31 +1152,13 @@ def genetic_dashboard():
     #st.header("🧬 Genetic Dashboard")
     #st.markdown("Monitor and analyze biological sample events from EarthRanger")
     
-    # Dashboard controls - use wider layout for max results only
-    col1, col2, col3 = st.columns([6, 2, 1])
+    # Default date values for initial data fetch
+    start_date_temp = date(2022, 1, 1)
+    end_date_temp = date.today()
 
-    with col1:
-        st.write("")  # Spacer
-
-    with col2:
-        st.write("")  # Spacer
-
-    with col3:
-        # Add max results control
-        max_results = st.selectbox(
-            "Max Results",
-            options=[50, 100, 200, 500],
-            index=2,  # Default to 200
-            help="Limit the number of events to fetch (higher numbers may be slower)"
-        )
-
-    # Default date values for initial data fetch - EXPANDED to catch all data including zmb
-    start_date_temp = date(2022, 1, 1)  # Start from 2022 to capture more data
-    end_date_temp = date.today()        # Up to today to include 2025 data
-
-    # Fetch biological sample events with the selected max_results for initial display
+    # Fetch all biological sample events (no arbitrary cap)
     with st.spinner("Fetching biological sample events..."):
-        df_events = get_biological_sample_events(start_date_temp, end_date_temp, max_results)
+        df_events = get_biological_sample_events(start_date_temp, end_date_temp)
 
     if df_events.empty:
         st.warning("No biological sample events found for the initial date range (2024). Try adjusting the date filters below.")
@@ -1392,7 +1352,24 @@ def genetic_dashboard():
             placeholder="All species",
             help="Select one or more species to filter (leave blank for all)"
         )
-    
+
+    # Status filter — spans half a row below the main four
+    col_status, col_pad = st.columns([6, 6])
+    with col_status:
+        if not df_events.empty and 'details_girsam_status' in df_events.columns:
+            present = [s for s in STATUS_ORDER if s in df_events['details_girsam_status'].values]
+            others  = sorted(set(df_events['details_girsam_status'].dropna().unique()) - set(STATUS_ORDER))
+            status_options = present + others
+        else:
+            status_options = STATUS_ORDER
+        selected_statuses = st.multiselect(
+            "📋 Sample Status",
+            options=status_options,
+            default=[],
+            placeholder="All statuses",
+            help="Filter by one or more sample statuses (leave blank for all)"
+        )
+
     # Date filters under the main filters section
     st.write("")  # Small spacer
     col1, col2, col3, col4 = st.columns([3, 3, 3, 3])
@@ -1432,7 +1409,7 @@ def genetic_dashboard():
     # Refetch data if date range has changed or if initial data was empty
     if start_date != start_date_temp or end_date != end_date_temp or df_events.empty:
         with st.spinner("Updating data for selected date range..."):
-            df_events = get_biological_sample_events(start_date, end_date, max_results)
+            df_events = get_biological_sample_events(start_date, end_date)
         
         if df_events.empty:
             st.warning("No biological sample events found for the selected date range.")
@@ -1510,7 +1487,13 @@ def genetic_dashboard():
                 filtered_indices.append(idx)
         df_filtered = df_filtered.loc[filtered_indices] if filtered_indices else df_filtered.iloc[0:0]
         filter_info.append(f"Species: {', '.join(selected_species_list)}")
-    
+
+    # Apply status filter
+    if selected_statuses:
+        if 'details_girsam_status' in df_filtered.columns:
+            df_filtered = df_filtered[df_filtered['details_girsam_status'].isin(selected_statuses)]
+        filter_info.append(f"Status: {', '.join(selected_statuses)}")
+
     # Display filter status
     if filter_info:
         st.info(f"📊 Filtered by: **{' | '.join(filter_info)}** ({len(df_filtered)} events)")
