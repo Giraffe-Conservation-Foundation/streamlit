@@ -870,7 +870,7 @@ def render_update_tab(df_filtered):
     st.markdown(
         "**Workflow:** Export current events → edit `girsam_status` for each row you want to update "
         "→ upload and click **Apply Updates**. You can update as many events as you like in one go.\n\n"
-        "Valid statuses: `collected` · `shipped` · `analysed` · `office`\n\n"
+        "Valid statuses: `collected` · `received` · `shipped` · `analysed` · `office`\n\n"
         "The `country`, `site_name`, and `origin` columns in the export are for reference only — "
         "they are ignored on upload."
     )
@@ -954,7 +954,7 @@ def render_update_tab(df_filtered):
     st.write(f"**{len(df_update)} event(s) queued for update:**")
     st.dataframe(df_update, use_container_width=True, hide_index=True)
 
-    valid_statuses = {"collected", "office", "shipped", "analysed"}
+    valid_statuses = {"collected", "office", "shipped", "analysed", "received"}
     invalid = df_update[~df_update['girsam_status'].str.lower().isin(valid_statuses)]
     if not invalid.empty:
         st.warning(
@@ -1011,6 +1011,162 @@ def render_update_tab(df_filtered):
                 st.write(f"  - {r['event_id']}: {r.get('error', 'Unknown error')}")
     if success_count > 0:
         st.info("Click **Refresh Data** in the sidebar to reload the updated events.")
+
+
+def submit_event_api(event_data, token):
+    """POST a single new event via the EarthRanger API"""
+    server_url = st.session_state.get('server_url', 'https://twiga.pamdas.org')
+    url = f"{server_url}/api/v1.0/activity/events"
+    headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    try:
+        response = req_lib.post(url, json=event_data, headers=headers)
+        if response.status_code in [200, 201]:
+            return {'success': True, 'data': response.json()}
+        return {'success': False, 'error': f"{response.status_code}: {response.text}"}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def render_import_tab():
+    """Render the Bulk Import Events tab - CSV-based new event creation"""
+    st.subheader("Bulk Import Biological Sample Events")
+    st.markdown(
+        "Upload a CSV to create new biological sample events in EarthRanger. "
+        "Use the same format as the historical event push CSVs.\n\n"
+        "**Required column:** `event_datetime`  \n"
+        "**Optional but recommended:** all `details_girsam_*` columns, `latitude`, `longitude`, `serial_number`"
+    )
+
+    # ── Template download ───────────────────────────────────────────────────
+    template_cols = [
+        "serial_number", "event_datetime",
+        "details_girsam_iso", "details_girsam_site", "details_girsam_origin",
+        "latitude", "longitude",
+        "details_girsam_age", "details_girsam_sex", "details_girsam_type",
+        "details_girsam_smpid", "details_girsam_smpid2", "details_girsam_subid",
+        "details_girsam_status", "details_girsam_species",
+        "details_girsam_notes",
+    ]
+    example_row = [
+        "1", "2025-01-15T10:30:00Z",
+        "zaf", "Tswalu Kalahari Reserve", "biopsy",
+        "-27.22", "22.457",
+        "adult", "m", "tissue",
+        "SAMP001", "SAMP001_ALT", "G001_ZAF_2025",
+        "received", "southern_southafrican",
+        "",
+    ]
+    template_csv = ",".join(template_cols) + "\n" + ",".join(example_row) + "\n"
+    st.download_button(
+        "⬇️ Download import template CSV",
+        data=template_csv,
+        file_name="biological_sample_import_template.csv",
+        mime="text/csv",
+        help="One example row showing all supported columns"
+    )
+
+    st.markdown("---")
+    uploaded_file = st.file_uploader(
+        "Upload import CSV",
+        type="csv",
+        key="import_csv_uploader",
+        help="CSV with event_datetime and any details_girsam_* columns"
+    )
+    if uploaded_file is None:
+        return
+
+    try:
+        df_import = pd.read_csv(uploaded_file)
+    except Exception as e:
+        st.error(f"Error reading CSV: {e}")
+        return
+
+    if 'event_datetime' not in df_import.columns:
+        st.error("CSV must have an `event_datetime` column.")
+        return
+
+    df_import = df_import.dropna(subset=['event_datetime'])
+    st.write(f"**{len(df_import)} event(s) ready to import — preview:**")
+    st.dataframe(df_import.head(10), use_container_width=True, hide_index=True)
+    if len(df_import) > 10:
+        st.caption(f"Showing first 10 of {len(df_import)} rows.")
+
+    if not st.button("Import Events", type="primary", key="csv_import_btn"):
+        return
+
+    token = get_auth_token()
+    if not token:
+        st.error("Authentication failed. Please log out and back in.")
+        return
+
+    results = []
+    progress = st.progress(0)
+    total = len(df_import)
+
+    for i, (_, row) in enumerate(df_import.iterrows()):
+        try:
+            # Parse datetime → ISO 8601
+            raw_dt = str(row['event_datetime']).strip()
+            try:
+                from dateutil import parser as date_parser
+                parsed_dt = date_parser.parse(raw_dt)
+                iso_time = parsed_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            except Exception:
+                iso_time = raw_dt  # pass through and let EarthRanger validate
+
+            # Build event payload (matches historical push format)
+            event = {
+                'event_type': 'biological_sample',
+                'title': f"Biological Sample {str(row.get('serial_number', '')).strip()}".strip(),
+                'time': iso_time,
+                'state': 'new',
+                'priority': 200,
+                'is_collection': False,
+                'event_details': {},
+            }
+
+            # Location
+            lat = row.get('latitude')
+            lon = row.get('longitude')
+            if pd.notna(lat) and pd.notna(lon):
+                try:
+                    event['location'] = {
+                        'latitude': float(lat),
+                        'longitude': float(lon),
+                    }
+                except (ValueError, TypeError):
+                    pass
+
+            # All details_girsam_* columns → strip prefix and add to event_details
+            for col in df_import.columns:
+                if col.startswith('details_') and pd.notna(row[col]) and str(row[col]).strip() != '':
+                    key = col.replace('details_', '', 1)
+                    event['event_details'][key] = str(row[col]).strip()
+
+            result = submit_event_api(event, token)
+            result['row'] = i + 1
+            if not result['success']:
+                result['event_datetime'] = iso_time
+            results.append(result)
+
+        except Exception as e:
+            results.append({'success': False, 'error': str(e), 'row': i + 1})
+
+        progress.progress((i + 1) / total)
+
+    progress.empty()
+    success_count = sum(1 for r in results if r.get('success'))
+    fail_count = total - success_count
+
+    if success_count > 0:
+        st.success(f"✅ Successfully imported {success_count} event(s)")
+    if fail_count > 0:
+        st.error(f"❌ Failed to import {fail_count} event(s):")
+        for r in results:
+            if not r.get('success'):
+                st.write(f"  - Row {r['row']} ({r.get('event_datetime', '')}): {r.get('error', 'Unknown error')}")
+    if success_count > 0:
+        st.info("Click **Refresh Data** in the sidebar to see the newly imported events.")
 
 
 def genetic_dashboard():
@@ -1399,8 +1555,8 @@ def genetic_dashboard():
     else:
         st.info(f"📊 Showing **all events** ({len(df_filtered)} events)")
     
-    # Tabs for view and update workflows
-    tab1, tab2 = st.tabs(["📊 View Data", "✏️ Update Events"])
+    # Tabs for view, update, and import workflows
+    tab1, tab2, tab3 = st.tabs(["📊 View Data", "✏️ Update Events", "📥 Bulk Import"])
 
     with tab1:
         if df_filtered.empty:
@@ -1416,6 +1572,9 @@ def genetic_dashboard():
 
     with tab2:
         render_update_tab(df_filtered)
+
+    with tab3:
+        render_import_tab()
 
 # Make main() available for import while still allowing direct execution
 if __name__ == "__main__":
