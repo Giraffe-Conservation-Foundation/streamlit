@@ -6,6 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import json
 import os
+import requests as req_lib
 from pandas import json_normalize
 
 # Handle NumPy 2.x compatibility warnings and GeoPandas issues
@@ -308,6 +309,10 @@ def get_biological_sample_events(start_date=None, end_date=None, max_results=500
         
         # FAST conversion - minimal processing
         df = pd.DataFrame(gdf_events.drop(columns='geometry', errors='ignore'))
+
+        # Preserve the UUID index as a column (ecoscope sets the UUID as the DataFrame index)
+        if 'event_uuid' not in df.columns:
+            df['event_uuid'] = df.index.astype(str)
         
         # Quick filter by event_type - do this early to reduce processing
         if 'event_type' in df.columns:
@@ -566,14 +571,16 @@ def display_event_details_table(df_events):
     
     # Define preferred column order - cleaned up to only essential columns
     preferred_columns = [
-        'id',                    # Event ID
-        'serial_number',         # Serial Number
-        'event_datetime',        # Event Date/Time
-        'details_girsam_iso',    # Country (ISO) - from flattened event_details
-        'details_girsam_site',   # Site Name - from flattened event_details
-        'details_girsam_origin', # Origin - from flattened event_details
-        'latitude',              # Latitude
-        'longitude'              # Longitude
+        'id',                     # Event ID
+        'serial_number',          # Serial Number
+        'event_datetime',         # Event Date/Time (when sample was taken / retrospective date)
+        'updated_datetime',       # Last Updated in EarthRanger (when PATCH was applied)
+        'details_girsam_status',  # Current Sample Status (collected/shipped/analysed/office)
+        'details_girsam_iso',     # Country (ISO) - from flattened event_details
+        'details_girsam_site',    # Site Name - from flattened event_details
+        'details_girsam_origin',  # Origin - from flattened event_details
+        'latitude',               # Latitude
+        'longitude'               # Longitude
     ]
     
     # Add all event_details columns (these are the exploded details) except excluded ones
@@ -601,6 +608,8 @@ def display_event_details_table(df_events):
         'details_girsam_site': 'Site Name',     # Map flattened field to site
         'latitude': st.column_config.NumberColumn('Latitude', format="%.6f"),
         'longitude': st.column_config.NumberColumn('Longitude', format="%.6f"),
+        'updated_datetime': 'Last Updated',
+        'details_girsam_status': 'Sample Status',
         'details_girsam_age': 'Giraffe Age',
         'details_girsam_sex': 'Giraffe Sex',
         'details_girsam_proc': 'Sample Processed',
@@ -611,7 +620,6 @@ def display_event_details_table(df_events):
         'details_girsam_smpid2': 'Secondary Sample ID',
         'details_girsam_subid': 'Giraffe ER ID',
         'details_girsam_species': 'Species',
-        'details_girsam_status': 'Sample Status',
         'details_girsam_origin': 'Origin'
     }
     
@@ -821,6 +829,189 @@ def display_events_map(df_events):
                 )
                 fig_pie.update_layout(height=300, showlegend=True)
                 st.plotly_chart(fig_pie, use_container_width=True)
+
+def get_auth_token():
+    """Get OAuth2 token using stored credentials"""
+    server_url = st.session_state.get('server_url', 'https://twiga.pamdas.org')
+    try:
+        response = req_lib.post(
+            f"{server_url}/oauth2/token",
+            data={
+                'grant_type': 'password',
+                'username': st.session_state.username,
+                'password': st.session_state.password,
+                'client_id': 'das_web_client'
+            }
+        )
+        if response.status_code == 200:
+            return response.json().get('access_token')
+    except Exception:
+        pass
+    return None
+
+
+def update_event_api(event_id, update_data, token):
+    """PATCH a single event via direct API"""
+    server_url = st.session_state.get('server_url', 'https://twiga.pamdas.org')
+    url = f"{server_url}/api/v1.0/activity/event/{event_id}"  # singular 'event', not 'events'
+    headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    try:
+        response = req_lib.patch(url, json=update_data, headers=headers)
+        if response.status_code in [200, 204]:
+            return {'success': True}
+        return {'success': False, 'error': f"{response.status_code}: {response.text}"}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def render_update_tab(df_filtered):
+    """Render the Update Events tab - CSV-based bulk status updates"""
+    st.subheader("Update Sample Status via CSV")
+    st.markdown(
+        "**Workflow:** Export current events → edit `girsam_status` for each row you want to update "
+        "→ upload and click **Apply Updates**. You can update as many events as you like in one go.\n\n"
+        "Valid statuses: `collected` · `shipped` · `analysed` · `office`\n\n"
+        "The `country`, `site_name`, and `origin` columns in the export are for reference only — "
+        "they are ignored on upload."
+    )
+
+    # ── Template download (blank starting point) ───────────────────────────
+    template_data = (
+        "event_id,girsam_status\n"
+        "<paste-event-uuid-here>,shipped\n"
+        "<paste-event-uuid-here>,analysed\n"
+    )
+    st.download_button(
+        "⬇️ Download blank CSV template",
+        data=template_data,
+        file_name="update_status_template.csv",
+        mime="text/csv",
+        help="Blank template — paste in your event UUIDs and fill in the new status"
+    )
+
+    # ── Export current filtered events as a ready-to-edit starting point ───
+    if not df_filtered.empty and 'event_uuid' in df_filtered.columns:
+        # Build export DataFrame — editable columns first, then read-only reference
+        export_parts = {'event_id': df_filtered['event_uuid']}
+
+        if 'serial_number' in df_filtered.columns:
+            export_parts['serial_number'] = df_filtered['serial_number']
+
+        # Current status — user overwrites this with the new status
+        export_parts['girsam_status'] = (
+            df_filtered['details_girsam_status']
+            if 'details_girsam_status' in df_filtered.columns
+            else ''
+        )
+
+        # Read-only reference columns — helpful for identifying the correct row
+        for src_col, out_col in [
+            ('details_girsam_iso',    'country'),
+            ('details_girsam_site',   'site_name'),
+            ('details_girsam_origin', 'origin'),
+        ]:
+            export_parts[out_col] = (
+                df_filtered[src_col] if src_col in df_filtered.columns else ''
+            )
+
+        export_df = pd.DataFrame(export_parts)
+        st.download_button(
+            "⬇️ Export current events (pre-filled, ready to edit)",
+            data=export_df.to_csv(index=False),
+            file_name="current_events_for_update.csv",
+            mime="text/csv",
+            help="All currently filtered events — edit girsam_status and re-upload"
+        )
+
+    st.markdown("---")
+    uploaded_file = st.file_uploader(
+        "Upload completed update CSV",
+        type="csv",
+        key="update_csv_uploader",
+        help="CSV must have columns: event_id, girsam_status. Optional: dttm (YYYY-MM-DD)"
+    )
+    if uploaded_file is None:
+        return
+
+    try:
+        df_update = pd.read_csv(uploaded_file)
+    except Exception as e:
+        st.error(f"Error reading CSV: {e}")
+        return
+
+    if 'event_id' not in df_update.columns or 'girsam_status' not in df_update.columns:
+        st.error("CSV must have `event_id` and `girsam_status` columns.")
+        return
+
+    # Keep only the columns we need for updating
+    keep_cols = ['event_id', 'girsam_status']
+
+    df_update = df_update[keep_cols].dropna(subset=['event_id', 'girsam_status'])
+    # Strip whitespace from string columns
+    for col in ['event_id', 'girsam_status']:
+        df_update[col] = df_update[col].astype(str).str.strip()
+
+    st.write(f"**{len(df_update)} event(s) queued for update:**")
+    st.dataframe(df_update, use_container_width=True, hide_index=True)
+
+    valid_statuses = {"collected", "office", "shipped", "analysed"}
+    invalid = df_update[~df_update['girsam_status'].str.lower().isin(valid_statuses)]
+    if not invalid.empty:
+        st.warning(
+            "Unrecognised status values (will still be sent): "
+            + ", ".join(invalid['girsam_status'].unique().tolist())
+        )
+
+    if not st.button("Apply Updates", type="primary", key="csv_update_btn"):
+        return
+
+    token = get_auth_token()
+    if not token:
+        st.error("Authentication failed. Please log out and back in.")
+        return
+
+    results = []
+    progress = st.progress(0)
+    total = len(df_update)
+
+    for i, (_, row) in enumerate(df_update.iterrows()):
+        event_id = str(row['event_id']).strip()
+        new_status = str(row['girsam_status']).strip()
+
+        # Fetch current event_details so we only overwrite the fields we intend to change
+        existing_details = {}
+        if not df_filtered.empty and 'event_uuid' in df_filtered.columns:
+            match = df_filtered[df_filtered['event_uuid'] == event_id]
+            if not match.empty:
+                ed = match.iloc[0].get('event_details', {})
+                if isinstance(ed, str):
+                    try:
+                        ed = json.loads(ed)
+                    except Exception:
+                        ed = {}
+                if isinstance(ed, dict):
+                    existing_details = ed
+
+        merged_details = {**existing_details, 'girsam_status': new_status}
+        result = update_event_api(event_id, {'event_details': merged_details}, token)
+        result['event_id'] = event_id
+        results.append(result)
+        progress.progress((i + 1) / total)
+
+    progress.empty()
+    success_count = sum(1 for r in results if r.get('success'))
+    fail_count = total - success_count
+
+    if success_count > 0:
+        st.success(f"✅ Successfully updated {success_count} event(s)")
+    if fail_count > 0:
+        st.error(f"❌ Failed to update {fail_count} event(s):")
+        for r in results:
+            if not r.get('success'):
+                st.write(f"  - {r['event_id']}: {r.get('error', 'Unknown error')}")
+    if success_count > 0:
+        st.info("Click **Refresh Data** in the sidebar to reload the updated events.")
+
 
 def genetic_dashboard():
     """Main genetic dashboard interface"""
@@ -1208,23 +1399,23 @@ def genetic_dashboard():
     else:
         st.info(f"📊 Showing **all events** ({len(df_filtered)} events)")
     
-    # Check if filtered data is empty
-    if df_filtered.empty:
-        if filter_info:
-            filter_desc = ' and '.join(filter_info)
-            st.warning(f"No biological sample events found for {filter_desc} in the selected date range.")
+    # Tabs for view and update workflows
+    tab1, tab2 = st.tabs(["📊 View Data", "✏️ Update Events"])
+
+    with tab1:
+        if df_filtered.empty:
+            if filter_info:
+                filter_desc = ' and '.join(filter_info)
+                st.warning(f"No biological sample events found for {filter_desc} in the selected date range.")
+            else:
+                st.warning("No biological sample events found in the selected date range. Try adjusting the date filters or check if you have data for this period.")
         else:
-            st.warning("No biological sample events found in the selected date range. Try adjusting the date filters or check if you have data for this period.")
-        return
-    
-    # Display the events table and get exploded data
-    df_exploded = display_event_details_table(df_filtered)
-    
-    # Add some spacing
-    st.markdown("---")
-    
-    # Display the map with exploded data for processing status coloring
-    display_events_map(df_exploded)
+            df_exploded = display_event_details_table(df_filtered)
+            st.markdown("---")
+            display_events_map(df_exploded)
+
+    with tab2:
+        render_update_tab(df_filtered)
 
 # Make main() available for import while still allowing direct execution
 if __name__ == "__main__":
