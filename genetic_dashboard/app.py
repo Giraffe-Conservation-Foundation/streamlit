@@ -1354,58 +1354,44 @@ def genetic_dashboard():
             help="Number of species with events"
         )
     
-    # Filter selection interface - now with 4 columns for country, site, sample type, and species
+    # Filter selection interface - multiselect for all four filters
     col1, col2, col3, col4 = st.columns([3, 3, 3, 3])
-    
+
     with col1:
-        country_options = ["All Countries"] + available_countries if available_countries else ["All Countries", "No data available"]
-        selected_country = st.selectbox(
+        selected_countries = st.multiselect(
             "🌍 Country",
-            options=country_options,
-            index=0,
-            help="Filter biological sample events by country"
+            options=available_countries if available_countries else [],
+            default=[],
+            placeholder="All countries",
+            help="Select one or more countries to filter (leave blank for all)"
         )
-    
+
     with col2:
-        site_options = ["All Sites"] + available_sites if available_sites else ["All Sites", "No data available"]
-        selected_site = st.selectbox(
+        selected_sites = st.multiselect(
             "📍 Site",
-            options=site_options,
-            index=0,
-            help="Filter biological sample events by site"
+            options=available_sites if available_sites else [],
+            default=[],
+            placeholder="All sites",
+            help="Select one or more sites to filter (leave blank for all)"
         )
-    
+
     with col3:
-        if available_sample_types:
-            selected_sample_type = st.selectbox(
-                "🧪 Sample Type",
-                options=["All Sample Types"] + available_sample_types,
-                index=0,
-                help="Filter biological sample events by sample type"
-            )
-        else:
-            selected_sample_type = st.selectbox(
-                "🧪 Sample Type",
-                options=["All Sample Types", "No sample types found"],
-                index=0,
-                help="No sample type information available in the data"
-            )
-    
+        selected_sample_types = st.multiselect(
+            "🧪 Sample Type",
+            options=available_sample_types if available_sample_types else [],
+            default=[],
+            placeholder="All sample types",
+            help="Select one or more sample types to filter (leave blank for all)"
+        )
+
     with col4:
-        if available_species:
-            selected_species = st.selectbox(
-                "🦒 Species",
-                options=["All Species"] + available_species,
-                index=0,
-                help="Filter biological sample events by species"
-            )
-        else:
-            selected_species = st.selectbox(
-                "🦒 Species",
-                options=["All Species", "No species found"],
-                index=0,
-                help="No species information available in the data"
-            )
+        selected_species_list = st.multiselect(
+            "🦒 Species",
+            options=available_species if available_species else [],
+            default=[],
+            placeholder="All species",
+            help="Select one or more species to filter (leave blank for all)"
+        )
     
     # Date filters under the main filters section
     st.write("")  # Small spacer
@@ -1455,30 +1441,25 @@ def genetic_dashboard():
     # Apply filters (only if we have data)
     df_filtered = df_events.copy()
     filter_info = []
-    
-    # Apply country filter - FIXED to use the same column source as dropdown
-    if selected_country != "All Countries":
-        # Use the same column that was used to populate the dropdown options
+
+    # Apply country filter
+    if selected_countries:
         if 'details_girsam_iso' in df_filtered.columns:
-            df_filtered = df_filtered[df_filtered['details_girsam_iso'] == selected_country]
+            df_filtered = df_filtered[df_filtered['details_girsam_iso'].isin(selected_countries)]
         elif 'country' in df_filtered.columns:
-            df_filtered = df_filtered[df_filtered['country'] == selected_country]
-        
-        filter_info.append(f"Country: {selected_country}")
-    
+            df_filtered = df_filtered[df_filtered['country'].isin(selected_countries)]
+        filter_info.append(f"Country: {', '.join(selected_countries)}")
+
     # Apply site filter
-    if selected_site != "All Sites":
-        df_filtered = df_filtered[df_filtered['site'] == selected_site]
-        filter_info.append(f"Site: {selected_site}")
-    
+    if selected_sites:
+        df_filtered = df_filtered[df_filtered['site'].isin(selected_sites)]
+        filter_info.append(f"Site: {', '.join(selected_sites)}")
+
     # Apply sample type filter
-    if selected_sample_type != "All Sample Types" and selected_sample_type != "No sample types found":
-        # Filter based on event_details structure
+    if selected_sample_types:
         filtered_indices = []
         for idx, row in df_filtered.iterrows():
             event_details = row.get('event_details', {})
-            
-            # Extract sample type from event_details
             sample_type = None
             if isinstance(event_details, dict):
                 sample_type = event_details.get('girsam_type')
@@ -1497,27 +1478,16 @@ def genetic_dashboard():
                                 sample_type = girsam_data.get('type')
                 except json.JSONDecodeError:
                     pass
-            
-            # Check if this row matches the selected sample type
-            if sample_type and str(sample_type).strip() == selected_sample_type:
+            if sample_type and str(sample_type).strip() in selected_sample_types:
                 filtered_indices.append(idx)
-        
-        # Apply the filter
-        if filtered_indices:
-            df_filtered = df_filtered.loc[filtered_indices]
-        else:
-            df_filtered = df_filtered.iloc[0:0]  # Empty dataframe with same structure
-        
-        filter_info.append(f"Sample Type: {selected_sample_type}")
-    
+        df_filtered = df_filtered.loc[filtered_indices] if filtered_indices else df_filtered.iloc[0:0]
+        filter_info.append(f"Sample Type: {', '.join(selected_sample_types)}")
+
     # Apply species filter
-    if selected_species != "All Species" and selected_species != "No species found":
-        # Filter based on event_details structure
+    if selected_species_list:
         filtered_indices = []
         for idx, row in df_filtered.iterrows():
             event_details = row.get('event_details', {})
-            
-            # Extract species from event_details
             species = None
             if isinstance(event_details, dict):
                 species = event_details.get('girsam_species')
@@ -1536,18 +1506,10 @@ def genetic_dashboard():
                                 species = girsam_data.get('species')
                 except json.JSONDecodeError:
                     pass
-            
-            # Check if this row matches the selected species
-            if species and str(species).strip() == selected_species:
+            if species and str(species).strip() in selected_species_list:
                 filtered_indices.append(idx)
-        
-        # Apply the filter
-        if filtered_indices:
-            df_filtered = df_filtered.loc[filtered_indices]
-        else:
-            df_filtered = df_filtered.iloc[0:0]  # Empty dataframe with same structure
-        
-        filter_info.append(f"Species: {selected_species}")
+        df_filtered = df_filtered.loc[filtered_indices] if filtered_indices else df_filtered.iloc[0:0]
+        filter_info.append(f"Species: {', '.join(selected_species_list)}")
     
     # Display filter status
     if filter_info:
