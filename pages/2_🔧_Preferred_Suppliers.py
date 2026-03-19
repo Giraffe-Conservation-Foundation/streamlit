@@ -5,7 +5,6 @@ Preferred Suppliers — GCF recommended tech equipment list.
 import sys
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 
 current_dir = Path(__file__).parent.parent
@@ -76,13 +75,60 @@ data = [
     },
 ]
 
-df = pd.DataFrame(data)
+rows_html = ""
+for row in data:
+    if row["Link"]:
+        model_cell = f'<a href="{row["Link"]}" target="_blank">{row["Model"]}</a>'
+    else:
+        model_cell = row["Model"]
+    rows_html += f"""
+        <tr>
+            <td>{row["Type"]}</td>
+            <td>{model_cell}</td>
+            <td>{row["Price"]}</td>
+            <td>{row["Notes"]}</td>
+        </tr>"""
 
-st.dataframe(
-    df,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "Link": st.column_config.LinkColumn("Link", display_text="🔗 Open", width="large"),
-    },
-)
+st.markdown(f"""
+<style>
+    .suppliers-table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+    }}
+    .suppliers-table th {{
+        text-align: left;
+        padding: 8px 12px;
+        border-bottom: 2px solid #ddd;
+        color: #888;
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }}
+    .suppliers-table td {{
+        padding: 8px 12px;
+        border-bottom: 1px solid #eee;
+        vertical-align: top;
+    }}
+    .suppliers-table a {{
+        color: #1f77b4;
+        text-decoration: none;
+    }}
+    .suppliers-table a:hover {{
+        text-decoration: underline;
+    }}
+</style>
+<table class="suppliers-table">
+    <thead>
+        <tr>
+            <th>Type</th>
+            <th>Model</th>
+            <th>Price</th>
+            <th>Notes</th>
+        </tr>
+    </thead>
+    <tbody>{rows_html}
+    </tbody>
+</table>
+""", unsafe_allow_html=True)
