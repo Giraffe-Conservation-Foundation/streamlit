@@ -83,6 +83,6 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
     column_config={
-        "Link": st.column_config.LinkColumn("Link", display_text="🔗 Open"),
+        "Link": st.column_config.LinkColumn("Link", display_text="🔗 Open", width="large"),
     },
 )
