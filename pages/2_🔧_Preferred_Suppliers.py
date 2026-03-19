@@ -95,15 +95,12 @@ st.markdown(f"""
         max-width: 1200px;
     }}
     .suppliers-table {{
-        width: 100%;
         border-collapse: collapse;
         font-size: 0.9rem;
-        table-layout: fixed;
+        table-layout: auto;
     }}
     .suppliers-table th, .suppliers-table td {{
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
     }}
     .suppliers-table th {{
         text-align: left;
@@ -119,10 +116,6 @@ st.markdown(f"""
         padding: 8px 16px;
         border-bottom: 1px solid #eee;
     }}
-    .suppliers-table col.col-type  {{ width: 16%; }}
-    .suppliers-table col.col-model {{ width: 30%; }}
-    .suppliers-table col.col-price {{ width: 14%; }}
-    .suppliers-table col.col-notes {{ width: 40%; }}
     .suppliers-table a {{
         color: #1f77b4;
         text-decoration: none;
@@ -132,13 +125,7 @@ st.markdown(f"""
     }}
 </style>
 <table class="suppliers-table">
-    <colgroup>
-        <col class="col-type">
-        <col class="col-model">
-        <col class="col-price">
-        <col class="col-notes">
-    </colgroup>
-    <thead>
+<thead>
         <tr>
             <th>Type</th>
             <th>Model</th>
