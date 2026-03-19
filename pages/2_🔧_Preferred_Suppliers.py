@@ -91,14 +91,23 @@ for row in data:
 
 st.markdown(f"""
 <style>
+    section.main > div {{
+        max-width: 1200px;
+    }}
     .suppliers-table {{
         width: 100%;
         border-collapse: collapse;
         font-size: 0.9rem;
+        table-layout: fixed;
+    }}
+    .suppliers-table th, .suppliers-table td {{
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }}
     .suppliers-table th {{
         text-align: left;
-        padding: 8px 12px;
+        padding: 8px 16px;
         border-bottom: 2px solid #ddd;
         color: #888;
         font-weight: 600;
@@ -107,10 +116,13 @@ st.markdown(f"""
         letter-spacing: 0.05em;
     }}
     .suppliers-table td {{
-        padding: 8px 12px;
+        padding: 8px 16px;
         border-bottom: 1px solid #eee;
-        vertical-align: top;
     }}
+    .suppliers-table col.col-type  {{ width: 16%; }}
+    .suppliers-table col.col-model {{ width: 30%; }}
+    .suppliers-table col.col-price {{ width: 14%; }}
+    .suppliers-table col.col-notes {{ width: 40%; }}
     .suppliers-table a {{
         color: #1f77b4;
         text-decoration: none;
@@ -120,6 +132,12 @@ st.markdown(f"""
     }}
 </style>
 <table class="suppliers-table">
+    <colgroup>
+        <col class="col-type">
+        <col class="col-model">
+        <col class="col-price">
+        <col class="col-notes">
+    </colgroup>
     <thead>
         <tr>
             <th>Type</th>
