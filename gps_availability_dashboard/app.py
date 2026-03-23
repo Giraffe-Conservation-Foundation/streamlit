@@ -298,6 +298,17 @@ def build_summary_row(group_name, subjects_df, username, password, load_mfr):
 
     n_active = int(subjects_df['is_active'].sum()) if 'is_active' in subjects_df.columns else "?"
 
+    # Sex breakdown e.g. "5M / 2F" (unknowns omitted if zero)
+    if 'sex' in subjects_df.columns:
+        sex_counts = subjects_df['sex'].fillna('').str.strip().str.upper().value_counts()
+        parts = []
+        for code, label in [('MALE', 'M'), ('FEMALE', 'F'), ('M', 'M'), ('F', 'F')]:
+            if code in sex_counts and label not in [p[-1] for p in parts]:
+                parts.append(f"{sex_counts[code]}{label}")
+        sex_summary = " / ".join(parts) if parts else "—"
+    else:
+        sex_summary = "—"
+
     data_start = min(deploy_starts) if deploy_starts else None
     data_end   = max(last_fixes)   if last_fixes   else None
 
@@ -314,6 +325,7 @@ def build_summary_row(group_name, subjects_df, username, password, load_mfr):
         'Group':         group_name,
         'Subjects':      len(subjects_df),
         'Active':        n_active,
+        'Sex':           sex_summary,
         'Data Start':    _fmt_date(data_start),
         'Data End':      _fmt_date(data_end),
         'Total Days':    _total_days(data_start, data_end),
