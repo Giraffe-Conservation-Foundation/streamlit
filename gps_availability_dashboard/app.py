@@ -92,9 +92,14 @@ def load_subject_groups(username, password):
 
 
 @st.cache_data(ttl=3600)
-def load_subjects_for_group(username, password, group_name):
+def load_subjects_for_group(username, password, group_id):
+    """
+    Fetch all subjects (active + inactive) for a group using its UUID.
+    Using subject_group_id bypasses ecoscope's internal name→ID lookup,
+    which can 404 for groups that contain only inactive subjects.
+    """
     er = get_er_client(username, password)
-    return er.get_subjects(subject_group_name=group_name)
+    return er.get_subjects(subject_group_id=group_id, include_inactive=True)
 
 
 @st.cache_data(ttl=3600)
@@ -352,7 +357,18 @@ def _main_impl():
         (c for c in ('name', 'group_name', 'title') if c in groups_df.columns),
         groups_df.columns[0],
     )
+    id_col = next(
+        (c for c in ('id', 'group_id') if c in groups_df.columns),
+        None,
+    )
     group_names = sorted(groups_df[name_col].dropna().unique().tolist())
+
+    # name → id lookup (used to call get_subjects by ID, avoiding a secondary
+    # name-resolution call that 404s for inactive-only groups)
+    name_to_id = (
+        dict(zip(groups_df[name_col], groups_df[id_col]))
+        if id_col else {}
+    )
 
     # ── Group selector ────────────────────────────────────────────────────────
     selected_groups = st.multiselect(
@@ -377,7 +393,12 @@ def _main_impl():
     with st.spinner("Loading subjects..."):
         for group in selected_groups:
             try:
-                df = load_subjects_for_group(username, password, group)
+                group_id = name_to_id.get(group)
+                if group_id:
+                    df = load_subjects_for_group(username, password, group_id)
+                else:
+                    # Fallback to name if ID wasn't in the groups response
+                    df = load_subjects_for_group(username, password, group)
                 if not df.empty:
                     all_subjects[group] = df
                 else:
