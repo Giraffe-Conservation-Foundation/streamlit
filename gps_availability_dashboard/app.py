@@ -211,12 +211,24 @@ def build_detail_rows(group_name, subjects_df, username, password, load_mfr):
         last_fix     = _last_fix_from_subject(subject)
         is_active    = bool(subject.get('is_active', False))
         deploy_start = subject.get('created_at')
-        deploy_end_fmt = "Active" if is_active else ""
-        days         = _total_days(deploy_start, last_fix)
+        sex          = (subject.get('sex') or '').strip()
+
+        # Active subjects show "Active"; inactive subjects use last_position_date
+        # as the best available end-of-deployment date
+        if is_active:
+            deploy_end_fmt = "Active"
+            end_for_days   = last_fix
+        else:
+            end_date       = last_fix or subject.get('updated_at')
+            deploy_end_fmt = _fmt_date(end_date)
+            end_for_days   = end_date
+
+        days = _total_days(deploy_start, end_for_days)
 
         base = {
             'Subject':      subject.get('name', sid),
             'Group':        group_name,
+            'Sex':          sex,
             'Active':       is_active,
             'Deploy Start': _fmt_date(deploy_start),
             'Deploy End':   deploy_end_fmt,
@@ -289,6 +301,15 @@ def build_summary_row(group_name, subjects_df, username, password, load_mfr):
     data_start = min(deploy_starts) if deploy_starts else None
     data_end   = max(last_fixes)   if last_fixes   else None
 
+    # Deploy End: "Active" if any subject is still active, otherwise show the
+    # latest last-fix date across all inactive subjects as the end of coverage
+    if has_active:
+        deploy_end = "Active"
+    elif data_end:
+        deploy_end = _fmt_date(data_end)
+    else:
+        deploy_end = ""
+
     return {
         'Group':         group_name,
         'Subjects':      len(subjects_df),
@@ -297,7 +318,7 @@ def build_summary_row(group_name, subjects_df, username, password, load_mfr):
         'Data End':      _fmt_date(data_end),
         'Total Days':    _total_days(data_start, data_end),
         'Deploy Start':  _fmt_date(data_start),
-        'Deploy End':    "Active" if has_active else "",
+        'Deploy End':    deploy_end,
         'Manufacturers': ", ".join(sorted(all_manufacturers)) if all_manufacturers else ("—" if not load_mfr else ""),
     }
 
