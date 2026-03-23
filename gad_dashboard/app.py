@@ -414,7 +414,7 @@ def create_map(data, color_by='subspecies'):
         
         folium.CircleMarker(
             location=[row['y'], row['x']],
-            radius=max(5, min(40, (row['Estimate'] ** 0.5) / 10)),
+            radius=max(3, min(55, (row['Estimate'] ** 0.65) / 20)),
             popup=folium.Popup(popup_text, max_width=300),
             tooltip=f"{location_name}: {int(row['Estimate']):,} giraffe",
             color=marker_color,
