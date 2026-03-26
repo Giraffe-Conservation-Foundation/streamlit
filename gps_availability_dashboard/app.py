@@ -96,12 +96,20 @@ def load_embargo_data(sheet_url: str) -> pd.DataFrame:
 
 
 def get_active_embargoes(group_name: str, embargo_df: pd.DataFrame) -> list:
-    """Return list of active embargo record dicts for a group (today's date)."""
+    """Return list of active embargo record dicts for a group (today's date).
+    The 'group' column may contain multiple groups separated by ';'.
+    """
     if embargo_df.empty or 'group' not in embargo_df.columns:
         return []
     today = pd.Timestamp.now().normalize()
+    target = group_name.strip()
+
+    def matches(cell):
+        return any(g.strip() == target for g in str(cell).split(';'))
+
+    group_match = embargo_df['group'].apply(matches)
     mask = (
-        (embargo_df['group'] == group_name.strip()) &
+        group_match &
         (embargo_df['embargo_start'].notna()) &
         (embargo_df['embargo_end'].notna()) &
         (embargo_df['embargo_start'] <= today) &
