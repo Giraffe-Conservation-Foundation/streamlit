@@ -31,5 +31,4 @@ spec.loader.exec_module(tagging_app)
 main = tagging_app.main
 
 # Run the Post-Tagging dashboard
-if __name__ == "__main__":
-    main()
+main()

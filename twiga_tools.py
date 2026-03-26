@@ -107,13 +107,13 @@ Navigate using the sidebar to access:
 - **Mortality Dashboard** - track and analyze giraffe mortality events with timeline and location mapping
 - **Create ID Book** - create and download an ID book using a GiraffeSpotter export
 - **SECR Population Analysis** - spatially-explicit capture-recapture and Bailey's Triple Catch population estimation
+- **ER2WB Converter** - convert EarthRanger giraffe encounter data to GiraffeSpotter bulk import format
 
 ### 🚧 Coming soon
-            
+
 - **Life history** - see all events linked with an individual giraffe (sightings, immobilisations, etc)
 - **Impact reports**
 - **Patrol Download** - download patrol tracks as shapefiles from EarthRanger for GIS analysis
-- **ER2WB Converter** - convert EarthRanger giraffe encounter data to GiraffeSpotter bulk import format
 - **ER Backup** - comprehensive backup of all EarthRanger data
 
 Please send any other tool/dashboard requests to courtney
