@@ -36,7 +36,15 @@ EXPIRING_SOON_DAYS = 60
 # ── Embargo config (persists across restarts) ─────────────────────────────────
 
 def load_embargo_config():
-    # 1. Streamlit Secrets (used in deployed environments — set key: embargo_sheet_url)
+    # 1. Streamlit Secrets (used in deployed environments)
+    # Supports both flat (embargo_sheet_url = "...") and
+    # sectioned ([embargo] / embargo_sheet_url = "...") formats
+    try:
+        url = st.secrets["embargo"]["embargo_sheet_url"]
+        if url:
+            return {"sheet_url": url, "from_secrets": True}
+    except (KeyError, FileNotFoundError):
+        pass
     try:
         url = st.secrets["embargo_sheet_url"]
         if url:
