@@ -38,10 +38,10 @@ EXPIRING_SOON_DAYS = 60
 def load_embargo_config():
     # 1. Streamlit Secrets (used in deployed environments — set key: embargo_sheet_url)
     try:
-        url = st.secrets.get("embargo_sheet_url", "")
+        url = st.secrets["embargo_sheet_url"]
         if url:
             return {"sheet_url": url, "from_secrets": True}
-    except Exception:
+    except (KeyError, FileNotFoundError):
         pass
     # 2. Local config file (used in local development)
     if EMBARGO_CONFIG_FILE.exists():
