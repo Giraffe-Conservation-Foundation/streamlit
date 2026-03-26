@@ -36,6 +36,14 @@ EXPIRING_SOON_DAYS = 60
 # ── Embargo config (persists across restarts) ─────────────────────────────────
 
 def load_embargo_config():
+    # 1. Streamlit Secrets (used in deployed environments — set key: embargo_sheet_url)
+    try:
+        url = st.secrets.get("embargo_sheet_url", "")
+        if url:
+            return {"sheet_url": url, "from_secrets": True}
+    except Exception:
+        pass
+    # 2. Local config file (used in local development)
     if EMBARGO_CONFIG_FILE.exists():
         try:
             with open(EMBARGO_CONFIG_FILE) as f:
@@ -79,9 +87,10 @@ def _build_csv_url(sheet_url: str, tab_name: str = "data_embargo") -> str:
     )
 
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=None)
 def load_embargo_data(sheet_url: str) -> pd.DataFrame:
-    """Load embargo registry from a Google Sheet shared with 'Anyone with the link'."""
+    """Load embargo registry from a Google Sheet shared with 'Anyone with the link'.
+    No auto-expiry — use the manual refresh button to reload."""
     if not sheet_url:
         return pd.DataFrame()
     csv_url = _build_csv_url(sheet_url)
@@ -416,17 +425,22 @@ def render_embargo_sidebar() -> pd.DataFrame:
     config   = load_embargo_config()
     saved_url = config.get("sheet_url", "")
 
-    with st.sidebar.expander("⚙️ Configure sheet URL", expanded=(not saved_url)):
-        st.markdown(
-            "Paste your **Google Sheet URL** (shared with *Anyone with the link*).\n\n"
-            "The tab must be named **`data_embargo`**."
-        )
-        new_url = st.text_input(
-            "Google Sheet URL",
-            value=saved_url,
-            placeholder="https://docs.google.com/spreadsheets/d/...",
-            label_visibility="collapsed",
-        )
+    from_secrets = config.get("from_secrets", False)
+    with st.sidebar.expander("⚙️ Configure sheet URL", expanded=(not saved_url and not from_secrets)):
+        if from_secrets:
+            st.info("URL is configured via Streamlit Secrets.")
+            new_url = saved_url
+        else:
+            st.markdown(
+                "Paste your **Google Sheet URL** (shared with *Anyone with the link*).\n\n"
+                "The tab must be named **`data_embargo`**."
+            )
+            new_url = st.text_input(
+                "Google Sheet URL",
+                value=saved_url,
+                placeholder="https://docs.google.com/spreadsheets/d/...",
+                label_visibility="collapsed",
+            )
         col1, col2 = st.columns(2)
         if col1.button("💾 Save", use_container_width=True):
             if save_embargo_config(new_url.strip()):
