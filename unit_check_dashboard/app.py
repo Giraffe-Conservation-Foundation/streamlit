@@ -95,7 +95,10 @@ def stock_planning_tab():
     """Stock and deployment planning dashboard, driven by a Google Sheet."""
     st.header("📦 Stock & Deployment Planning")
 
-    sheet_id = st.secrets.get("gps_stock_sheet_id", "")
+    try:
+        sheet_id = st.secrets.get("gps_stock_sheet_id", "")
+    except FileNotFoundError:
+        sheet_id = ""
     if not sheet_id:
         st.warning("Google Sheet not configured yet.")
         with st.expander("Setup instructions", expanded=True):
@@ -660,10 +663,9 @@ def fetch_unit_update_events(source_ids, source_labels, username, password):
         try:
             events_df = er.get_events(
                 event_category='monitoring',
-                event_type='7bb99e0c-9d37-405b-b8e7-edca8e9b5d6b',
+                event_type=['7bb99e0c-9d37-405b-b8e7-edca8e9b5d6b'],
                 include_details=True,
-                since=None,
-                until=None
+                drop_null_geometry=False,
             )
 
             if events_df.empty:
@@ -743,6 +745,141 @@ def fetch_unit_update_events(source_ids, source_labels, username, password):
             st.code(traceback.format_exc())
 
 
+# --- Unit Update Event Upload ---
+
+def render_unit_update_upload_tab():
+    """Bulk-import unit_update monitoring events via CSV using EarthRangerIO"""
+    st.header("📥 Upload Unit Update Events")
+    st.markdown(
+        "Upload a CSV to create `unit_update` events in EarthRanger. "
+        "Each row records when a GPS unit was activated or deactivated, and from where, "
+        "linked to the unit's source ID."
+    )
+
+    # ── Template download ───────────────────────────────────────────────────
+    template_cols = ["source_id", "event_datetime", "action", "country", "latitude", "longitude", "notes"]
+    example_rows = [
+        ["abc123-uuid", "2025-06-01T08:00:00Z", "activated", "KEN", "-0.606", "37.120", "Deployed at Samburu"],
+        ["def456-uuid", "2025-06-02T09:30:00Z", "deactivated", "NAM", "-20.123", "17.456", "Collar removed post-study"],
+    ]
+    template_csv = ",".join(template_cols) + "\n"
+    for row in example_rows:
+        template_csv += ",".join(row) + "\n"
+
+    st.download_button(
+        "⬇️ Download CSV template",
+        data=template_csv,
+        file_name="unit_update_events_template.csv",
+        mime="text/csv",
+    )
+    st.markdown(
+        "**Required:** `source_id`, `event_datetime`  \n"
+        "**Optional:** `action`, `country`, `latitude`, `longitude`, `notes`  \n"
+        "`event_datetime` format: `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DD HH:MM:SS`"
+    )
+
+    # ── File upload ─────────────────────────────────────────────────────────
+    uploaded_file = st.file_uploader("Upload CSV", type="csv", key="unit_update_csv_uploader")
+    if uploaded_file is None:
+        return
+
+    try:
+        df_upload = pd.read_csv(uploaded_file)
+    except Exception as e:
+        st.error(f"Error reading CSV: {e}")
+        return
+
+    if 'source_id' not in df_upload.columns or 'event_datetime' not in df_upload.columns:
+        st.error("CSV must have `source_id` and `event_datetime` columns.")
+        return
+
+    df_upload = df_upload.dropna(subset=['source_id', 'event_datetime'])
+    st.write(f"**{len(df_upload)} event(s) ready to import — preview:**")
+    st.dataframe(df_upload.head(10), use_container_width=True, hide_index=True)
+    if len(df_upload) > 10:
+        st.caption(f"Showing first 10 of {len(df_upload)} rows.")
+
+    if not st.button("Import Events", type="primary", key="unit_update_csv_import_btn"):
+        return
+
+    username = st.session_state.username
+    password = st.session_state.password
+
+    try:
+        er = EarthRangerIO(
+            server="https://twiga.pamdas.org",
+            username=username,
+            password=password,
+        )
+    except Exception as e:
+        st.error(f"Could not connect to EarthRanger: {e}")
+        return
+
+    results = []
+    progress = st.progress(0)
+    total = len(df_upload)
+
+    for i, (_, row) in enumerate(df_upload.iterrows()):
+        try:
+            src_id = str(row['source_id']).strip()
+
+            raw_dt = str(row['event_datetime']).strip()
+            try:
+                from dateutil import parser as date_parser
+                iso_time = date_parser.parse(raw_dt).strftime('%Y-%m-%dT%H:%M:%SZ')
+            except Exception:
+                iso_time = raw_dt
+
+            action_val = str(row['action']).strip() if pd.notna(row.get('action')) else 'activated'
+            country_val = str(row['country']).strip() if pd.notna(row.get('country')) else ''
+            notes_val = str(row['notes']).strip() if pd.notna(row.get('notes')) else ''
+
+            event_payload = {
+                'event_type': 'unit_update',
+                'title': 'Unit update',
+                'time': iso_time,
+                'state': 'new',
+                'priority': 200,
+                'is_collection': False,
+                'event_details': {
+                    'unitupdate_unitid': src_id,
+                    'unitupdate_action': action_val,
+                    'unitupdate_country': country_val,
+                    'unitupdate_notes': notes_val,
+                },
+            }
+
+            lat = row.get('latitude')
+            lon = row.get('longitude')
+            if pd.notna(lat) and pd.notna(lon):
+                try:
+                    event_payload['location'] = {'latitude': float(lat), 'longitude': float(lon)}
+                except (ValueError, TypeError):
+                    pass
+
+            er.post_event(event_payload)
+            results.append({'success': True, 'row': i + 1, 'source_id': src_id, 'event_datetime': iso_time})
+
+        except Exception as e:
+            results.append({'success': False, 'error': str(e), 'row': i + 1, 'source_id': str(row.get('source_id', ''))})
+
+        progress.progress((i + 1) / total)
+
+    progress.empty()
+    success_count = sum(1 for r in results if r.get('success'))
+    fail_count = total - success_count
+
+    if success_count > 0:
+        st.success(f"✅ Successfully imported {success_count} event(s)")
+    if fail_count > 0:
+        st.error(f"❌ Failed to import {fail_count} event(s):")
+        for r in results:
+            if not r.get('success'):
+                st.write(f"  - Row {r['row']} ({r.get('source_id', '')} / {r.get('event_datetime', '')}): {r.get('error', 'Unknown error')}")
+    if success_count > 0:
+        st.info("The new events will appear in the **Unit Update Events** section after the next data refresh.")
+
+
 # --- Main entry point ---
 
 def _main_implementation():
@@ -760,11 +897,13 @@ def _main_implementation():
         st.sidebar.write(f"**User:** {st.session_state.username}")
         st.sidebar.write("**Server:** https://twiga.pamdas.org")
 
-    tab1, tab2 = st.tabs(["🔍 Unit Check", "📦 Stock & Planning"])
+    tab1, tab2, tab3 = st.tabs(["🔍 Unit Check", "📦 Stock & Planning", "📥 Upload Events"])
     with tab1:
         unit_check_tab()
     with tab2:
         stock_planning_tab()
+    with tab3:
+        render_unit_update_upload_tab()
 
     st.sidebar.markdown("---")
     st.sidebar.subheader("🔧 Options")
