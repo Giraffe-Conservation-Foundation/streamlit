@@ -1,0 +1,1171 @@
+"""
+ER2WB: EarthRanger → GiraffeSpotter (WildBook) Bulk Import Formatter  v2.1 Python
+Uses ecoscope EarthRangerIO to fetch giraffe survey encounter events,
+formats them for GiraffeSpotter bulk import, and renames associated images.
+
+v2.1 changes
+------------
+- Bug fix: alphanumeric image stems (e.g. 4D1A2407) now preserved correctly
+- Username/password authentication alongside bearer-token
+- Persistent settings via st.session_state
+- Quick date-preset buttons (Last 7d / 14d / 30d)
+- Summary metrics after processing
+- Encounter map preview (st.map)
+- Data validation summary
+- Progress bar during image processing
+- Reset / Start Over button
+"""
+
+import io
+import math
+import zipfile
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+from ecoscope.io.earthranger import EarthRangerIO
+
+# ─── Constants ────────────────────────────────────────────────────────────────
+
+COUNTRY_EVENT_UUIDS = {
+    "rwa_aknp": "594fdd03-7c47-46cd-ac55-e6f9a7cf5e47",
+    "bwa":      "3837db4e-efa3-4b7c-bf42-0e029f09565e",
+    "cmr":      "c6a1ef55-f02f-40f8-800f-d22fb3cda632",
+    "ken":      "3ed0d010-132a-4814-b8c3-eb1815de9378",
+    "nam":      "242cc527-4ab2-4e5d-85cf-76b011720fae",
+    "nanw":     "a10bb6b4-4d0f-4814-b5fe-9c4c3ec3c1ab",
+    "tza":      "53a18c77-b733-4129-bb9c-15a37782b4c1",
+    "uga":      "541f0ec7-1c76-4a23-93bf-c2a117287aa2",
+    "zaf":      "4d5eb11e-1585-4d73-9594-461f34a75e01",
+    "zmb":      "cb2eedf0-38c7-4b8c-a76c-9cc3b90b01ae",
+}
+
+TIMEZONE_MAP = {
+    "BWA": "Africa/Gaborone",
+    "CMR": "Africa/Douala",
+    "KEN": "Africa/Nairobi",
+    "NAM": "Africa/Windhoek",
+    "NANW": "Africa/Windhoek",
+    "TZA": "Africa/Dar_es_Salaam",
+    "UGA": "Africa/Kampala",
+    "ZAF": "Africa/Johannesburg",
+    "ZMB": "Africa/Lusaka",
+    "RWA_AKNP": "Africa/Kigali",
+}
+
+COUNTRY_SITES = {
+    "BWA":      ["CHNP", "CTGR", "MWNP", "NPNP", "NTGR"],
+    "CMR":      ["BNNP"],
+    "KEN":      ["COCO", "EOCO", "ISCO", "LECO", "MBCO", "MMNR", "MNWC", "MOCO",
+                 "MTCO", "NACO", "NAWC", "OHCO", "OICO", "OLCO", "OKWC", "PACA",
+                 "RHNP", "RICO", "RUNP", "SICO", "TENP", "TWNP"],
+    "NAM":      ["BACO", "BLCO", "BWNP", "DZCO", "EHGR", "GMCO", "KWCO", "MNCO",
+                 "MNNP", "MSCO", "MUNP", "MYCO", "NJCO", "NLNP", "NNCO", "SACO",
+                 "SBCO", "SKCO", "UIFA", "WUCO"],
+    "NANW":     ["NANW"],
+    "TZA":      ["SANP"],
+    "UGA":      ["KVNP", "LMNP", "MFNP", "PUWR"],
+    "ZAF":      ["TKGR"],
+    "ZMB":      ["LVNP", "LUNP", "ZCP_SMART"],
+    "RWA_AKNP": ["RWA_AKAGERA"],
+}
+
+SITE_NAMES = {
+    # Botswana
+    "CHNP": "Chobe National Park",            "CTGR": "Central Tuli Game Reserve",
+    "MWNP": "Makgadikgadi & Nxai Pan NP",     "NPNP": "Nxai Pan National Park",
+    "NTGR": "Northern Tuli Game Reserve",
+    # Cameroon
+    "BNNP": "Bouba Ndjida National Park",
+    # Namibia
+    "BWNP": "Bwabwata National Park",         "EHGR": "Etosha Heights Private Reserve",
+    "UIFA": "Uitkoms Farm",                   "MUNP": "Mudumu National Park",
+    "NLNP": "Nkasa Lupala National Park",     "MNNP": "Mangetti National Park",
+    "GMCO": "George Mukoya Conservancy",      "MNCO": "Muduva Nyangana Conservancy",
+    "NJCO": "Najagna Conservancy",            "NNCO": "Nyae Nyae Conservancy",
+    "SACO": "Salambala Conservancy",          "MSCO": "Mashi Conservancy",
+    "MYCO": "Mayuni Conservancy",             "SBCO": "Sobbe Conservancy",
+    "BACO": "Bamunu Conservancy",             "DZCO": "Dzoti Conservancy",
+    "KWCO": "Kwandu Conservancy",             "BLCO": "Balyerwa Conservancy",
+    "WUCO": "Wuparo Conservancy",             "SKCO": "Sikunga Conservancy",
+    "NANW": "North-western Namibia",
+    # Kenya
+    "LMNP": "Lake Mburo",                     "RUNP": "Ruma National Park",
+    "TENP": "Tsavo East National Park",       "TWNP": "Tsavo West National Park",
+    "MMNR": "Maasai Mara National Reserve",   "RHNP": "Ruma Hill National Park",
+    "COCO": "Ol Chorro Conservancy",          "OLCO": "Olderkesi Conservancy",
+    "EOCO": "Enonkishu Conservancy",          "ISCO": "Isaaten Conservancy",
+    "LECO": "Lemek Conservancy",              "MBCO": "Mbokishi Conservancy",
+    "MNWC": "Mara North",                     "MOCO": "Olare Motorogi Conservancy",
+    "MTCO": "Mara Triangle Conservancy",      "NACO": "Nashulai Conservancy",
+    "NAWC": "Naboisho",                       "OHCO": "Olarro North Conservancy",
+    "OICO": "Oloisukut Conservancy",          "OKWC": "Ol Kinyei",
+    "PACA": "Pardamat Conservation Area",     "RICO": "Ripoi Conservancy",
+    "SICO": "Siana Conservancy",
+    # Tanzania
+    "SANP": "Serengeti National Park",
+    # Uganda
+    "KVNP": "Kidepo Valley National Park",    "PUWR": "Pian Upe Wildlife Reserve",
+    "MFNP": "Murchison Falls National Park",
+    # South Africa
+    "TKGR": "Tswalu Kalahari Reserve",
+    # Zambia
+    "LVNP": "Luangwa",                        "LUNP": "Luambe National Park",
+    "ZCP_SMART": "ZCP_SMART",
+    # Rwanda
+    "RWA_AKAGERA": "Akagera",
+}
+
+SPECIES_MAP = {
+    "Masai":       {"Luangwa": "tippelskirchi thornicrofti",
+                    "Masai":   "tippelskirchi tippelskirchi"},
+    "Northern":    {"Kordofan":     "camelopardalis antiquorum",
+                    "Nubian":       "camelopardalis camelopardalis",
+                    "West African": "camelopardalis peralta"},
+    "Reticulated": {"Reticulated": "reticulata"},
+    "Southern":    {"Angolan":      "giraffa angolensis",
+                    "South African":"giraffa giraffa"},
+}
+
+AGE_MAP = {"ad": "adult", "sa": "juvenile", "ju": "calf", "ca": "calf", "u": "unknown"}
+SEX_MAP = {"f": "female", "m": "male", "u": "unknown"}
+
+
+# ─── Session state ─────────────────────────────────────────────────────────────
+
+def _init_session_state():
+    """Initialise persistent session state keys with sensible defaults."""
+    defaults = {
+        # ── EarthRanger session ─────────────────────────────────────────────────
+        "er_client":       None,
+        "er_authenticated": False,
+        # ── Processed data (cleared by Reset) ──────────────────────────────────
+        "processed_df":    None,
+        "gs_data":         None,
+        "renamed_files":   {},
+        "download_zip":    None,
+        "n_matched":       None,
+        # ── Settings (persisted across reruns) ─────────────────────────────────
+        "er_instance":     "twiga.pamdas.org",
+        "er_login_user":   "",
+        "er_login_pass":   "",
+        "er_observer":     "",
+        "gs_org":          "Giraffe Conservation Foundation",
+        "gs_username":     "",
+        "date_start":      date.today() - timedelta(days=10),
+        "date_end":        date.today(),
+        "country_sel":     list(COUNTRY_SITES.keys())[0],
+        "site_sel":        None,
+        "species_sel":     list(SPECIES_MAP.keys())[0],
+        "subsp_sel":       None,
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+
+def _reset_results():
+    """Clear processed data but keep all settings."""
+    st.session_state.processed_df  = None
+    st.session_state.gs_data       = None
+    st.session_state.renamed_files = {}
+    st.session_state.download_zip  = None
+    st.session_state.n_matched     = None
+
+
+def _disconnect_er():
+    """Log out of EarthRanger and clear all derived data."""
+    st.session_state.er_client        = None
+    st.session_state.er_authenticated = False
+    _reset_results()
+
+
+# ─── ER client ─────────────────────────────────────────────────────────────────
+
+def _make_er_client(instance: str, username: str, password: str) -> EarthRangerIO:
+    """Create an EarthRangerIO client using username/password auth."""
+    return EarthRangerIO(server=f"https://{instance}",
+                         username=username,
+                         password=password)
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def get_initials(full_name: str) -> str:
+    parts = full_name.strip().split()
+    return "".join(p[0].upper() for p in parts if p)
+
+
+def dest_point(lon: float, lat: float, bearing_deg: float, distance_m: float):
+    """Haversine destination point — mirrors R's geosphere::destPoint."""
+    R = 6371000.0
+    lr = math.radians(lat)
+    br = math.radians(bearing_deg)
+    lat2 = math.asin(
+        math.sin(lr) * math.cos(distance_m / R)
+        + math.cos(lr) * math.sin(distance_m / R) * math.cos(br)
+    )
+    lon2 = math.radians(lon) + math.atan2(
+        math.sin(br) * math.sin(distance_m / R) * math.cos(lr),
+        math.cos(distance_m / R) - math.sin(lr) * math.sin(lat2),
+    )
+    return math.degrees(lon2), math.degrees(lat2)
+
+
+def get_exif_datetime(img_bytes: bytes) -> datetime:
+    """Extract DateTimeOriginal from JPEG EXIF; falls back to now()."""
+    try:
+        from PIL import Image
+        from PIL.ExifTags import TAGS
+        img  = Image.open(io.BytesIO(img_bytes))
+        exif = img._getexif()
+        if exif:
+            for tag_id, val in exif.items():
+                if TAGS.get(tag_id) == "DateTimeOriginal":
+                    return datetime.strptime(val, "%Y:%m:%d %H:%M:%S")
+    except Exception:
+        pass
+    return datetime.now()
+
+
+def get_exif_gps_direction(img_bytes: bytes):
+    """
+    Extract GPSImgDirection from JPEG EXIF (ZMB only).
+    Returns bearing in degrees, or None if not present.
+    """
+    try:
+        from PIL import Image
+        from PIL.ExifTags import TAGS, GPSTAGS
+        img  = Image.open(io.BytesIO(img_bytes))
+        exif = img._getexif()
+        if not exif:
+            return None
+        for tag_id, val in exif.items():
+            if TAGS.get(tag_id) == "GPSInfo":
+                for gps_tag_id, gps_val in val.items():
+                    if GPSTAGS.get(gps_tag_id) == "GPSImgDirection":
+                        if hasattr(gps_val, "__float__"):
+                            return float(gps_val)
+                        if isinstance(gps_val, tuple) and len(gps_val) == 2:
+                            return gps_val[0] / gps_val[1]
+    except Exception:
+        pass
+    return None
+
+
+def _excel_bytes(df: pd.DataFrame) -> bytes:
+    """Serialise a DataFrame to an in-memory Excel file and return raw bytes."""
+    out = df.copy()
+    # Excel cannot handle tz-aware datetimes — strip timezone from any such columns
+    for col in out.columns:
+        if pd.api.types.is_datetime64_any_dtype(out[col]):
+            if hasattr(out[col].dt, "tz") and out[col].dt.tz is not None:
+                out[col] = out[col].dt.tz_localize(None)
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        out.to_excel(writer, index=False)
+    buf.seek(0)
+    return buf.read()
+
+
+# ─── ER data fetch ─────────────────────────────────────────────────────────────
+
+def fetch_er_events(instance: str, country: str,
+                    date_start: date, date_end: date,
+                    er_client: EarthRangerIO) -> list:
+    """
+    Fetch giraffe survey events via ecoscope EarthRangerIO.get_events().
+    Returns a list of dicts that process_er_data expects.
+    """
+    country_lower = country.lower()
+
+    kwargs = dict(
+        since=date_start.strftime("%Y-%m-%dT00:00:00Z"),
+        until=date_end.strftime("%Y-%m-%dT23:59:59Z"),
+        include_details=True,
+        drop_null_geometry=False,
+    )
+
+    if country_lower in COUNTRY_EVENT_UUIDS:
+        kwargs["event_type"] = [COUNTRY_EVENT_UUIDS[country_lower]]
+    else:
+        cat = "monitoring_zmb" if country == "ZMB" else f"monitoring_{country_lower}"
+        kwargs["event_category"] = cat
+
+    gdf = er_client.get_events(**kwargs)
+
+    if gdf is None or gdf.empty:
+        return []
+
+    # Convert GeoDataFrame rows to dicts that match what process_er_data expects
+    results = []
+    for _, row in gdf.iterrows():
+        rec = row.to_dict()
+
+        # Geometry → location dict
+        geom = rec.pop("geometry", None)
+        if geom is not None and hasattr(geom, "x"):
+            rec["location"] = {"longitude": geom.x, "latitude": geom.y}
+        else:
+            rec.setdefault("location", {})
+
+        # Ensure reported_by is a dict (ecoscope may store as dict already)
+        rb = rec.get("reported_by")
+        if not isinstance(rb, dict):
+            rec["reported_by"] = {}
+
+        # Ensure event_details is a dict
+        ed = rec.get("event_details")
+        if not isinstance(ed, dict):
+            rec["event_details"] = {}
+
+        results.append(rec)
+
+    return results
+
+
+# ─── Data processing ───────────────────────────────────────────────────────────
+
+def process_er_data(raw_events: list, country: str, er_username: str,
+                    date_start: date, date_end: date) -> pd.DataFrame:
+    """
+    Flatten raw ER event JSON into a tidy DataFrame.
+    One row per individual giraffe (Herd record), joined with event-level fields.
+    """
+    country_lower = country.lower()
+    herd_rows, evt_rows = [], []
+
+    for evt in raw_events:
+        try:
+            evt_date = pd.to_datetime(evt.get("time", "")).date()
+            if not (date_start <= evt_date <= date_end):
+                continue
+        except Exception:
+            continue
+
+        rep      = evt.get("reported_by") or {}
+        rep_name = rep.get("name", "")
+
+        if er_username.strip() and country_lower != "rwa_aknp":
+            if rep_name != er_username.strip():
+                continue
+
+        loc = evt.get("location") or {}
+        lat = loc.get("latitude") or loc.get("lat")
+        lon = loc.get("longitude") or loc.get("lon")
+        det = evt.get("event_details") or {}
+
+        evt_rows.append({
+            "id":                          evt.get("id"),
+            "serial_number":               evt.get("serial_number"),
+            "time":                        evt.get("time"),
+            "event_type":                  evt.get("event_type"),
+            "event_category":              evt.get("event_category"),
+            "location_latitude":           lat,
+            "location_longitude":          lon,
+            "reported_by_name":            rep_name,
+            "reported_by_id":              rep.get("id"),
+            "event_details_herd_size":     det.get("herd_size"),
+            "event_details_herd_notes":    det.get("herd_notes"),
+            "event_details_river_system":  det.get("river_system"),
+            "event_details_image_prefix":  det.get("image_prefix"),
+            "event_details_herd_dire":     det.get("herd_dire") or det.get("direction"),
+            "event_details_herd_dist":     det.get("herd_dist") or det.get("distance"),
+        })
+
+        herd_list = det.get("Herd") or []
+        if isinstance(herd_list, list) and herd_list:
+            for giraffe in herd_list:
+                if not isinstance(giraffe, dict):
+                    continue
+                gr = giraffe.get("giraffe_right")
+                gl = giraffe.get("giraffe_left")
+                herd_rows.append({
+                    "id":            evt.get("id"),
+                    "giraffe_id":    giraffe.get("giraffe_id", ""),
+                    "giraffe_age":   giraffe.get("giraffe_age", ""),
+                    "giraffe_sex":   giraffe.get("giraffe_sex", ""),
+                    "giraffe_right": str(int(gr)).zfill(4) if gr is not None else None,
+                    "giraffe_left":  str(int(gl)).zfill(4) if gl is not None else None,
+                    "giraffe_notes": giraffe.get("giraffe_notes", ""),
+                })
+        else:
+            herd_rows.append({
+                "id": evt.get("id"),
+                "giraffe_id": "", "giraffe_age": "", "giraffe_sex": "",
+                "giraffe_right": None, "giraffe_left": None, "giraffe_notes": "",
+            })
+
+    if not evt_rows:
+        return pd.DataFrame()
+
+    herd_df = pd.DataFrame(herd_rows)
+    evt_df  = pd.DataFrame(evt_rows)
+
+    final = herd_df.merge(evt_df, on="id", how="left").rename(columns={
+        "id":                         "evt_id",
+        "serial_number":              "evt_serial",
+        "location_latitude":          "evt_lat",
+        "location_longitude":         "evt_lon",
+        "time":                       "evt_dttm",
+        "event_category":             "evt_cat",
+        "event_type":                 "evt_type",
+        "reported_by_id":             "usr_id",
+        "reported_by_name":           "usr_name",
+        "giraffe_id":                 "gir_giraffeId",
+        "giraffe_age":                "gir_giraffeAge",
+        "giraffe_sex":                "gir_giraffeSex",
+        "giraffe_right":              "gir_giraffeRight",
+        "giraffe_left":               "gir_giraffeLeft",
+        "giraffe_notes":              "gir_giraffeNotes",
+        "event_details_herd_size":    "gir_herdSize",
+        "event_details_herd_notes":   "gir_herdNotes",
+        "event_details_river_system": "gir_riverSystem",
+        "event_details_image_prefix": "gir_imagePrefix",
+        "event_details_herd_dire":    "gir_direction",
+        "event_details_herd_dist":    "gir_distance",
+    })
+
+    def clean_id(gid):
+        if pd.isna(gid) or str(gid).strip().lower() in ("unknown", ""):
+            return ""
+        gid = str(gid)
+        return gid.split("_")[0] if "_" in gid else gid
+
+    final["gir_giraffeId"] = final["gir_giraffeId"].apply(clean_id)
+
+    final["evt_lon_original"] = final["evt_lon"]
+    final["evt_lat_original"] = final["evt_lat"]
+    final["evt_notes"]        = None
+
+    if country == "ZMB":
+        def _reproject(row):
+            try:
+                if pd.notna(row["gir_direction"]) and pd.notna(row["gir_distance"]):
+                    new_lon, new_lat = dest_point(
+                        float(row["evt_lon_original"]), float(row["evt_lat_original"]),
+                        float(row["gir_direction"]), float(row["gir_distance"]),
+                    )
+                    note = (
+                        f"reprojected from lon={row['evt_lon_original']:.6f}, "
+                        f"lat={row['evt_lat_original']:.6f} using manual direction "
+                        f"{float(row['gir_direction']):.0f}°"
+                    )
+                    return pd.Series({"evt_lon": new_lon, "evt_lat": new_lat, "evt_notes": note})
+            except Exception:
+                pass
+            return pd.Series({"evt_lon": row["evt_lon"], "evt_lat": row["evt_lat"],
+                               "evt_notes": None})
+
+        final[["evt_lon", "evt_lat", "evt_notes"]] = final.apply(_reproject, axis=1)
+
+    return final
+
+
+# ─── GiraffeSpotter formatting ─────────────────────────────────────────────────
+
+def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
+                   gs_username: str, gs_org: str,
+                   species_epithet: str, initials: str) -> pd.DataFrame:
+    """Convert processed ER DataFrame to GiraffeSpotter bulk import format."""
+    if final_df.empty:
+        return pd.DataFrame()
+
+    local_tz  = TIMEZONE_MAP.get(country, "UTC")
+    site_name = SITE_NAMES.get(site, site)
+
+    df = final_df.copy()
+
+    # Normalise evt_dttm to UTC — cast via str first so pd.to_datetime can
+    # parse both string timestamps and already-aware pd.Timestamp objects
+    # regardless of pandas version behaviour with mixed types.
+    df["evt_dttm_utc"] = pd.to_datetime(
+        df["evt_dttm"].astype(str), utc=True, errors="coerce"
+    )
+    df["evt_dttm_local"] = df["evt_dttm_utc"].dt.tz_convert(local_tz)
+
+    df["gir_giraffeAge"] = df["gir_giraffeAge"].apply(
+        lambda x: AGE_MAP.get(str(x).lower().strip(), str(x))
+        if pd.notna(x) and x != "" else "")
+    df["gir_giraffeSex"] = df["gir_giraffeSex"].apply(
+        lambda x: SEX_MAP.get(str(x).lower().strip(), str(x))
+        if pd.notna(x) and x != "" else "")
+
+    # Compute per-encounter age/sex counts on a minimal subset so the merge
+    # never creates _x/_y column conflicts (pandas 2.2 groupby.apply returns
+    # all input columns in the result even with include_groups=False).
+    _age = df["gir_giraffeAge"]
+    _sex = df["gir_giraffeSex"]
+    counts = (
+        df[["evt_id"]].assign(
+            ad=(_age == "adult").astype(int),
+            af=((_age == "adult")    & (_sex == "female")).astype(int),
+            am=((_age == "adult")    & (_sex == "male")).astype(int),
+            sa=(_age == "juvenile").astype(int),
+            sf=((_age == "juvenile") & (_sex == "female")).astype(int),
+            sm=((_age == "juvenile") & (_sex == "male")).astype(int),
+            ca=(_age == "calf").astype(int),
+        )
+        .groupby("evt_id", as_index=False)
+        .sum()
+    )
+    df = df.merge(counts, on="evt_id", how="left")
+
+    def make_media(row, side):
+        num    = row.get(f"gir_giraffe{side}")
+        prefix = row.get("gir_imagePrefix")
+        dt     = row.get("evt_dttm_local")
+        # Skip if any required field is missing or explicitly "NA"
+        if num is None or prefix is None:
+            return None
+        if isinstance(num, float) and pd.isna(num):
+            return None
+        if isinstance(prefix, float) and pd.isna(prefix):
+            return None
+        num = str(num).strip()
+        if num.upper() in ("NA", "NAN", "NONE", ""):
+            return None
+        date_str = dt.strftime("%Y%m%d") if pd.notna(dt) else "UNKNOWN"
+        return f"{country}_{site}_{date_str}_{initials}_{prefix}{num}.JPG".upper()
+
+    df["media0"] = df.apply(lambda r: make_media(r, "Right"), axis=1)
+    df["media1"] = df.apply(lambda r: make_media(r, "Left"),  axis=1)
+
+    def safe_int(x):
+        try:
+            return int(float(x))
+        except (TypeError, ValueError):
+            return None
+
+    gs = pd.DataFrame({
+        "Survey.vessel":            "vehicle_based_photographic",
+        "Survey.id":                df["evt_dttm_local"].apply(
+            lambda d: f"{country}_{site}_{d.strftime('%Y%m')}" if pd.notna(d) else ""),
+        "Occurrence.occurrenceID":  df.apply(
+            lambda r: f"{country}_{site}_{r['evt_dttm_local'].strftime('%Y%m%d%H%M%S')}"
+                      if pd.notna(r["evt_dttm_local"]) else "", axis=1),
+        "Encounter.decimalLongitude":   df["evt_lon"],
+        "Encounter.decimalLatitude":    df["evt_lat"],
+        "Encounter.locationID":         site_name,
+        "Encounter.verbatimLocality":   df["gir_riverSystem"],
+        "Encounter.year":               df["evt_dttm_local"].dt.year,
+        "Encounter.month":              df["evt_dttm_local"].dt.month,
+        "Encounter.day":                df["evt_dttm_local"].dt.day,
+        "Encounter.hour":               df["evt_dttm_local"].dt.hour,
+        "Encounter.minutes":            df["evt_dttm_local"].dt.minute,
+        "Encounter.submitterID":        gs_username,
+        "Occurrence.groupSize":         df["gir_herdSize"].apply(safe_int),
+        "Occurrence.numAdults":         df["ad"].fillna(0).astype(int),
+        "Occurrence.numAdultFemales":   df["af"].fillna(0).astype(int),
+        "Occurrence.numAdultMales":     df["am"].fillna(0).astype(int),
+        "Occurrence.numSubAdults":      df["sa"].fillna(0).astype(int),
+        "Occurrence.numSubFemales":     df["sf"].fillna(0).astype(int),
+        "Occurrence.numSubMales":       df["sm"].fillna(0).astype(int),
+        "Occurrence.numCalves":         df["ca"].fillna(0).astype(int),
+        "Occurrence.observer":          "",
+        "Occurrence.distance":          "",
+        "Occurrence.bearing":           "",
+        "Encounter.behavior":           "",
+        "Encounter.sex":                df["gir_giraffeSex"],
+        "Encounter.lifeStage":          df["gir_giraffeAge"],
+        "Encounter.genus":              "Giraffa",
+        "Encounter.specificEpithet":    species_epithet,
+        "Encounter.occurrenceRemarks":  df["gir_giraffeNotes"].fillna(""),
+        "Encounter.mediaAsset0":        df["media0"],
+        "Encounter.mediaAsset1":        df["media1"],
+    })
+
+    # Clean up filenames that ended up with NA in place of a photo number
+    def _clean_media(v):
+        if pd.isna(v) or str(v).strip() in ("", "nan", "None"):
+            return None
+        if str(v).upper().endswith("NA.JPG") or str(v).upper().endswith("NA.JPEG"):
+            return None
+        return v
+
+    gs["Encounter.mediaAsset0"] = gs["Encounter.mediaAsset0"].apply(_clean_media)
+    gs["Encounter.mediaAsset1"] = gs["Encounter.mediaAsset1"].apply(_clean_media)
+
+    return gs
+
+
+# ─── Validation ────────────────────────────────────────────────────────────────
+
+def validate_gs_data(gs_df: pd.DataFrame) -> list:
+    """
+    Check GiraffeSpotter data for common issues.
+    Returns a list of {"level": str, "icon": str, "message": str} dicts.
+    """
+    issues = []
+
+    # Missing coordinates
+    n = gs_df[["Encounter.decimalLongitude",
+               "Encounter.decimalLatitude"]].isna().any(axis=1).sum()
+    if n:
+        issues.append({"level": "warning", "icon": "⚠️",
+                        "message": f"{n} row(s) have missing coordinates"})
+
+    # Missing age / life stage
+    n = (gs_df["Encounter.lifeStage"].fillna("") == "").sum()
+    if n:
+        issues.append({"level": "info", "icon": "ℹ️",
+                        "message": f"{n} row(s) have no age / life stage recorded"})
+
+    # Missing sex
+    n = (gs_df["Encounter.sex"].fillna("") == "").sum()
+    if n:
+        issues.append({"level": "info", "icon": "ℹ️",
+                        "message": f"{n} row(s) have no sex recorded"})
+
+    # No individual GiraffeSpotter ID
+
+    # No image filename (missing prefix or photo numbers in ER)
+    def _no_media(v):
+        return pd.isna(v) or str(v).strip() in ("", "nan", "None")
+    n = gs_df["Encounter.mediaAsset0"].apply(_no_media).sum()
+    if n:
+        issues.append({"level": "warning", "icon": "⚠️",
+                        "message": (f"{n} row(s) have no image filename — "
+                                    "check image_prefix and photo numbers in EarthRanger")})
+
+    if not issues:
+        issues.append({"level": "success", "icon": "✅",
+                        "message": "No data issues detected — looking good!"})
+    return issues
+
+
+# ─── Image processing ──────────────────────────────────────────────────────────
+
+def process_images_zip(zip_bytes: bytes, country: str, site: str,
+                       initials: str,
+                       on_progress=None) -> tuple:
+    """
+    Extract ZIP, rename every JPEG using EXIF datetime.
+    For ZMB, also extracts GPSImgDirection from each image.
+
+    Parameters
+    ----------
+    on_progress : callable(float) | None
+        Called after each image with a fraction 0.0–1.0.  Use to drive a
+        st.progress bar.
+
+    Returns
+    -------
+    renamed_files : dict  {new_name: bytes}
+    rename_log    : pd.DataFrame  with Original / Renamed / Status columns
+    gps_lookup    : dict  {full_image_stem: bearing_degrees}  (ZMB only)
+    """
+    renamed, log_rows, gps_lookup = {}, [], {}
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        jpg_names = [n for n in zf.namelist()
+                     if n.lower().endswith((".jpg", ".jpeg"))
+                     and not Path(n).name.startswith(".")]
+
+        total = len(jpg_names) or 1   # avoid divide-by-zero
+
+        for idx, name in enumerate(jpg_names):
+            try:
+                img_bytes = zf.read(name)
+                dttm      = get_exif_datetime(img_bytes)
+                date_str  = dttm.strftime("%Y%m%d")
+
+                # ── FIX: preserve alphanumeric stems (e.g. 4D1A2407) ──────────
+                stem = Path(name).stem
+                num  = stem.zfill(4) if stem.isdigit() else stem
+                # ─────────────────────────────────────────────────────────────
+
+                new_name         = f"{country}_{site}_{date_str}_{initials}_{num}.JPG".upper()
+                renamed[new_name] = img_bytes
+
+                # ZMB: capture GPS bearing from EXIF for coordinate reprojection
+                gps_dir  = None
+                gps_note = ""
+                if country == "ZMB":
+                    gps_dir = get_exif_gps_direction(img_bytes)
+                    if gps_dir is not None:
+                        # e.g. ZMB_LVNP_20250817_FO_4D1A2407.JPG → 4D1A2407
+                        full_img_stem = new_name.rsplit("_", 1)[-1].replace(".JPG", "")
+                        gps_lookup[full_img_stem] = gps_dir
+                        gps_note = f" | GPS dir: {gps_dir:.1f}°"
+
+                log_rows.append({
+                    "Original": Path(name).name,
+                    "Renamed":  new_name,
+                    "Status":   f"✅ OK{gps_note}",
+                })
+            except Exception as exc:
+                log_rows.append({"Original": Path(name).name,
+                                  "Renamed":  "",
+                                  "Status":   f"❌ {exc}"})
+
+            if on_progress:
+                on_progress((idx + 1) / total)
+
+    return renamed, pd.DataFrame(log_rows), gps_lookup
+
+
+def apply_exif_reprojection(processed_df: pd.DataFrame,
+                             gps_lookup: dict) -> pd.DataFrame:
+    """
+    ZMB only: for rows that have no manual direction but do have a distance
+    and an image prefix, look up the GPSImgDirection bearing from the EXIF
+    GPS lookup dict and reproject the coordinates.
+    """
+    if not gps_lookup or processed_df.empty:
+        return processed_df
+
+    df = processed_df.copy()
+
+    def _reproject_exif(row):
+        has_manual = (pd.notna(row.get("gir_direction"))
+                      and str(row.get("gir_direction", "")).strip() != "")
+        has_dist   = pd.notna(row.get("gir_distance"))
+        has_prefix = pd.notna(row.get("gir_imagePrefix"))
+
+        if has_manual or not has_dist or not has_prefix:
+            return pd.Series({"evt_lon": row["evt_lon"],
+                               "evt_lat": row["evt_lat"],
+                               "evt_notes": row.get("evt_notes")})
+
+        prefix     = str(row["gir_imagePrefix"])
+        candidates = []
+        for side in ("gir_giraffeRight", "gir_giraffeLeft"):
+            val = row.get(side)
+            if pd.notna(val) and val is not None:
+                candidates.append(f"{prefix}{val}")
+
+        bearing = next((gps_lookup[c] for c in candidates if c in gps_lookup), None)
+
+        if bearing is None:
+            return pd.Series({"evt_lon": row["evt_lon"],
+                               "evt_lat": row["evt_lat"],
+                               "evt_notes": row.get("evt_notes")})
+        try:
+            new_lon, new_lat = dest_point(
+                float(row["evt_lon_original"]), float(row["evt_lat_original"]),
+                float(bearing), float(row["gir_distance"]),
+            )
+            note = (
+                f"reprojected from lon={row['evt_lon_original']:.6f}, "
+                f"lat={row['evt_lat_original']:.6f} using EXIF GPS direction {bearing:.0f}°"
+            )
+            return pd.Series({"evt_lon": new_lon, "evt_lat": new_lat, "evt_notes": note})
+        except Exception:
+            return pd.Series({"evt_lon": row["evt_lon"],
+                               "evt_lat": row["evt_lat"],
+                               "evt_notes": row.get("evt_notes")})
+
+    df[["evt_lon", "evt_lat", "evt_notes"]] = df.apply(_reproject_exif, axis=1)
+    return df
+
+
+def build_download_zip(renamed_files: dict, gs_data: pd.DataFrame,
+                       country: str, site: str) -> tuple:
+    """
+    Build ZIP containing matched images + GiraffeSpotter Excel.
+    Returns (zip_bytes, n_matched_images).
+    """
+    gs_asset_names = set()
+    for col in ("Encounter.mediaAsset0", "Encounter.mediaAsset1"):
+        if col in gs_data.columns:
+            gs_asset_names.update(
+                str(v).upper() for v in gs_data[col].dropna()
+                if str(v) not in ("", "nan", "None")
+            )
+
+    matched = {k: v for k, v in renamed_files.items() if k.upper() in gs_asset_names}
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, fbytes in matched.items():
+            zf.writestr(fname, fbytes)
+
+        xls_name = f"GS_bulkimport_{country}{site}_{date.today().strftime('%Y%m%d')}.xlsx"
+        zf.writestr(xls_name, _excel_bytes(gs_data))
+
+    buf.seek(0)
+    return buf.read(), len(matched)
+
+
+# ─── Streamlit UI ─────────────────────────────────────────────────────────────
+
+def main():
+    _init_session_state()
+
+    st.title("ER2WB: EarthRanger → GiraffeSpotter Formatter")
+    st.markdown(
+        "*Convert EarthRanger giraffe encounter data to GiraffeSpotter bulk import format. "
+        "Data is fetched via **ecoscope** EarthRangerIO.*"
+    )
+
+    # ── Reset button (only shown once data has been processed) ─────────────────
+    if st.session_state.processed_df is not None:
+        if st.button("🔄 Start Over — clear results", type="secondary"):
+            _reset_results()
+            st.rerun()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STEP 1 — EarthRanger login
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.subheader("🔑 Step 1: Connect to EarthRanger")
+
+    if not st.session_state.er_authenticated:
+        er_c1, er_c2, er_c3 = st.columns(3)
+        with er_c1:
+            st.text_input(
+                "Instance", key="er_instance",
+                help="Without https://, e.g. twiga.pamdas.org")
+        with er_c2:
+            st.text_input("Username (email)", key="er_login_user")
+        with er_c3:
+            st.text_input("Password", type="password", key="er_login_pass")
+
+        if st.button("Connect", type="primary"):
+            usr = st.session_state.er_login_user.strip()
+            pwd = st.session_state.er_login_pass.strip()
+            ins = st.session_state.er_instance.strip()
+            if not usr or not pwd or not ins:
+                st.error("Please fill in all three fields.")
+            else:
+                with st.spinner("Connecting to EarthRanger…"):
+                    try:
+                        client = _make_er_client(ins, usr, pwd)
+                        # Lightweight auth check using ecoscope method
+                        client.get_sources(limit=1)
+                        st.session_state.er_client        = client
+                        st.session_state.er_authenticated = True
+                        st.rerun()
+                    except Exception as exc:
+                        status = getattr(getattr(exc, "response", None), "status_code", None)
+                        if status == 401:
+                            st.error("❌ Login failed — check your username and password.")
+                        elif status:
+                            st.error(f"❌ API error {status}. Check the instance URL.")
+                        else:
+                            st.error(f"❌ Could not connect: {exc}")
+        st.stop()   # nothing below renders until logged in
+
+    # ── Logged-in banner ──────────────────────────────────────────────────────
+    lc1, lc2 = st.columns([4, 1])
+    with lc1:
+        st.success(
+            f"✅ Connected to **{st.session_state.er_instance}** "
+            f"as **{st.session_state.er_login_user}**")
+    with lc2:
+        if st.button("Disconnect", use_container_width=True):
+            _disconnect_er()
+            st.rerun()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STEP 1 (cont.) — Survey & GiraffeSpotter settings
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.subheader("⚙️ Step 1 (cont.): Settings")
+    instance = st.session_state.er_instance   # used downstream
+
+    # ── Survey details ────────────────────────────────────────────────────────
+    st.markdown("**Survey**")
+
+    # Country / site
+    country_keys = list(COUNTRY_SITES.keys())
+    if st.session_state.country_sel not in country_keys:
+        st.session_state.country_sel = country_keys[0]
+
+    sv_c1, sv_c2 = st.columns(2)
+    with sv_c1:
+        country = st.selectbox("Country", country_keys, key="country_sel")
+    with sv_c2:
+        site_options = COUNTRY_SITES.get(country, [])
+        # Reset site if it no longer belongs to the selected country
+        if st.session_state.site_sel not in site_options:
+            st.session_state.site_sel = site_options[0] if site_options else None
+        site = st.selectbox("Site", site_options, key="site_sel")
+
+    # Dates
+    dt_c1, dt_c2, dt_c3 = st.columns([2, 2, 1])
+    with dt_c1:
+        date_start = st.date_input("Start date", key="date_start")
+    with dt_c2:
+        date_end   = st.date_input("End date",   key="date_end")
+    with dt_c3:
+        st.caption("Quick range:")
+        if st.button("7d",  use_container_width=True):
+            st.session_state["date_start"] = date.today() - timedelta(days=7)
+            st.session_state["date_end"]   = date.today()
+            st.rerun()
+        if st.button("14d", use_container_width=True):
+            st.session_state["date_start"] = date.today() - timedelta(days=14)
+            st.session_state["date_end"]   = date.today()
+            st.rerun()
+        if st.button("30d", use_container_width=True):
+            st.session_state["date_start"] = date.today() - timedelta(days=30)
+            st.session_state["date_end"]   = date.today()
+            st.rerun()
+
+    st.markdown("---")
+
+    # ── 1c: GiraffeSpotter ────────────────────────────────────────────────────
+    st.markdown("**GiraffeSpotter**")
+    gs_c1, gs_c2, gs_c3, gs_c4 = st.columns(4)
+
+    with gs_c1:
+        gs_username = st.text_input("GiraffeSpotter username", key="gs_username")
+        gs_org      = st.session_state.gs_org   # kept in state but not shown prominently
+
+    with gs_c2:
+        er_observer = st.text_input(
+            "Your full name", key="er_observer",
+            help="Used to derive initials for image filenames (e.g. 'Courtney Marneweck' → CM). "
+                 "Also filters events to your records only — leave blank to include all.")
+
+    with gs_c3:
+        # Persist species selection
+        species_keys = list(SPECIES_MAP.keys())
+        if st.session_state.species_sel not in species_keys:
+            st.session_state.species_sel = species_keys[0]
+        species_choice = st.selectbox("Species", species_keys, key="species_sel")
+
+    with gs_c4:
+        subsp_options = list(SPECIES_MAP[species_choice].keys())
+        if st.session_state.subsp_sel not in subsp_options:
+            st.session_state.subsp_sel = subsp_options[0]
+        subsp_choice    = st.selectbox("Subspecies", subsp_options, key="subsp_sel")
+        species_epithet = SPECIES_MAP[species_choice][subsp_choice]
+
+    # Derive initials from observer name
+    initials = get_initials(er_observer) if er_observer.strip() else ""
+    if initials:
+        st.caption(f"📝 Initials: **{initials}** (used in image filenames)")
+    elif er_observer.strip():
+        st.caption("⚠️ Could not derive initials — check your full name above.")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STEP 2 — Fetch & Format
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.subheader("🔄 Step 2: Fetch & format my data")
+    st.caption("Fetches events from EarthRanger via ecoscope and formats them for GiraffeSpotter.")
+
+    if st.button("Process Data", type="primary"):
+        with st.spinner("Fetching events from EarthRanger…"):
+            try:
+                raw = fetch_er_events(instance, country, date_start, date_end,
+                                      st.session_state.er_client)
+
+                if not raw:
+                    st.warning("No events returned for this date range and country.")
+                else:
+                    st.info(f"Fetched **{len(raw)}** raw events.")
+                    processed = process_er_data(raw, country, er_observer,
+                                                date_start, date_end)
+
+                    if processed.empty:
+                        st.warning(
+                            "No records after filtering. "
+                            "Check your observer name, date range, and country.")
+                    else:
+                        gs = format_gs_data(
+                            processed, country, site,
+                            gs_username, gs_org, species_epithet, initials)
+
+                        st.session_state.processed_df = processed
+                        st.session_state.gs_data      = gs
+
+                        # ── Summary metrics ────────────────────────────────────
+                        n_enc    = processed["evt_id"].nunique()
+                        n_gir    = len(gs)
+                        n_photos = gs["Encounter.mediaAsset0"].apply(
+                            lambda v: pd.notna(v) and str(v) not in ("", "nan", "None")
+                        ).sum()
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric("Encounters",  n_enc)
+                        m2.metric("Giraffes",    n_gir)
+                        m3.metric("With photos", int(n_photos))
+
+                        st.success(
+                            f"✅ Formatted **{n_gir}** individual giraffe records "
+                            f"from **{n_enc}** encounters.")
+
+                        # ── Encounter map ──────────────────────────────────────
+                        map_df = (
+                            processed[["evt_lat", "evt_lon"]]
+                            .dropna()
+                            .rename(columns={"evt_lat": "latitude",
+                                             "evt_lon": "longitude"})
+                        )
+                        if not map_df.empty:
+                            with st.expander("🗺️ Encounter locations", expanded=True):
+                                st.map(map_df)
+
+                        # ── Validation summary ─────────────────────────────────
+                        issues = validate_gs_data(gs)
+                        with st.expander("🔍 Data validation"):
+                            for issue in issues:
+                                lvl = issue["level"]
+                                msg = f"{issue['icon']} {issue['message']}"
+                                if lvl == "warning":
+                                    st.warning(msg)
+                                elif lvl == "info":
+                                    st.info(msg)
+                                else:
+                                    st.success(msg)
+
+                        # ── GS data preview ────────────────────────────────────
+                        with st.expander("Preview GiraffeSpotter data (first 20 rows)"):
+                            st.dataframe(gs.head(20), hide_index=True)
+
+            except Exception as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status == 401:
+                    st.error("❌ Authentication failed (401). "
+                             "Check your credentials are valid and not expired.")
+                elif status:
+                    st.error(f"❌ API error {status}. Check instance URL and credentials.")
+                else:
+                    st.error(f"❌ {exc}")
+                    st.exception(exc)
+
+    # ── Download buttons (always visible once data exists) ─────────────────────
+    if st.session_state.gs_data is not None:
+        today_str = date.today().strftime("%Y%m%d")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.download_button(
+                "⬇️ Download GS data (no images)",
+                data=_excel_bytes(st.session_state.gs_data),
+                file_name=f"GS_bulkimport_{country}{site}_{today_str}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        with c2:
+            st.download_button(
+                "⬇️ Download raw ER data",
+                data=_excel_bytes(st.session_state.processed_df),
+                file_name=f"ER_events_{country}{site}_{today_str}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STEP 3 — Images
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.subheader("📸 Step 3: Process my images")
+    st.caption("Upload a single flat ZIP of your survey JPEGs (max 1 GB, no subfolders needed).")
+
+    uploaded_zip = st.file_uploader("Upload image ZIP", type=["zip"])
+
+    if uploaded_zip and st.button("Rename my images"):
+        if st.session_state.gs_data is None:
+            st.error("Run Step 2 first so we know how to name the images.")
+        elif not initials:
+            st.error("No initials detected — enter your EarthRanger full name in Step 1.")
+        else:
+            progress_bar = st.progress(0, text="Processing images…")
+            try:
+                renamed, log, gps_lookup = process_images_zip(
+                    uploaded_zip.read(),
+                    country, site, initials,
+                    on_progress=lambda p: progress_bar.progress(
+                        p, text=f"Processing images… {int(p * 100)}%"),
+                )
+                progress_bar.empty()
+
+                st.session_state.renamed_files = renamed
+                st.success(f"✅ Renamed **{len(renamed)}** images.")
+                st.dataframe(log)
+
+                # ZMB: apply EXIF GPS direction reprojection
+                if country == "ZMB" and gps_lookup:
+                    st.info(
+                        f"🧭 Found EXIF GPS bearings in **{len(gps_lookup)}** images. "
+                        "Applying coordinate reprojection for records without manual direction…"
+                    )
+                    updated_df = apply_exif_reprojection(
+                        st.session_state.processed_df, gps_lookup)
+                    st.session_state.processed_df = updated_df
+
+                    updated_gs = format_gs_data(
+                        updated_df, country, site,
+                        gs_username, gs_org, species_epithet, initials)
+                    st.session_state.gs_data = updated_gs
+                    st.success("✅ Coordinates updated using EXIF GPS directions. "
+                               "GiraffeSpotter data has been refreshed.")
+
+            except Exception as exc:
+                progress_bar.empty()
+                st.error(f"❌ {exc}")
+                st.exception(exc)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STEP 4 — Download ZIP
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.subheader("⬇️ Step 4: Download your GiraffeSpotter data packet")
+
+    can_build = (st.session_state.gs_data is not None
+                 and bool(st.session_state.renamed_files))
+
+    if st.button("Build Download ZIP", type="primary", disabled=not can_build):
+        with st.spinner("Packaging images + GS Excel…"):
+            try:
+                zip_bytes, n = build_download_zip(
+                    st.session_state.renamed_files,
+                    st.session_state.gs_data,
+                    country, site)
+                st.session_state.download_zip = zip_bytes
+                st.session_state.n_matched    = n
+                st.success(f"✅ ZIP ready — **{n}** matched images + GS Excel.")
+            except Exception as exc:
+                st.error(f"❌ {exc}")
+                st.exception(exc)
+
+    if st.session_state.download_zip:
+        n = st.session_state.n_matched or 0
+        today_str = date.today().strftime("%Y%m%d")
+        st.download_button(
+            f"⬇️ Download ZIP ({n} images + GS Excel)",
+            data=st.session_state.download_zip,
+            file_name=f"GS_bulkimport_{country}{site}_{today_str}.zip",
+            mime="application/zip",
+        )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # Done
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.subheader("✅ Done!")
+    st.markdown("""
+Use the files in your downloaded ZIP for the **GiraffeSpotter bulk import**:
+- **Excel file** → upload as the bulk import spreadsheet
+- **Images** → upload as media assets
+
+To process a new survey, click **Start Over** at the top of the page.
+""")
+
+    with st.expander("❓ Help"):
+        st.markdown("""
+**Mistake in my data?**
+Download the raw ER data (Step 2), find the record using `evt_serial`,
+fix it directly in EarthRanger, then click Start Over and re-run.
+
+**No images but still need GS data?**
+Use the *Download GS data (no images)* button in Step 2.
+
+**Image count mismatch?**
+The tool only includes images that match the `Encounter.mediaAsset0/1` filenames
+derived from the EarthRanger data. Check that your image prefix and photo numbers
+in EarthRanger match the actual filenames.
+
+**Alphanumeric image filenames (e.g. 4D1A2407.JPG)?**
+These are handled automatically. The full stem is preserved and matched against
+the image prefix + photo number stored in EarthRanger (e.g. prefix `4D1A` + number `2407`).
+
+**Something else?**
+Contact courtney@giraffeconservation.org
+""")
+
+
+if __name__ == "__main__":
+    main()
