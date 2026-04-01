@@ -83,168 +83,66 @@ def main():
     else:
         st.title("🦒 EHGR Giraffe Monitoring Dashboard")
 
-    # Simplified EHGR dashboard without subject group dependencies
+    # Initialise session state flags for on-demand sections
+    for _key in ("ehgr_patrols_loaded", "ehgr_camera_loaded", "ehgr_weather_loaded"):
+        if _key not in st.session_state:
+            st.session_state[_key] = False
 
     @st.cache_data(ttl=3600)
-    def get_active_sources():
-        """Get active tracking sources for EHGR giraffes"""
+    def load_monitoring_events(er_username, er_password):
+        """Fetch monitoring_nam events once and split into giraffe + priority species dataframes."""
         er = EarthRangerIO(
             server="https://twiga.pamdas.org",
-            username=username,
-            password=password
+            username=er_username,
+            password=er_password
         )
-        sources_df = er.get_sources()
-        sources = sources_df.to_dict('records')
-        
-        # Filter for active sources (exclude dummy sources)
-        active_sources = [
-            s for s in sources 
-            if s.get("provider") != "dummy"
-            and s.get("is_active") is True
-        ]
-        return active_sources
-
-    active_sources = get_active_sources()
-
-    @st.cache_data(ttl=3600)
-    def load_data():
-        """Load EHGR giraffe survey encounter data"""
-        er = EarthRangerIO(
-            server="https://twiga.pamdas.org",
-            username=username,
-            password=password
-        )
-        
-        # EHGR-specific event parameters (Namibia data)
-        event_cat = "monitoring_nam"
-        event_type = "giraffe_survey_encounter_nam"
         since = "2024-07-01T00:00:00Z"
-        # Set until to current system date
         until = datetime.now().strftime("%Y-%m-%dT23:59:59Z")
-
         try:
             events = er.get_events(
-                event_category=event_cat,
+                event_category="monitoring_nam",
                 since=since,
                 until=until,
                 include_details=True,
                 include_notes=False
             )
-            
             if events.empty:
-                st.warning(f"⚠️ No events found for category '{event_cat}' and type '{event_type}'")
-                st.info("💡 Please verify the event category and type names are correct for EHGR")
-                return pd.DataFrame()
-            
+                return pd.DataFrame(), pd.DataFrame()
             flat = json_normalize(events.to_dict(orient="records"))
-            giraffe_only = flat[flat["event_type"] == event_type]
-
-            if giraffe_only.empty:
-                st.warning(f"⚠️ No events found with event_type '{event_type}'")
-                available_types = flat["event_type"].unique() if "event_type" in flat.columns else []
-                if len(available_types) > 0:
-                    st.info(f"💡 Available event types: {', '.join(available_types)}")
-                return pd.DataFrame()
-
-            # Process herd data if available - but keep one record per herd encounter
-            if "event_details.Herd" in giraffe_only.columns:
-                # For individual giraffe analysis later, we can explode
-                # But for metrics, we want to keep herd-level data
-                events_final = giraffe_only.copy()
-            else:
-                events_final = giraffe_only
-
-            return events_final
-            
         except Exception as e:
-            st.error(f"❌ Error loading EHGR data: {str(e)}")
-            st.info("💡 Please check the event category and type parameters")
-            return pd.DataFrame()
+            st.error(f"❌ Error loading monitoring data: {str(e)}")
+            return pd.DataFrame(), pd.DataFrame()
 
-    df = load_data()
+        giraffe_df = flat[flat["event_type"] == "giraffe_survey_encounter_nam"].copy()
+
+        priority_types = {
+            "Rhino": "rhino_encounter_nam",
+            "Lion": "lion_encounter_nam",
+            "Cheetah": "cheetah_encounter_nam",
+            "Leopard": "leopard_encounter_nam",
+        }
+        priority_parts = []
+        for species_name, etype in priority_types.items():
+            subset = flat[flat["event_type"] == etype].copy()
+            if not subset.empty:
+                subset["species"] = species_name
+                priority_parts.append(subset)
+        priority_df = pd.concat(priority_parts, ignore_index=True) if priority_parts else pd.DataFrame()
+
+        return giraffe_df, priority_df
+
+    with st.spinner("Loading monitoring data..."):
+        df, priority_species_df = load_monitoring_events(username, password)
 
     if df.empty:
-        st.warning("⚠️ No data available to display")
+        st.warning("⚠️ No giraffe sighting data available to display")
         st.info("""
         **Possible issues:**
         1. Event category 'monitoring_nam' may not exist
-        2. Event type 'giraffe_survey_encounter_nam' may not exist  
+        2. Event type 'giraffe_survey_encounter_nam' may not exist
         3. No data in the specified date range
-        4. Subject group IDs need to be updated
-        
-        **Next steps:**
-        - Verify the correct event category and type names for EHGR
-        - Update the subject group IDs in the code
-        - Check if there's data in the specified date range
         """)
         st.stop()
-
-    @st.cache_data(ttl=3600)
-    def load_priority_species_data():
-        """Load data for rhino, lion, cheetah, and leopard sightings"""
-        er = EarthRangerIO(
-            server="https://twiga.pamdas.org",
-            username=username,
-            password=password
-        )
-        
-        # Priority species event type names (not UUIDs)
-        priority_species_types = {
-            "rhino": "rhino_encounter_nam",
-            "lion": "lion_encounter_nam",
-            "cheetah": "cheetah_encounter_nam",
-            "leopard": "leopard_encounter_nam"
-        }
-        
-        event_cat = "monitoring_nam"
-        since = "2024-07-01T00:00:00Z"
-        until = datetime.now().strftime("%Y-%m-%dT23:59:59Z")
-
-        all_species_data = []
-        debug_info = {
-            'total_events': 0,
-            'all_event_types': [],
-            'species_matches': {}
-        }
-        
-        try:
-            # Get all monitoring events
-            events = er.get_events(
-                event_category=event_cat,
-                since=since,
-                until=until,
-                include_details=True,
-                include_notes=False
-            )
-            
-            if events.empty:
-                return pd.DataFrame(), debug_info
-            
-            flat = json_normalize(events.to_dict(orient="records"))
-            
-            # Debug: Store all event types for diagnostics
-            debug_info['total_events'] = len(flat)
-            debug_info['all_event_types'] = flat["event_type"].unique().tolist() if "event_type" in flat.columns else []
-            
-            # Filter for priority species by event type name
-            for species_name, event_type_name in priority_species_types.items():
-                species_events = flat[flat["event_type"] == event_type_name].copy()
-                debug_info['species_matches'][species_name] = len(species_events)
-                if not species_events.empty:
-                    species_events["species"] = species_name.capitalize()
-                    all_species_data.append(species_events)
-            
-            if all_species_data:
-                combined_df = pd.concat(all_species_data, ignore_index=True)
-                return combined_df, debug_info
-            else:
-                return pd.DataFrame(), debug_info
-            
-        except Exception as e:
-            st.error(f"❌ Error loading priority species data: {str(e)}")
-            return pd.DataFrame(), debug_info
-
-    priority_species_df, debug_info = load_priority_species_data()
 
     # Rename columns (similar to NANW but adapted for EHGR structure)
     rename_map = {
@@ -1113,22 +1011,29 @@ def main():
             debug_info.append(f"📋 Traceback: {traceback.format_exc()}")
             return None, f"Error loading patrol data: {str(e)}", debug_info
 
-    # Load patrol data automatically
-    with st.spinner(f"Loading patrol data for {', '.join(patrol_usernames)}... This may take a moment."):
-        patrol_result = load_patrol_data(start_date, end_date, patrol_usernames, username, password)
-    
-    # Unpack result (could be 2 or 3 items)
-    if len(patrol_result) == 3:
-        patrol_gdf, patrol_error, debug_info = patrol_result
-        
-        # Display debug information in an expander
-        with st.expander("🔍 Debug Information", expanded=False):
-            for info in debug_info:
-                st.write(info)
-    else:
-        patrol_gdf, patrol_error = patrol_result
+    col_load_p, _ = st.columns([1, 3])
+    with col_load_p:
+        if st.button("Load patrol data", key="load_patrols_btn"):
+            st.session_state["ehgr_patrols_loaded"] = True
+
+    if not st.session_state["ehgr_patrols_loaded"]:
+        st.info("Click **Load patrol data** to fetch patrol tracks.")
         patrol_gdf = None
-    
+        patrol_error = None
+    else:
+        with st.spinner(f"Loading patrol data for {', '.join(patrol_usernames)}... This may take a moment."):
+            patrol_result = load_patrol_data(start_date, end_date, patrol_usernames, username, password)
+
+        # Unpack result (could be 2 or 3 items)
+        if len(patrol_result) == 3:
+            patrol_gdf, patrol_error, debug_info = patrol_result
+            with st.expander("🔍 Debug Information", expanded=False):
+                for info in debug_info:
+                    st.write(info)
+        else:
+            patrol_gdf, patrol_error = patrol_result
+            patrol_gdf = None
+
     if patrol_error:
         st.warning(f"⚠️ {patrol_error}")
     elif patrol_gdf is not None and not patrol_gdf.empty:
@@ -1267,9 +1172,17 @@ def main():
             st.error(f"❌ Error loading camera trap check data: {str(e)}")
             return pd.DataFrame()
 
-    camera_df = load_camera_trap_events(username, password)
+    col_load_c, _ = st.columns([1, 3])
+    with col_load_c:
+        if st.button("Load camera trap data", key="load_camera_btn"):
+            st.session_state["ehgr_camera_loaded"] = True
 
-    if not camera_df.empty:
+    if not st.session_state["ehgr_camera_loaded"]:
+        st.info("Click **Load camera trap data** to fetch check records.")
+    else:
+        camera_df = load_camera_trap_events(username, password)
+
+    if st.session_state["ehgr_camera_loaded"] and not camera_df.empty:
         camera_df["time"] = pd.to_datetime(camera_df.get("time", pd.Series(dtype="object")), errors="coerce")
         camera_df = camera_df.dropna(subset=["time"])
 
@@ -1321,7 +1234,7 @@ def main():
 
         st.metric("Camera traps with check records", len(out_cam))
         st.dataframe(out_cam, use_container_width=True, hide_index=True)
-    else:
+    elif st.session_state["ehgr_camera_loaded"]:
         st.info("No camera trap check events found.")
 
     #### WEATHER STATION CHECK ###############################################
@@ -1356,9 +1269,17 @@ def main():
             st.error(f"❌ Error loading weather station check data: {str(e)}")
             return pd.DataFrame()
 
-    weather_df = load_weather_station_events(username, password)
+    col_load_w, _ = st.columns([1, 3])
+    with col_load_w:
+        if st.button("Load weather station data", key="load_weather_btn"):
+            st.session_state["ehgr_weather_loaded"] = True
 
-    if not weather_df.empty:
+    if not st.session_state["ehgr_weather_loaded"]:
+        st.info("Click **Load weather station data** to fetch check records.")
+    else:
+        weather_df = load_weather_station_events(username, password)
+
+    if st.session_state["ehgr_weather_loaded"] and not weather_df.empty:
         weather_df["time"] = pd.to_datetime(weather_df.get("time", pd.Series(dtype="object")), errors="coerce")
         weather_df = weather_df.dropna(subset=["time"])
 
@@ -1410,7 +1331,7 @@ def main():
 
         st.metric("Weather stations with check records", len(out_ws))
         st.dataframe(out_ws, use_container_width=True, hide_index=True)
-    else:
+    elif st.session_state["ehgr_weather_loaded"]:
         st.info("No weather station check events found.")
 
     #### Simplified - AAG section removed as not applicable for EHGR
