@@ -7,9 +7,6 @@ Launches the Namibia giraffe monitoring dashboard
 import streamlit as st
 import sys
 from pathlib import Path
-import importlib
-
-
 # Add shared utilities for logo
 current_dir = Path(__file__).parent.parent
 sys.path.append(str(current_dir))
@@ -23,13 +20,14 @@ def main():
     # Add the ehgr_dashboard directory to Python path
     current_dir = Path(__file__).parent.parent
     ehgr_dashboard_dir = current_dir / "ehgr_dashboard"
-    
-    if ehgr_dashboard_dir not in sys.path:
-        sys.path.insert(0, str(ehgr_dashboard_dir))
-    
+
     try:
         # Import and run the EHGR dashboard app
-        ehgr_app = importlib.import_module("app")
+        # Use spec-based loading to avoid module cache collision with other "app" modules
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("ehgr_app", ehgr_dashboard_dir / "app.py")
+        ehgr_app = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ehgr_app)
         ehgr_app.main()
     except ImportError as e:
         st.error(f"❌ Error loading EHGR Dashboard: {str(e)}")

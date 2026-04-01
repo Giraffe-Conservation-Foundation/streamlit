@@ -1235,6 +1235,184 @@ def main():
     else:
         st.info("No patrol data available for the selected date range")
 
+    #### CAMERA TRAP CHECK ###############################################
+    st.markdown("---")
+    st.subheader("📷 Camera Trap Check")
+    st.markdown("*Last check event per camera trap station*")
+
+    @st.cache_data(ttl=3600)
+    def load_camera_trap_events(er_username, er_password):
+        er = EarthRangerIO(
+            server="https://twiga.pamdas.org",
+            username=er_username,
+            password=er_password
+        )
+        since = "2024-01-01T00:00:00Z"
+        until = datetime.now().strftime("%Y-%m-%dT23:59:59Z")
+        try:
+            events = er.get_events(
+                event_type="64ffa5d9-6fec-4ed7-bdbd-54e761c767a0",
+                since=since,
+                until=until,
+                include_details=True,
+                include_notes=True
+            )
+            if events.empty:
+                return pd.DataFrame()
+            flat = json_normalize(events.to_dict(orient="records"))
+            if "event_type" in flat.columns:
+                flat = flat[flat["event_type"] == "camera_trap_2"]
+            return flat
+        except Exception as e:
+            st.error(f"❌ Error loading camera trap check data: {str(e)}")
+            return pd.DataFrame()
+
+    camera_df = load_camera_trap_events(username, password)
+
+    if not camera_df.empty:
+        camera_df["time"] = pd.to_datetime(camera_df.get("time", pd.Series(dtype="object")), errors="coerce")
+        camera_df = camera_df.dropna(subset=["time"])
+
+        # Identify station column from event_details fields
+        detail_cols = [c for c in camera_df.columns if c.startswith("event_details.")]
+        station_col = None
+        for hint in ["name", "camera", "trap", "station", "id"]:
+            matches = [c for c in detail_cols if hint.lower() in c.lower()]
+            if matches:
+                station_col = matches[0]
+                break
+
+        # Deduplicate to most recent event per station
+        camera_df_sorted = camera_df.sort_values("time", ascending=False)
+        if station_col:
+            summary_camera = camera_df_sorted.groupby(station_col, sort=False).first().reset_index()
+        else:
+            summary_camera = camera_df_sorted.copy()
+
+        # Build display table
+        cam_display_cols = {}
+        if station_col:
+            cam_display_cols[station_col] = station_col.replace("event_details.", "").replace("_", " ").title()
+        cam_display_cols["time"] = "Last Checked"
+        if "reported_by.name" in summary_camera.columns:
+            cam_display_cols["reported_by.name"] = "Checked By"
+        if "serial_number" in summary_camera.columns:
+            cam_display_cols["serial_number"] = "Serial #"
+        for c in detail_cols:
+            if c == station_col:
+                continue
+            cam_display_cols[c] = c.replace("event_details.", "").replace("_", " ").title()
+        for notes_col in ["notes", "event_details.notes"]:
+            if notes_col in summary_camera.columns and notes_col not in cam_display_cols:
+                cam_display_cols[notes_col] = "Notes"
+
+        # Deduplicate display names — keep first occurrence only
+        seen_labels = set()
+        avail_cam = []
+        for c in cam_display_cols:
+            if c in summary_camera.columns and cam_display_cols[c] not in seen_labels:
+                avail_cam.append(c)
+                seen_labels.add(cam_display_cols[c])
+        out_cam = summary_camera[avail_cam].rename(columns={c: cam_display_cols[c] for c in avail_cam})
+        out_cam["Last Checked"] = pd.to_datetime(out_cam["Last Checked"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+        station_label = cam_display_cols.get(station_col) if station_col else None
+        sort_col = station_label if station_label and station_label in out_cam.columns else "Last Checked"
+        out_cam = out_cam.sort_values(sort_col, ascending=True)
+
+        st.metric("Camera traps with check records", len(out_cam))
+        st.dataframe(out_cam, use_container_width=True, hide_index=True)
+    else:
+        st.info("No camera trap check events found.")
+
+    #### WEATHER STATION CHECK ###############################################
+    st.markdown("---")
+    st.subheader("🌦️ Weather Station Check")
+    st.markdown("*Last check event per weather station*")
+
+    @st.cache_data(ttl=3600)
+    def load_weather_station_events(er_username, er_password):
+        er = EarthRangerIO(
+            server="https://twiga.pamdas.org",
+            username=er_username,
+            password=er_password
+        )
+        since = "2024-01-01T00:00:00Z"
+        until = datetime.now().strftime("%Y-%m-%dT23:59:59Z")
+        try:
+            events = er.get_events(
+                event_type="f3fbb844-3749-40c9-8bc5-82878c37169a",
+                since=since,
+                until=until,
+                include_details=True,
+                include_notes=True
+            )
+            if events.empty:
+                return pd.DataFrame()
+            flat = json_normalize(events.to_dict(orient="records"))
+            if "event_type" in flat.columns:
+                flat = flat[flat["event_type"] == "weather_station"]
+            return flat
+        except Exception as e:
+            st.error(f"❌ Error loading weather station check data: {str(e)}")
+            return pd.DataFrame()
+
+    weather_df = load_weather_station_events(username, password)
+
+    if not weather_df.empty:
+        weather_df["time"] = pd.to_datetime(weather_df.get("time", pd.Series(dtype="object")), errors="coerce")
+        weather_df = weather_df.dropna(subset=["time"])
+
+        # Identify station column from event_details fields
+        detail_cols_ws = [c for c in weather_df.columns if c.startswith("event_details.")]
+        station_col_ws = None
+        for hint in ["name", "station", "weather", "id"]:
+            matches = [c for c in detail_cols_ws if hint.lower() in c.lower()]
+            if matches:
+                station_col_ws = matches[0]
+                break
+
+        # Deduplicate to most recent event per station
+        weather_df_sorted = weather_df.sort_values("time", ascending=False)
+        if station_col_ws:
+            summary_weather = weather_df_sorted.groupby(station_col_ws, sort=False).first().reset_index()
+        else:
+            summary_weather = weather_df_sorted.copy()
+
+        # Build display table
+        ws_display_cols = {}
+        if station_col_ws:
+            ws_display_cols[station_col_ws] = station_col_ws.replace("event_details.", "").replace("_", " ").title()
+        ws_display_cols["time"] = "Last Checked"
+        if "reported_by.name" in summary_weather.columns:
+            ws_display_cols["reported_by.name"] = "Checked By"
+        if "serial_number" in summary_weather.columns:
+            ws_display_cols["serial_number"] = "Serial #"
+        for c in detail_cols_ws:
+            if c == station_col_ws:
+                continue
+            ws_display_cols[c] = c.replace("event_details.", "").replace("_", " ").title()
+        for notes_col in ["notes", "event_details.notes"]:
+            if notes_col in summary_weather.columns and notes_col not in ws_display_cols:
+                ws_display_cols[notes_col] = "Notes"
+
+        # Deduplicate display names — keep first occurrence only
+        seen_labels_ws = set()
+        avail_ws = []
+        for c in ws_display_cols:
+            if c in summary_weather.columns and ws_display_cols[c] not in seen_labels_ws:
+                avail_ws.append(c)
+                seen_labels_ws.add(ws_display_cols[c])
+        out_ws = summary_weather[avail_ws].rename(columns={c: ws_display_cols[c] for c in avail_ws})
+        out_ws["Last Checked"] = pd.to_datetime(out_ws["Last Checked"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+        station_label_ws = ws_display_cols.get(station_col_ws) if station_col_ws else None
+        sort_col_ws = station_label_ws if station_label_ws and station_label_ws in out_ws.columns else "Last Checked"
+        out_ws = out_ws.sort_values(sort_col_ws, ascending=True)
+
+        st.metric("Weather stations with check records", len(out_ws))
+        st.dataframe(out_ws, use_container_width=True, hide_index=True)
+    else:
+        st.info("No weather station check events found.")
+
     #### Simplified - AAG section removed as not applicable for EHGR
 
     # Logout button
