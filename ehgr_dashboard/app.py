@@ -450,7 +450,8 @@ def main():
                     .size()
                     .reset_index(name="Count")
                 )
-                fig2 = px.bar(breakdown, x="giraffe_age", y="Count", color="giraffe_sex", barmode="group")
+                fig2 = px.bar(breakdown, x="giraffe_age", y="Count", color="giraffe_sex", barmode="group",
+                              category_orders={"giraffe_age": ["ad", "sa", "ju", "ca"]})
                 st.plotly_chart(fig2, use_container_width=True)
             else:
                 st.info("No individual giraffe age/sex data available in herd details")
@@ -463,7 +464,8 @@ def main():
             .size()
             .reset_index(name="Count")
         )
-        fig2 = px.bar(breakdown, x="evt_girAge", y="Count", color="evt_girSex", barmode="group")
+        fig2 = px.bar(breakdown, x="evt_girAge", y="Count", color="evt_girSex", barmode="group",
+                      category_orders={"evt_girAge": ["ad", "sa", "ju", "ca"]})
         st.plotly_chart(fig2, use_container_width=True)
     else:
         st.info("No age/sex data available for breakdown chart")
@@ -1186,14 +1188,54 @@ def main():
         camera_df["time"] = pd.to_datetime(camera_df.get("time", pd.Series(dtype="object")), errors="coerce")
         camera_df = camera_df.dropna(subset=["time"])
 
-        # Identify station column from event_details fields
+        # Camtrap site code → display name lookup
+        CAMTRAP_SITE_NAMES = {
+            "S001": "Gruisgat",
+            "S002": "Middlepos",
+            "S003": "Mopaniepos",
+            "S004": "Boesmanspoel",
+            "S005": "Mountain Lodge",
+            "S006": "Bergpos",
+            "S007": "Boma Rooipos",
+            "S008": "Nuwepos",
+            "S009": "Grootrante",
+            "S010": "Madala",
+            "S011": "Bergwater",
+            "S012": "Tankpos",
+            "S013": "Grenswag",
+            "S014": "Olifantspos",
+            "S015": "Witgat",
+            "S016": "Safarihoek",
+            "S017": "Flamingo Pan",
+            "S018": "Uitspuit Southern Boundary",
+            "S019": "Mopaniepan Corner",
+            "S020": "CT64",
+            "S021": "CT75",
+            "S022": "CT86",
+            "S023": "CT97",
+            "S024": "CT108",
+            "S025": "CT119",
+            "S026": "Oupos",
+            "S027": "Vlakwater",
+            "S028": "Leeuslootdam",
+            "S029": "Gronddam",
+            "S030": "Leeurante",
+            "S031": "Moesoemoeroep",
+            "S032": "Dadelpos",
+        }
+
+        # Identify columns
         detail_cols = [c for c in camera_df.columns if c.startswith("event_details.")]
-        station_col = None
-        for hint in ["name", "camera", "trap", "station", "id"]:
-            matches = [c for c in detail_cols if hint.lower() in c.lower()]
-            if matches:
-                station_col = matches[0]
-                break
+        # Prefer the explicit camtrap_site field for grouping/display
+        site_col = "event_details.camtrap_site" if "event_details.camtrap_site" in camera_df.columns else None
+        # Fallback: detect station column from hints (excluding "camera" which picks up camera-ID fields)
+        station_col = site_col
+        if not station_col:
+            for hint in ["trap", "station", "site", "id"]:
+                matches = [c for c in detail_cols if hint.lower() in c.lower()]
+                if matches:
+                    station_col = matches[0]
+                    break
 
         # Deduplicate to most recent event per station
         camera_df_sorted = camera_df.sort_values("time", ascending=False)
@@ -1202,10 +1244,16 @@ def main():
         else:
             summary_camera = camera_df_sorted.copy()
 
+        # Add site name column from hardcoded lookup
+        if station_col and station_col in summary_camera.columns:
+            summary_camera["_camtrap_site_name"] = summary_camera[station_col].map(CAMTRAP_SITE_NAMES)
+
         # Build display table
         cam_display_cols = {}
         if station_col:
-            cam_display_cols[station_col] = station_col.replace("event_details.", "").replace("_", " ").title()
+            cam_display_cols[station_col] = "Camtrap Site"
+        if "_camtrap_site_name" in summary_camera.columns:
+            cam_display_cols["_camtrap_site_name"] = "Camtrap Site Name"
         cam_display_cols["time"] = "Last Checked"
         if "reported_by.name" in summary_camera.columns:
             cam_display_cols["reported_by.name"] = "Checked By"
