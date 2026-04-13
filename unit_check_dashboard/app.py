@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+import calendar
+from datetime import date, datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
 from ecoscope.io.earthranger import EarthRangerIO
@@ -91,6 +92,65 @@ def load_stock_sheet_data(sheet_id):
         return None, str(e)
 
 
+def _er_source_assignment_panel():
+    """Cross-reference panel: ER sources with no subject assignment, grouped by provider."""
+    st.markdown("---")
+    st.subheader("🔗 EarthRanger Cross-Reference")
+    st.caption(
+        "Active tracking sources in ER with no subject assignment — "
+        "these are likely in hand or undeployed. Cross-check with your stock sheet above."
+    )
+
+    try:
+        with st.spinner("Checking ER source assignments..."):
+            sources = get_all_sources(st.session_state.username, st.session_state.password)
+    except Exception as e:
+        st.warning(f"Could not load ER data: {e}")
+        return
+
+    if sources is None or sources.empty:
+        st.info("No sources found in EarthRanger.")
+        return
+
+    tracking = sources[
+        (sources['source_type'] == 'tracking-device') &
+        (~sources['provider'].isin(EXCLUDED_PROVIDERS))
+    ].copy()
+
+    if tracking.empty:
+        st.info("No tracking device sources found in EarthRanger.")
+        return
+
+    tracking['provider_display'] = tracking['provider'].map(MANUFACTURER_DISPLAY).fillna(tracking['provider'])
+    tracking['label'] = tracking['collar_key'].fillna(tracking['id']).astype(str)
+
+    if 'subject_id' not in tracking.columns:
+        st.warning("EarthRanger did not return subject assignment data — cannot determine which sources are unassigned.")
+        return
+
+    unassigned = tracking[tracking['subject_id'].isna() | (tracking['subject_id'].astype(str).str.strip().isin(['', 'None', 'nan']))]
+    assigned_count = len(tracking) - len(unassigned)
+
+    ec1, ec2, ec3 = st.columns(3)
+    ec1.metric("Active in ER", len(tracking))
+    ec2.metric("Assigned to subject", assigned_count)
+    ec3.metric("Unassigned in ER", len(unassigned))
+
+    if unassigned.empty:
+        st.success("All active ER tracking sources are currently assigned to a subject.")
+        return
+
+    by_provider = (
+        unassigned.groupby('provider_display')['label']
+        .apply(list)
+        .reset_index()
+    )
+    by_provider['Count'] = by_provider['label'].apply(len)
+    by_provider['Unit IDs'] = by_provider['label'].apply(lambda x: ', '.join(sorted(x)))
+    by_provider = by_provider.rename(columns={'provider_display': 'Provider'})[['Provider', 'Count', 'Unit IDs']]
+    st.dataframe(by_provider, use_container_width=True, hide_index=True)
+
+
 def stock_planning_tab():
     """Stock and deployment planning dashboard, driven by a Google Sheet."""
     st.header("📦 Stock & Deployment Planning")
@@ -107,10 +167,13 @@ def stock_planning_tab():
 
 1. [Create a new Google Sheet](https://sheets.google.com) with these 3 tabs (exact names):
 
-   **`stock`** — one row per office × device type:
-   `office` | `device_type` | `in_hand` | `notes` | `last_updated`
+   **`stock`** — one row per individual unit (add a row when a unit arrives in hand):
+   `unit_id` | `device_type` | `serial_no` | `office` | `status` | `allocated_project` | `allocated_site` | `planned_date` | `notes`
+   - `unit_id`: your internal ID (e.g. STC-045)
+   - `status` values: `in_hand`, `deployed`, `retired`
+   - `allocated_project`: leave blank if unallocated
 
-   **`orders`** — one row per order:
+   **`orders`** — one row per order (count-based, since serial numbers aren't known yet):
    `order_date` | `device_type` | `quantity` | `office` | `supplier` | `expected_delivery` | `status` | `notes`
    *(status values: `ordered`, `received`, `cancelled`)*
 
@@ -146,140 +209,226 @@ def stock_planning_tab():
     orders_df = data.get('orders', pd.DataFrame())
     plans_df = data.get('deployment_plans', pd.DataFrame())
 
-    OFFICES = ['Namibia', 'Kenya', 'South Africa']
+    # Normalise status columns
+    for df, col in [(stock_df, 'status'), (orders_df, 'status'), (plans_df, 'status')]:
+        if not df.empty and col in df.columns:
+            df[col] = df[col].astype(str).str.strip().str.lower()
 
-    # ── Current stock ──────────────────────────────────────────────────────────
-    st.subheader("📦 Current Stock by Office")
-
-    if stock_df.empty:
-        st.info("No stock data found. Add rows to the `stock` tab in your Google Sheet.")
+    # ── Derive summary counts ──────────────────────────────────────────────────
+    in_hand_df = (
+        stock_df[stock_df['status'] == 'in_hand']
+        if not stock_df.empty and 'status' in stock_df.columns
+        else pd.DataFrame()
+    )
+    total_in_hand = len(in_hand_df)
+    if not in_hand_df.empty and 'allocated_project' in in_hand_df.columns:
+        allocated_count = in_hand_df['allocated_project'].astype(str).str.strip().ne('').sum()
     else:
-        cols = st.columns(len(OFFICES))
-        for col, office in zip(cols, OFFICES):
-            with col:
-                st.markdown(f"**{office}**")
-                office_rows = stock_df[stock_df['office'] == office] if 'office' in stock_df.columns else pd.DataFrame()
-                if office_rows.empty:
-                    st.caption("No data")
-                else:
-                    for _, row in office_rows.iterrows():
-                        st.metric(row.get('device_type', '—'), int(row.get('in_hand', 0)))
-                        if row.get('notes'):
-                            st.caption(row['notes'])
+        allocated_count = 0
+    unallocated_count = total_in_hand - allocated_count
+
+    pending_orders_df = (
+        orders_df[orders_df['status'] == 'ordered']
+        if not orders_df.empty and 'status' in orders_df.columns
+        else pd.DataFrame()
+    )
+    total_on_order = (
+        int(pending_orders_df['quantity'].sum())
+        if not pending_orders_df.empty and 'quantity' in pending_orders_df.columns
+        else 0
+    )
+
+    active_plans_df = (
+        plans_df[plans_df['status'].isin(['planned', 'confirmed'])]
+        if not plans_df.empty and 'status' in plans_df.columns
+        else pd.DataFrame()
+    )
+    total_needed = (
+        int(active_plans_df['units_needed'].sum())
+        if not active_plans_df.empty and 'units_needed' in active_plans_df.columns
+        else 0
+    )
+
+    total_available = total_in_hand + total_on_order
+    total_gap = max(0, total_needed - total_available)
+    total_surplus = max(0, total_available - total_needed)
+
+    # ── KPI cards ─────────────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("In Hand", total_in_hand)
+    k2.metric("Unallocated", unallocated_count)
+    k3.metric("On Order", total_on_order)
+    k4.metric("Planned Need", total_needed)
+    if total_gap > 0:
+        k5.metric("Shortfall", f"-{total_gap}", delta=f"-{total_gap}", delta_color="inverse")
+    elif total_surplus > 0:
+        k5.metric("Surplus", f"+{total_surplus}", delta=f"+{total_surplus}")
+    else:
+        k5.metric("Coverage", "Exact fit")
+
+    # ── ER cross-reference (only when logged in) ───────────────────────────────
+    if st.session_state.get('authenticated'):
+        _er_source_assignment_panel()
+
+    # ── Gap analysis ───────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("⚖️ Gap Analysis by Office & Device Type")
+
+    # Build per-(office, device_type) breakdown from individual stock rows
+    in_hand_counts = {}
+    allocated_counts = {}
+    if not stock_df.empty and 'office' in stock_df.columns and 'device_type' in stock_df.columns and 'status' in stock_df.columns:
+        ih = stock_df[stock_df['status'] == 'in_hand']
+        for _, row in ih.iterrows():
+            key = (str(row.get('office', '')), str(row.get('device_type', '')))
+            in_hand_counts[key] = in_hand_counts.get(key, 0) + 1
+            if 'allocated_project' in row and str(row['allocated_project']).strip():
+                allocated_counts[key] = allocated_counts.get(key, 0) + 1
+
+    on_order_counts = {}
+    if not pending_orders_df.empty and 'office' in pending_orders_df.columns and 'device_type' in pending_orders_df.columns:
+        for _, row in pending_orders_df.iterrows():
+            key = (str(row.get('office', '')), str(row.get('device_type', '')))
+            on_order_counts[key] = on_order_counts.get(key, 0) + int(row.get('quantity', 0))
+
+    needed_counts = {}
+    if not active_plans_df.empty and 'office' in active_plans_df.columns and 'device_type' in active_plans_df.columns:
+        for _, row in active_plans_df.iterrows():
+            key = (str(row.get('office', '')), str(row.get('device_type', '')))
+            needed_counts[key] = needed_counts.get(key, 0) + int(row.get('units_needed', 0))
+
+    all_keys = sorted(set(in_hand_counts) | set(on_order_counts) | set(needed_counts))
+    if all_keys:
+        gap_rows = []
+        for office, device in all_keys:
+            key = (office, device)
+            ih = in_hand_counts.get(key, 0)
+            alloc = allocated_counts.get(key, 0)
+            oo = on_order_counts.get(key, 0)
+            need = needed_counts.get(key, 0)
+            avail = ih + oo
+            gap_rows.append({
+                'Office': office,
+                'Device Type': device,
+                'In Hand': ih,
+                'Allocated': alloc,
+                'Unallocated': ih - alloc,
+                'On Order': oo,
+                'Needed': need,
+                'Gap': max(0, need - avail),
+                'Surplus': max(0, avail - need),
+            })
+        gap_df = pd.DataFrame(gap_rows)
+
+        if gap_df['Gap'].sum() == 0:
+            st.success("✅ You have enough units for all planned deployments.")
+        else:
+            st.error(f"⚠️ You need to order {int(gap_df['Gap'].sum())} more units across all offices.")
+
+        def _highlight_gap(row):
+            if row['Gap'] > 0:
+                return ['background-color: #ffcccc'] * len(row)
+            elif row['Surplus'] > 0:
+                return ['background-color: #ccffcc'] * len(row)
+            return [''] * len(row)
+
+        st.dataframe(gap_df.style.apply(_highlight_gap, axis=1), use_container_width=True, hide_index=True)
+    else:
+        st.info("Add stock and deployment plan data to see the gap analysis.")
+
+    # ── Filters (apply to the three detail sections below) ────────────────────
+    st.markdown("---")
+    all_offices = sorted({
+        str(v) for df in [stock_df, orders_df, plans_df]
+        if not df.empty and 'office' in df.columns
+        for v in df['office'].dropna()
+    })
+    all_device_types = sorted({
+        str(v) for df in [stock_df, orders_df, plans_df]
+        if not df.empty and 'device_type' in df.columns
+        for v in df['device_type'].dropna()
+    })
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        filter_office = st.multiselect("Filter by office", all_offices, key="stock_filter_office")
+    with fc2:
+        filter_device = st.multiselect("Filter by device type", all_device_types, key="stock_filter_device")
+
+    def _apply_filters(df):
+        if df.empty:
+            return df
+        if filter_office and 'office' in df.columns:
+            df = df[df['office'].isin(filter_office)]
+        if filter_device and 'device_type' in df.columns:
+            df = df[df['device_type'].isin(filter_device)]
+        return df
+
+    # ── Units in hand (individual) ─────────────────────────────────────────────
+    st.subheader("📦 Units in Hand")
+
+    display_stock = _apply_filters(stock_df.copy()) if not stock_df.empty else stock_df
+    if display_stock.empty:
+        st.info("No unit data found. Add rows to the `stock` tab in your Google Sheet.")
+    else:
+        status_filter = st.radio(
+            "Show", ["In hand", "Deployed", "All"], horizontal=True, key="stock_status_radio"
+        )
+        if status_filter == "In hand":
+            display_stock = display_stock[display_stock['status'] == 'in_hand'] if 'status' in display_stock.columns else display_stock
+        elif status_filter == "Deployed":
+            display_stock = display_stock[display_stock['status'] == 'deployed'] if 'status' in display_stock.columns else display_stock
+
+        if display_stock.empty:
+            st.info(f"No units with status '{status_filter.lower()}'.")
+        else:
+            display_cols = [c for c in ['unit_id', 'serial_no', 'device_type', 'office', 'status', 'allocated_project', 'allocated_site', 'planned_date', 'notes'] if c in display_stock.columns]
+            st.dataframe(display_stock[display_cols], use_container_width=True, hide_index=True)
 
     # ── Pending orders ─────────────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("🚚 Pending Orders")
 
-    if orders_df.empty:
+    display_orders = _apply_filters(orders_df.copy()) if not orders_df.empty else orders_df
+    if display_orders.empty:
         st.info("No orders found. Add rows to the `orders` tab in your Google Sheet.")
     else:
-        if 'status' in orders_df.columns:
-            pending = orders_df[~orders_df['status'].str.lower().isin(['received', 'cancelled'])]
+        if 'status' in display_orders.columns:
+            pending = display_orders[~display_orders['status'].isin(['received', 'cancelled'])]
         else:
-            pending = orders_df
+            pending = display_orders
 
         if pending.empty:
             st.success("No pending orders — all orders received or cancelled.")
         else:
             st.dataframe(pending, use_container_width=True, hide_index=True)
 
-        if len(orders_df) > len(pending):
-            with st.expander(f"All orders ({len(orders_df)} total)"):
-                st.dataframe(orders_df, use_container_width=True, hide_index=True)
+        if len(display_orders) > len(pending):
+            with st.expander(f"All orders ({len(display_orders)} total)"):
+                st.dataframe(display_orders, use_container_width=True, hide_index=True)
 
     # ── Deployment plans ───────────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("📋 Deployment Plans")
 
-    if plans_df.empty:
+    display_plans = _apply_filters(plans_df.copy()) if not plans_df.empty else plans_df
+    if display_plans.empty:
         st.info("No deployment plans found. Add rows to the `deployment_plans` tab in your Google Sheet.")
     else:
-        if 'status' in plans_df.columns:
-            active_plans = plans_df[~plans_df['status'].str.lower().isin(['completed', 'cancelled'])]
+        if 'status' in display_plans.columns:
+            active_display = display_plans[~display_plans['status'].isin(['completed', 'cancelled'])]
         else:
-            active_plans = plans_df
+            active_display = display_plans
 
-        if not active_plans.empty:
-            st.dataframe(active_plans, use_container_width=True, hide_index=True)
+        if not active_display.empty:
+            if 'planned_date' in active_display.columns:
+                active_display = active_display.sort_values('planned_date', na_position='last')
+            st.dataframe(active_display, use_container_width=True, hide_index=True)
+        else:
+            st.info("No active plans.")
 
-        if len(plans_df) > len(active_plans):
-            with st.expander(f"All plans ({len(plans_df)} total)"):
-                st.dataframe(plans_df, use_container_width=True, hide_index=True)
-
-    # ── Gap analysis ───────────────────────────────────────────────────────────
-    st.markdown("---")
-    st.subheader("⚖️ Do I Need to Order?")
-
-    if stock_df.empty and plans_df.empty:
-        st.info("Add stock and deployment plan data to see the gap analysis.")
-        return
-
-    # in_hand per (office, device_type)
-    in_hand = {}
-    if not stock_df.empty and 'office' in stock_df.columns and 'device_type' in stock_df.columns:
-        for _, row in stock_df.iterrows():
-            in_hand[(row['office'], row['device_type'])] = int(row.get('in_hand', 0))
-
-    # on_order per (office, device_type) — orders with status='ordered'
-    on_order = {}
-    if not orders_df.empty and 'office' in orders_df.columns and 'device_type' in orders_df.columns:
-        pending_orders = (
-            orders_df[orders_df['status'].str.lower() == 'ordered']
-            if 'status' in orders_df.columns else orders_df
-        )
-        for _, row in pending_orders.iterrows():
-            key = (row.get('office', ''), row.get('device_type', ''))
-            on_order[key] = on_order.get(key, 0) + int(row.get('quantity', 0))
-
-    # needed per (office, device_type) — plans with status planned/confirmed
-    needed = {}
-    if not plans_df.empty and 'office' in plans_df.columns and 'device_type' in plans_df.columns:
-        active = (
-            plans_df[plans_df['status'].str.lower().isin(['planned', 'confirmed'])]
-            if 'status' in plans_df.columns else plans_df
-        )
-        for _, row in active.iterrows():
-            key = (row.get('office', ''), row.get('device_type', ''))
-            needed[key] = needed.get(key, 0) + int(row.get('units_needed', 0))
-
-    all_keys = sorted(set(in_hand) | set(on_order) | set(needed))
-    if not all_keys:
-        st.info("Not enough data to calculate gaps.")
-        return
-
-    gap_rows = []
-    for office, device in all_keys:
-        key = (office, device)
-        avail = in_hand.get(key, 0) + on_order.get(key, 0)
-        req = needed.get(key, 0)
-        gap_rows.append({
-            'Office': office,
-            'Device Type': device,
-            'In Hand': in_hand.get(key, 0),
-            'On Order': on_order.get(key, 0),
-            'Available': avail,
-            'Needed': req,
-            'Gap': max(0, req - avail),
-            'Surplus': max(0, avail - req),
-        })
-
-    gap_df = pd.DataFrame(gap_rows)
-    total_gap = gap_df['Gap'].sum()
-
-    if total_gap == 0:
-        st.success("✅ You have enough units for all planned deployments.")
-    else:
-        st.error(f"⚠️ You need to order {int(total_gap)} more units across all offices.")
-
-    def _highlight_gap(row):
-        if row['Gap'] > 0:
-            return ['background-color: #ffcccc'] * len(row)
-        elif row['Surplus'] > 0:
-            return ['background-color: #ccffcc'] * len(row)
-        return [''] * len(row)
-
-    st.dataframe(gap_df.style.apply(_highlight_gap, axis=1), use_container_width=True, hide_index=True)
+        if len(display_plans) > len(active_display):
+            with st.expander(f"All plans ({len(display_plans)} total)"):
+                st.dataframe(display_plans, use_container_width=True, hide_index=True)
 
 
 # --- EarthRanger connection ---
@@ -880,6 +1029,483 @@ def render_unit_update_upload_tab():
         st.info("The new events will appear in the **Unit Update Events** section after the next data refresh.")
 
 
+# --- Iridium Invoice Calculator ---
+
+ER_SERVER = "https://twiga.pamdas.org"
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_subjectsources_all(_username, _password):
+    """Fetch all subject-source assignments (deployment dates) from EarthRanger."""
+    er = EarthRangerIO(server=ER_SERVER, username=_username, password=_password)
+    all_results = []
+    url = f"{ER_SERVER}/api/v1.0/subjectsources/?page_size=500&include_inactive=true"
+    while url:
+        resp = er._http_session.get(url, headers=er.auth_headers())
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, list):
+            all_results.extend(data)
+            break
+        inner = data.get('data', data)
+        if isinstance(inner, dict):
+            all_results.extend(inner.get('results', []))
+            url = inner.get('next')
+        elif isinstance(inner, list):
+            all_results.extend(inner)
+            url = data.get('next')
+        else:
+            break
+    return all_results
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_recently_active_sources(_username, _password, source_ids_tuple, since_iso, until_iso):
+    """Return the subset of source IDs that have any observation between since_iso and until_iso.
+
+    Both since AND until are required — the ER observations endpoint ignores a lone
+    'since' and returns arbitrary historical records.  Passing until=today gives the
+    same since+until pattern used by the billing month checks, which is confirmed working.
+
+    Cached for 1 hour — reflects current deployment status, changes infrequently.
+    """
+    er = EarthRangerIO(server=ER_SERVER, username=_username, password=_password)
+    headers = er.auth_headers()
+    active = set()
+    for source_id in source_ids_tuple:
+        url = (
+            f"{ER_SERVER}/api/v1.0/observations/"
+            f"?source_id={source_id}&since={since_iso}&until={until_iso}&page_size=1"
+        )
+        try:
+            resp = er._http_session.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get('results') or data.get('data', {}).get('results', [])
+            if items:
+                active.add(source_id)
+        except Exception:
+            pass
+    return active
+
+
+def fetch_all_source_active_months(_username, _password, source_ids_tuple, billing_months_tuple):
+    """Check which billing months each source had GPS observations.
+
+    Makes one lightweight REST call (page_size=1) per source per billing month,
+    all reusing the same authenticated session.
+    Returns dict: source_id → set of (year, month) tuples.
+    """
+    er = EarthRangerIO(server=ER_SERVER, username=_username, password=_password)
+    headers = er.auth_headers()
+    results = {sid: set() for sid in source_ids_tuple}
+
+    for source_id in source_ids_tuple:
+        for y, m in billing_months_tuple:
+            m_start = date(y, m, 1).isoformat()
+            m_end = date(y, m, calendar.monthrange(y, m)[1]).isoformat()
+            url = (
+                f"{ER_SERVER}/api/v1.0/observations/"
+                f"?source_id={source_id}&since={m_start}&until={m_end}&page_size=1"
+            )
+            try:
+                resp = er._http_session.get(url, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                items = data.get('results') or data.get('data', {}).get('results', [])
+                if items:
+                    results[source_id].add((y, m))
+            except Exception:
+                pass
+
+    return results
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_unit_updates_for_billing(_username, _password, since_iso, until_iso):
+    """Fetch unit_update monitoring events and return a tidy DataFrame.
+
+    Returns columns: source_id (str, the ER source UUID from unitupdate_unitid),
+    action (str, lowercased + normalised), time.
+    """
+    er = EarthRangerIO(server=ER_SERVER, username=_username, password=_password)
+    try:
+        gdf = er.get_events(
+            event_category='monitoring',
+            event_type=['7bb99e0c-9d37-405b-b8e7-edca8e9b5d6b'],
+            since=since_iso,
+            until=until_iso,
+            include_details=True,
+            drop_null_geometry=False,
+        )
+        if gdf is None or gdf.empty:
+            return pd.DataFrame(columns=['source_id', 'action', 'time'])
+        df = pd.DataFrame(gdf)
+        records = []
+        for _, row in df.iterrows():
+            unit_id = action = None
+            # ecoscope may flatten event_details into direct columns
+            if 'unitupdate_unitid' in row.index:
+                unit_id = row.get('unitupdate_unitid')
+            if 'unitupdate_action' in row.index:
+                action = row.get('unitupdate_action')
+            # fall back to nested event_details dict
+            if not unit_id or not action:
+                details = row.get('event_details') or {}
+                if isinstance(details, dict):
+                    unit_id = unit_id or details.get('unitupdate_unitid')
+                    action = action or details.get('unitupdate_action')
+            if unit_id and action:
+                # Normalise action string: lowercase, spaces → underscores
+                action_norm = str(action).strip().lower().replace(' ', '_')
+                records.append({
+                    'source_id': str(unit_id).strip(),
+                    'action': action_norm,
+                    'time': row.get('time') or row.get('created_at'),
+                })
+        return pd.DataFrame(records) if records else pd.DataFrame(columns=['source_id', 'action', 'time'])
+    except Exception as e:
+        st.warning(f"Could not load unit_update events: {e}")
+        return pd.DataFrame(columns=['source_id', 'action', 'time'])
+
+
+def _billing_months(start_d, end_d):
+    """Return list of (year, month) tuples covering start_d through end_d."""
+    months = []
+    d = start_d.replace(day=1)
+    while d <= end_d:
+        months.append((d.year, d.month))
+        d = (d.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return months
+
+
+def iridium_invoice_tab():
+    """Iridium satellite billing validator."""
+    st.header("📡 Iridium Invoice Calculator")
+    st.caption(
+        "Validate your quarterly Iridium satellite bill by checking which units "
+        "were active each month of the billing period."
+    )
+
+    # ── Billing parameters ────────────────────────────────────────────────────
+    st.subheader("⚙️ Billing Parameters")
+
+    # Default: most recent complete calendar quarter
+    today = datetime.utcnow().date()
+    q = (today.month - 1) // 3          # 0-based quarter of current month
+    if q == 0:
+        def_start = date(today.year - 1, 10, 1)
+        def_end = date(today.year - 1, 12, 31)
+    else:
+        def_start = date(today.year, (q - 1) * 3 + 1, 1)
+        end_month = q * 3
+        def_end = date(today.year, end_month, calendar.monthrange(today.year, end_month)[1])
+
+    c1, c2 = st.columns(2)
+    with c1:
+        start_date = st.date_input("Billing period start", value=def_start, key="inv_start")
+        cost_active = st.number_input(
+            "Active unit cost (USD/month)", min_value=0.0, value=41.0, step=1.0, key="inv_cost_active"
+        )
+        cost_suspended = st.number_input(
+            "Suspended unit cost (USD/month)", min_value=0.0, value=3.0, step=1.0, key="inv_cost_suspended"
+        )
+        schedule_change_fee = st.number_input(
+            "Schedule change fee (USD/event)", min_value=0.0, value=0.50, step=0.10, key="inv_sched_fee"
+        )
+    with c2:
+        end_date = st.date_input("Billing period end", value=def_end, key="inv_end")
+        activation_fee = st.number_input(
+            "Activation fee (USD/event)", min_value=0.0, value=30.0, step=1.0, key="inv_activation"
+        )
+        suspension_fee = st.number_input(
+            "Suspension fee, one-time (USD/event)", min_value=0.0, value=3.0, step=1.0, key="inv_susp_fee"
+        )
+
+    manufacturer = st.selectbox(
+        "Manufacturer", ["SpoorTrack"], key="inv_manufacturer",
+        help="Filter to units from this manufacturer. Additional providers can be added in future."
+    )
+
+    with st.expander("Suspended units (charged at reduced rate)", expanded=False):
+        st.caption("Enter one unit ID per line (collar_key as shown in EarthRanger).")
+        suspended_text = st.text_area(
+            "Suspended unit IDs", height=150, key="inv_suspended",
+            placeholder="STC-001\nSTC-002\n..."
+        )
+    suspended_units = {u.strip() for u in suspended_text.splitlines() if u.strip()}
+
+    if start_date > end_date:
+        st.error("Start date must be before end date.")
+        return
+
+    if not st.button("🧮 Calculate Invoice", type="primary", key="inv_calc"):
+        return
+
+    # ── Fetch sources ─────────────────────────────────────────────────────────
+    provider_key = MANUFACTURER_PROVIDER.get(manufacturer)   # e.g. 'spoortrack'
+    with st.spinner("Loading EarthRanger sources..."):
+        sources = get_all_sources(st.session_state.username, st.session_state.password)
+
+    if sources is None or sources.empty:
+        st.error("Could not load EarthRanger sources.")
+        return
+
+    mfr_sources = sources[
+        (sources['source_type'] == 'tracking-device') &
+        (sources['provider'] == provider_key)
+    ].copy()
+
+    if mfr_sources.empty:
+        st.warning(f"No {manufacturer} tracking sources found in EarthRanger.")
+        return
+
+    mfr_sources['unit_label'] = mfr_sources['collar_key'].fillna(mfr_sources['id']).astype(str)
+    source_id_to_label = dict(zip(mfr_sources['id'].astype(str), mfr_sources['unit_label']))
+    source_ids = list(mfr_sources['id'].astype(str))
+
+    # Extract source creation date — when the unit was first activated in ER.
+    # Try common column names returned by ecoscope/ER API.
+    created_col = next(
+        (c for c in ('created_at', 'sourceCreated', 'created', 'source_created')
+         if c in mfr_sources.columns),
+        None
+    )
+    source_id_to_created = {}
+    if created_col:
+        for _, src_row in mfr_sources.iterrows():
+            val = src_row.get(created_col)
+            if pd.notna(val):
+                try:
+                    source_id_to_created[str(src_row['id'])] = pd.to_datetime(val).date()
+                except Exception:
+                    pass
+    else:
+        st.info(
+            "Source creation date not found in EarthRanger data — "
+            f"available columns: {list(mfr_sources.columns)}. "
+            "Activation fees cannot be calculated."
+        )
+
+    # ── Fetch deployment assignments ──────────────────────────────────────────
+    with st.spinner("Loading deployment assignments..."):
+        try:
+            subjectsources = fetch_subjectsources_all(
+                st.session_state.username, st.session_state.password
+            )
+        except Exception as e:
+            st.warning(f"Could not load deployment data ({e}). Deployment start dates will not be available.")
+            subjectsources = []
+
+    # Build lookup: source_id → {deploy_start, subject_name}
+    deploy_info = {}
+    for ss in (subjectsources or []):
+        if not isinstance(ss, dict):
+            continue
+        src_id = str(ss.get('source') or ss.get('source_id') or '').strip()
+        if src_id not in source_id_to_label:
+            continue
+        ar = ss.get('assigned_range') or {}
+        dep_start_str = ar.get('lower')
+        dep_start = None
+        if dep_start_str:
+            try:
+                dep_start = pd.to_datetime(dep_start_str).date()
+            except Exception:
+                pass
+        subject_info = ss.get('subject') or {}
+        subject_name = ''
+        _uuid_pat = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        if isinstance(subject_info, dict):
+            subject_name = subject_info.get('name') or subject_info.get('display_name') or ''
+        elif isinstance(subject_info, str):
+            import re
+            if not re.match(_uuid_pat, subject_info.strip(), re.I):
+                subject_name = subject_info
+
+        # Keep most recent deployment start for this source
+        if src_id not in deploy_info or (
+            dep_start and deploy_info[src_id]['deploy_start']
+            and dep_start > deploy_info[src_id]['deploy_start']
+        ):
+            deploy_info[src_id] = {'deploy_start': dep_start, 'subject_name': subject_name}
+
+    # ── Pre-filter: drop units with no data in the last 3 months from today ─────
+    # A unit is inactive if its last-ever observation was > 90 days ago.
+    today_iso = datetime.utcnow().date().isoformat()
+    activity_cutoff = (datetime.utcnow().date() - timedelta(days=90)).isoformat()
+    with st.spinner(
+        f"Checking which {manufacturer} units are currently active "
+        f"(data since {activity_cutoff})…"
+    ):
+        recently_active_ids = fetch_recently_active_sources(
+            st.session_state.username,
+            st.session_state.password,
+            tuple(sorted(source_ids)),
+            activity_cutoff,
+            today_iso,
+        )
+    source_ids = [s for s in source_ids if s in recently_active_ids]
+    if not source_ids:
+        st.warning(f"No {manufacturer} units with data in the last 90 days.")
+        return
+    st.caption(
+        f"Filtered to **{len(source_ids)}** currently active {manufacturer} units "
+        f"(last data within 90 days of today)."
+    )
+
+    # ── Check which months each source had GPS activity ───────────────────────
+    since_iso = start_date.isoformat()
+    until_iso = end_date.isoformat()
+    billing_ym = _billing_months(start_date, end_date)
+    month_labels = [datetime(y, m, 1).strftime("%b %Y") for y, m in billing_ym]
+    n_checks = len(source_ids) * len(billing_ym)
+
+    with st.spinner(
+        f"Checking activity for {len(source_ids)} {manufacturer} units × "
+        f"{len(billing_ym)} months ({n_checks} requests) — cached for 30 min…"
+    ):
+        active_months_per_source = fetch_all_source_active_months(
+            st.session_state.username,
+            st.session_state.password,
+            tuple(sorted(source_ids)),
+            tuple(billing_ym),
+        )
+
+    # ── Fetch unit_update events ───────────────────────────────────────────────
+    with st.spinner("Loading unit_update events..."):
+        events_df = fetch_unit_updates_for_billing(
+            st.session_state.username, st.session_state.password,
+            since_iso, until_iso,
+        )
+
+    # Per-source event counts keyed by normalised action
+    # unitupdate_unitid stores the source UUID — match directly against source_ids
+    source_events = {sid: {'activated': 0, 'suspended': 0, 'schedule_change': 0, 'deactivated': 0}
+                     for sid in source_ids}
+    if not events_df.empty:
+        for _, ev in events_df.iterrows():
+            src_id = str(ev['source_id']).strip()
+            action = str(ev['action']).strip()
+            if src_id in source_events and action in source_events[src_id]:
+                source_events[src_id][action] += 1
+
+    if not events_df.empty:
+        st.caption(
+            f"Loaded {len(events_df)} unit_update event(s) — "
+            f"{events_df['action'].value_counts().to_dict()}"
+        )
+
+    # ── Build billing table ───────────────────────────────────────────────────
+    rows = []
+    for src_id in source_ids:
+        active_in = active_months_per_source[src_id]
+        evts = source_events.get(src_id, {})
+        # Include rows that either had GPS activity OR had a unit_update event this period
+        if not active_in and not any(evts.values()):
+            continue
+        unit_label = source_id_to_label[src_id]
+        info = deploy_info.get(src_id, {})
+        subject_name = info.get('subject_name', '')
+
+        source_created = source_id_to_created.get(src_id)
+        is_suspended = unit_label in suspended_units
+        n_months = len(active_in)
+        rate = cost_suspended if is_suspended else cost_active
+
+        # Event-based fees
+        # Activation: use unit_update 'activated' events (more accurate than sourceCreated).
+        # Fall back to sourceCreated only if no activated events were recorded.
+        n_activations = evts.get('activated', 0)
+        n_suspensions = evts.get('suspended', 0)
+        n_schedule_changes = evts.get('schedule_change', 0)
+        n_deactivations = evts.get('deactivated', 0)
+
+        if n_activations > 0:
+            act_fee = n_activations * activation_fee
+        elif source_created is not None and start_date <= source_created <= end_date:
+            act_fee = activation_fee   # sourceCreated fallback for new units
+            n_activations = 1          # treat as 1 implicit activation
+        else:
+            act_fee = 0.0
+
+        susp_fee = n_suspensions * suspension_fee
+        sched_fee = n_schedule_changes * schedule_change_fee
+
+        row = {
+            'Unit ID': unit_label,
+            'Subject': subject_name,
+            'Status': 'Suspended' if is_suspended else 'Active',
+            'Source Created': source_created.strftime('%Y-%m-%d') if source_created else '',
+        }
+        for (y, m), label in zip(billing_ym, month_labels):
+            row[label] = '✓' if (y, m) in active_in else ''
+        row.update({
+            'Months Active': n_months,
+            'Rate ($/mo)': rate,
+            'Monthly Cost ($)': n_months * rate,
+            'Activations': n_activations,
+            'Activation ($)': act_fee,
+            'Suspensions': n_suspensions,
+            'Suspension ($)': susp_fee,
+            'Sched. Changes': n_schedule_changes,
+            'Sched. Change ($)': sched_fee,
+            'Deactivations': n_deactivations,
+            'Total ($)': n_months * rate + act_fee + susp_fee + sched_fee,
+        })
+        rows.append(row)
+
+    if not rows:
+        st.warning(
+            f"No {manufacturer} units with activity found between {start_date} and {end_date}."
+        )
+        return
+
+    billing_df = pd.DataFrame(rows).sort_values(['Status', 'Unit ID']).reset_index(drop=True)
+
+    # ── Display results ────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("📊 Invoice Summary")
+
+    n_active_units = (billing_df['Status'] == 'Active').sum()
+    n_suspended_units = (billing_df['Status'] == 'Suspended').sum()
+    total_monthly = billing_df['Monthly Cost ($)'].sum()
+    total_activation = billing_df['Activation ($)'].sum()
+    total_suspension = billing_df['Suspension ($)'].sum()
+    total_sched = billing_df['Sched. Change ($)'].sum()
+    total_invoice = billing_df['Total ($)'].sum()
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Units", len(billing_df))
+    m2.metric("Active", n_active_units)
+    m3.metric("Suspended", n_suspended_units)
+    m4.metric("Schedule Changes", int(billing_df['Sched. Changes'].sum()))
+
+    st.markdown("#### Monthly Breakdown")
+    monthly_rows = []
+    for (y, m), label in zip(billing_ym, month_labels):
+        n = billing_df[label].str.strip().eq('✓').sum()
+        monthly_rows.append({'Month': label, 'Units Active': n, 'Est. Cost ($)': n * cost_active})
+    st.dataframe(pd.DataFrame(monthly_rows), use_container_width=True, hide_index=True)
+
+    st.markdown("#### Estimated Invoice Total")
+    i1, i2, i3, i4, i5 = st.columns(5)
+    i1.metric("Monthly", f"${total_monthly:,.2f}")
+    i2.metric("Activations", f"${total_activation:,.2f}")
+    i3.metric("Suspensions", f"${total_suspension:,.2f}")
+    i4.metric("Sched. Changes", f"${total_sched:,.2f}")
+    i5.metric("TOTAL", f"${total_invoice:,.2f}")
+
+    st.markdown("---")
+    st.subheader("📋 Unit Detail")
+    st.dataframe(billing_df, use_container_width=True, hide_index=True)
+
+    csv = billing_df.to_csv(index=False).encode('utf-8')
+    fname = f"{manufacturer}_invoice_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.csv"
+    st.download_button("⬇️ Download CSV", data=csv, file_name=fname, mime='text/csv', key="inv_download")
+
+
 # --- Main entry point ---
 
 def _main_implementation():
@@ -897,13 +1523,15 @@ def _main_implementation():
         st.sidebar.write(f"**User:** {st.session_state.username}")
         st.sidebar.write("**Server:** https://twiga.pamdas.org")
 
-    tab1, tab2, tab3 = st.tabs(["🔍 Unit Check", "📦 Stock & Planning", "📥 Upload Events"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🔍 Unit Check", "📦 Stock & Planning", "📥 Upload Events", "📡 Iridium Invoice"])
     with tab1:
         unit_check_tab()
     with tab2:
         stock_planning_tab()
     with tab3:
         render_unit_update_upload_tab()
+    with tab4:
+        iridium_invoice_tab()
 
     st.sidebar.markdown("---")
     st.sidebar.subheader("🔧 Options")
@@ -911,6 +1539,10 @@ def _main_implementation():
     if st.sidebar.button("🔄 Refresh Data"):
         get_all_sources.clear()
         load_stock_sheet_data.clear()
+        fetch_subjectsources_all.clear()
+        fetch_recently_active_sources.clear()
+        fetch_all_source_active_months.clear()
+        fetch_unit_updates_for_billing.clear()
         st.rerun()
 
     if st.sidebar.button("🔓 Logout"):
