@@ -264,19 +264,28 @@ def get_range_expansion_metrics(start_date, end_date):
             return 0, 0, []
         
         total_founder_translocations = 0
+        total_augmentation_translocations = 0
+        total_relocation_translocations = 0
         total_range_secured = 0
         range_details = []
         processed_locations = set()  # Track unique locations to avoid double counting
-        
+
         for idx, event in events_df.iterrows():
             event_details = event.get('event_details', {})
             if isinstance(event_details, dict):
                 trans_type = event_details.get('translocation_type') or event_details.get('trans_type')
                 if isinstance(trans_type, dict):
                     trans_type = trans_type.get('name') or trans_type.get('type') or ''
+                trans_type_lower = str(trans_type).lower() if trans_type else ''
 
-                # Only count FOUNDER translocations
-                if trans_type and str(trans_type).lower() == 'founder':
+                # Tally augmentation and relocation counts
+                if trans_type_lower == 'augmentation':
+                    total_augmentation_translocations += 1
+                elif trans_type_lower == 'relocation':
+                    total_relocation_translocations += 1
+
+                # Only count FOUNDER translocations for range expansion
+                if trans_type_lower == 'founder':
                     total_founder_translocations += 1
                     
                     # Extract species information
@@ -333,8 +342,8 @@ def get_range_expansion_metrics(start_date, end_date):
                                     'date': event['time'].strftime('%Y-%m-%d') if 'time' in event else 'Unknown'
                                 })
         
-        return total_founder_translocations, total_range_secured, range_details
-        
+        return total_founder_translocations, total_range_secured, range_details, total_augmentation_translocations, total_relocation_translocations
+
     except Exception as e:
         st.error(f"Error calculating range expansion metrics: {str(e)}")
         # Add debug information
@@ -345,7 +354,7 @@ def get_range_expansion_metrics(start_date, end_date):
                 st.error(f"Sample trans_type: {trans_type}")
             if 'dest_location' in locals():
                 st.error(f"Sample dest_location: {dest_location} (type: {type(dest_location)})")
-        return 0, 0, []
+        return 0, 0, [], 0, 0
 
 def create_metric_card(value, label, description="", icon="📊"):
     """Create a styled metric card"""
@@ -441,10 +450,10 @@ def impact_dashboard():
     # --- END DIAGNOSTIC ---
 
     with st.spinner("Calculating range expansion metrics..."):
-        num_founder_translocations, total_km2, range_details = get_range_expansion_metrics(start_date, end_date)
-    
+        num_founder_translocations, total_km2, range_details, num_augmentation, num_relocation = get_range_expansion_metrics(start_date, end_date)
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown(
             create_metric_card(
@@ -455,7 +464,7 @@ def impact_dashboard():
             ),
             unsafe_allow_html=True
         )
-    
+
     with col2:
         st.markdown(
             create_metric_card(
@@ -466,7 +475,24 @@ def impact_dashboard():
             ),
             unsafe_allow_html=True
         )
-    
+
+    # Secondary row — augmentation & relocation counts (smaller, unstyled)
+    scol1, scol2 = st.columns(2)
+    with scol1:
+        st.markdown(
+            f"<div style='padding:0.6rem 1rem; color:#6c757d; font-size:0.95rem;'>"
+            f"<span style='font-size:1.4rem; font-weight:600; color:#495057;'>{num_augmentation:,}</span>"
+            f"&nbsp; Augmentation translocations</div>",
+            unsafe_allow_html=True
+        )
+    with scol2:
+        st.markdown(
+            f"<div style='padding:0.6rem 1rem; color:#6c757d; font-size:0.95rem;'>"
+            f"<span style='font-size:1.4rem; font-weight:600; color:#495057;'>{num_relocation:,}</span>"
+            f"&nbsp; Relocation translocations</div>",
+            unsafe_allow_html=True
+        )
+
     # Range details
     if range_details:
         with st.expander("📋 Range Expansion Details"):
