@@ -13,8 +13,6 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 from PIL.ExifTags import TAGS
-sys.path.append(str(Path(__file__).parent.parent))
-from shared.utils import render_page_header
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -296,7 +294,7 @@ def to_xlsx_bytes(df: pd.DataFrame) -> bytes:
 # ─── Main UI ──────────────────────────────────────────────────────────────────
 
 def main():
-    render_page_header("SMART → Wildbook Converter", "Format SMART patrol data for Wildbook bulk import", "📋")
+
 
     # ── Settings ─────────────────────────────────────────────────────────────
     with st.expander("⚙️ Settings", expanded=True):

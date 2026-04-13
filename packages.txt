@@ -1,3 +1,6 @@
 libgeos-dev
 libspatialindex-dev
 libkrb5-dev
+r-base
+r-base-dev
+libgsl-dev

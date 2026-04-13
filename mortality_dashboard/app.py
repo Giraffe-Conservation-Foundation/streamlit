@@ -6,10 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import json
 import os
-import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent))
-from shared.utils import render_page_header
 
 # Ecoscope imports for EarthRanger integration
 try:
@@ -921,7 +918,7 @@ def main():
         authenticate_earthranger()
         return
 
-    render_page_header("Mortality Dashboard", "Death events and post-translocation survival tracking", "☠️")
+
 
     # Sidebar
     st.sidebar.title("Navigation")

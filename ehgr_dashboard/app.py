@@ -9,9 +9,6 @@ import os
 from pathlib import Path
 import geopandas as gpd
 from shapely.geometry import LineString
-import sys
-sys.path.append(str(Path(__file__).parent.parent))
-from shared.utils import render_page_header
 
 def main():
     """Main function for the EHGR Dashboard"""
@@ -70,7 +67,7 @@ def main():
     username = st.session_state["username"]
     password = st.session_state["password"]
 
-    render_page_header("Survey Dashboard — East Africa", "Giraffe survey encounter data", "🦒")
+
 
     # Initialise session state flags for on-demand sections
     for _key in ("ehgr_patrols_loaded", "ehgr_camera_loaded", "ehgr_weather_loaded"):

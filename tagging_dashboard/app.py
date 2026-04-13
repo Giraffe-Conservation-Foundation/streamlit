@@ -13,10 +13,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
 from ecoscope.io.earthranger import EarthRangerIO
-import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent))
-from shared.utils import render_page_header
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -740,7 +737,7 @@ def main():
         authenticate_earthranger()
         return
 
-    render_page_header("Post-Tagging Dashboard", "First 48 hours after collar deployment", "📍")
+
 
     # ── Logout in sidebar
     with st.sidebar:

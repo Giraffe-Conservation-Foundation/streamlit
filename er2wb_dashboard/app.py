@@ -26,8 +26,6 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from ecoscope.io.earthranger import EarthRangerIO
-sys.path.append(str(Path(__file__).parent.parent))
-from shared.utils import render_page_header
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -903,7 +901,7 @@ def build_download_zip(renamed_files: dict, gs_data: pd.DataFrame,
 def main():
     _init_session_state()
 
-    render_page_header("ER → Wildbook Converter", "Format EarthRanger exports for Wildbook bulk import", "🦒")
+
 
     # ── Reset button (only shown once data has been processed) ─────────────────
     if st.session_state.processed_df is not None:

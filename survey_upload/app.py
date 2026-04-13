@@ -10,10 +10,7 @@ from datetime import datetime
 import tempfile
 import zipfile
 import json
-import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent))
-from shared.utils import render_page_header
 from utils import (
     validate_image_file,
     get_image_metadata,
@@ -1291,7 +1288,7 @@ def main():
         authenticate_google_cloud()
         return  # Don't show the rest of the app until authenticated
     
-    render_page_header("Survey Image Upload", "Batch rename and upload survey photos to Google Cloud", "🚗")
+
 
     # Sidebar navigation
     st.sidebar.title("Navigation")

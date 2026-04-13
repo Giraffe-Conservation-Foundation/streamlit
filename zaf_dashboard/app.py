@@ -7,9 +7,6 @@ from pandas import json_normalize, to_datetime
 import requests
 import os
 from pathlib import Path
-import sys
-sys.path.append(str(Path(__file__).parent.parent))
-from shared.utils import render_page_header
 
 def main():
     """Main function for the ZAF Dashboard"""
@@ -68,7 +65,7 @@ def main():
     username = st.session_state["username"]
     password = st.session_state["password"]
 
-    render_page_header("Survey Dashboard — South Africa", "Giraffe survey encounter data", "🦒")
+
 
     # Simplified ZAF dashboard without subject group dependencies
 

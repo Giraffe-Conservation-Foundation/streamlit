@@ -8,10 +8,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import json
-import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent))
-from shared.utils import render_page_header
 
 # Ecoscope imports for EarthRanger integration
 try:
@@ -473,7 +470,7 @@ def main():
         authenticate_earthranger()
         return
 
-    render_page_header("Life History", "Complete event timeline for any EarthRanger subject", "📜")
+
 
     # Logout button
     with st.sidebar:

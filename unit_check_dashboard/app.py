@@ -8,10 +8,7 @@ from ecoscope.io.earthranger import EarthRangerIO
 import gspread
 from google.oauth2.service_account import Credentials
 import json
-import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent))
-from shared.utils import render_page_header
 
 
 def main():
@@ -1519,7 +1516,7 @@ def _main_implementation():
         authenticate_earthranger()
         return
 
-    render_page_header("GPS Unit Check", "Monitor tracking device health · battery · fix history", "🔋")
+
 
     st.sidebar.markdown("### 🔐 Authentication ✅")
     if st.session_state.get('username'):

@@ -9,11 +9,8 @@ from arcgis.gis import GIS
 from arcgis.features import FeatureLayer
 from arcgis.geometry import Point
 import os
-import sys
 from pathlib import Path
 import json
-sys.path.append(str(Path(__file__).parent.parent))
-from shared.utils import render_page_header
 
 # DEBUG: Check secrets at module load time
 try:
@@ -522,7 +519,7 @@ def main():
     if not check_password():
         st.stop()
 
-    render_page_header("Translocation Site Assessment", "GEE + ArcGIS habitat suitability analysis", "🗺️")
+
 
     # Load data
     with st.spinner("Loading GAD data..."):

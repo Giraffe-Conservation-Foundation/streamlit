@@ -30,12 +30,6 @@ try:
 except ImportError:
     FOLIUM_AVAILABLE = False
 
-# Add parent directory to path for shared utilities
-current_dir = Path(__file__).parent
-parent_dir = current_dir.parent
-sys.path.append(str(parent_dir))
-from shared.utils import render_page_header
-
 # Try to import SECR workflow components
 try:
     # Force reload of bailey_analysis module to get latest changes
@@ -131,7 +125,7 @@ def ensure_r_packages():
 def main():
     """Main Streamlit app"""
 
-    render_page_header("SECR Population Analysis", "Spatially-explicit capture-recapture population estimation", "📊")
+
     st.caption("Build: 2026-02-21-MULTI-MODEL-v1")
     st.markdown("---")
     

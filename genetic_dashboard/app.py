@@ -8,10 +8,7 @@ import json
 import os
 import requests as req_lib
 from pandas import json_normalize
-import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent))
-from shared.utils import render_page_header
 
 # ── Sample status constants ────────────────────────────────────────────────
 # Canonical order for all charts, legends, and validation
@@ -86,7 +83,7 @@ def _main_implementation():
     username = st.session_state.username
     password = st.session_state.password
 
-    render_page_header("Genetic Sample Dashboard", "Biological sample tracking and analysis status", "🧬")
+
 
     # Sidebar navigation
     st.sidebar.title("Navigation")
