@@ -8,6 +8,10 @@ import os
 from datetime import datetime
 import tempfile
 import shutil
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from shared.utils import render_page_header
 
 # Note: set_page_config is handled by the main Twiga Tools app
 # st.set_page_config(
@@ -435,7 +439,7 @@ def create_summary_page(grouped_annotations, location_id="Unknown Location"):
 
 # --- STREAMLIT APP ---
 
-#st.title("GiraffeSpotter ID book generator")
+render_page_header("Wildbook ID Book Generator", "Generate PDF photo identification books from Wildbook exports", "📖")
 st.markdown("Generate a photo ID book from a GiraffeSpotter (Wildbook) annotation export. The underlying code was developed by Tech4Conservation for their WildEx platform.")
 
 # How to use instructions - moved to top

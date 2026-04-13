@@ -9,8 +9,11 @@ from arcgis.gis import GIS
 from arcgis.features import FeatureLayer
 from arcgis.geometry import Point
 import os
+import sys
 from pathlib import Path
 import json
+sys.path.append(str(Path(__file__).parent.parent))
+from shared.utils import render_page_header
 
 # DEBUG: Check secrets at module load time
 try:
@@ -515,11 +518,11 @@ def main():
     # Set pandas display options to show all rows
     pd.set_option('display.max_rows', None)
 
-    st.title("🦒 Giraffe Africa Database (GAD v1.2)")
-
     # Check password before showing content
     if not check_password():
         st.stop()
+
+    render_page_header("Translocation Site Assessment", "GEE + ArcGIS habitat suitability analysis", "🗺️")
 
     # Load data
     with st.spinner("Loading GAD data..."):

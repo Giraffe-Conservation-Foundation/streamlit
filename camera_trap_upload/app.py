@@ -10,6 +10,10 @@ from datetime import datetime
 import tempfile
 import zipfile
 import json
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from shared.utils import render_page_header
 from utils import (
     validate_image_file,
     get_image_metadata,
@@ -32,7 +36,7 @@ from utils import (
 st.markdown("""
 <style>
     .logo-title {
-        color: #2E8B57;
+        color: #DB580F;
         font-size: 2.5rem;
         font-weight: bold;
         margin-bottom: 0.5rem;
@@ -1523,12 +1527,14 @@ def main():
         authenticate_google_cloud()
         return  # Don't show the rest of the app until authenticated
     
+    render_page_header("Camera Trap Upload", "Batch rename and upload camera trap images", "📷")
+
     # Sidebar navigation
     st.sidebar.title("Navigation")
-    
+
     # Step 1: Authentication (completed)
     st.sidebar.markdown("### Step 1: Authentication ✅")
-    
+
     # Step 2: Site Selection
     if not st.session_state.site_selection_complete:
         st.sidebar.markdown("### Step 2: Site Selection ❌")

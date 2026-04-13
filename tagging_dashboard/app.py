@@ -13,6 +13,10 @@ import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
 from ecoscope.io.earthranger import EarthRangerIO
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from shared.utils import render_page_header
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -730,17 +734,13 @@ def show_photo_previews(events: list, files_per_event: dict):
 # ---------------------------------------------------------------------------
 
 def main():
-    st.title("📡 Post-Tagging Dashboard")
-    st.markdown(
-        "Review immobilisation records and monitor giraffe welfare during the "
-        "first 48 hours after darting and collar deployment."
-    )
-
     init_session_state()
 
     if not st.session_state.authenticated:
         authenticate_earthranger()
         return
+
+    render_page_header("Post-Tagging Dashboard", "First 48 hours after collar deployment", "📍")
 
     # ── Logout in sidebar
     with st.sidebar:

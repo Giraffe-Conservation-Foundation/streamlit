@@ -6,6 +6,10 @@ from ecoscope.io.earthranger import EarthRangerIO
 from pandas import json_normalize, to_datetime
 import requests
 import os
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from shared.utils import render_page_header
 
 # Force deployment update - timestamp: Sep 3, 2025 - SIMPLIFIED HERD COUNT FIX
 # NANW Dashboard - Fixed double-counting issue in herd metrics (simplified approach)
@@ -62,6 +66,8 @@ if not st.session_state["authenticated"]:
 # After this point, only the dashboard is shown!
 username = st.session_state["username"]
 password = st.session_state["password"]
+
+render_page_header("Survey Dashboard — Namibia NW", "Giraffe encounter monitoring", "🦒")
 
 
 

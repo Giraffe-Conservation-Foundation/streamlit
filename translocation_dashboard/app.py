@@ -4,6 +4,10 @@ from datetime import datetime, timedelta, date
 import plotly.express as px
 import plotly.graph_objects as go
 import os
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from shared.utils import render_page_header
 
 # Ecoscope imports for EarthRanger integration
 try:
@@ -35,7 +39,7 @@ def main():
 st.markdown("""
 <style>
     .logo-title {
-        color: #2E8B57;
+        color: #DB580F;
         font-size: 2.5rem;
         font-weight: bold;
         margin-bottom: 0.5rem;
@@ -51,7 +55,7 @@ st.markdown("""
         background-color: #f0f2f6;
         padding: 1rem;
         border-radius: 0.5rem;
-        border-left: 4px solid #2E8B57;
+        border-left: 4px solid #DB580F;
         margin: 0.5rem 0;
     }
     .translocation-event {
@@ -1887,10 +1891,12 @@ def _main_implementation():
         # Show authentication directly on landing page
         authenticate_earthranger()
         return
-    
+
+    render_page_header("Translocation Dashboard", "Giraffe translocation events · outcomes · survival", "🚁")
+
     # Sidebar navigation
     st.sidebar.title("Navigation")
-    
+
     # Authentication status
     st.sidebar.markdown("### 🔐 Authentication ✅")
     if st.session_state.get('username'):

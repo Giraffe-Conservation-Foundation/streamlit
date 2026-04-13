@@ -8,6 +8,10 @@ import json
 import os
 import requests as req_lib
 from pandas import json_normalize
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from shared.utils import render_page_header
 
 # ── Sample status constants ────────────────────────────────────────────────
 # Canonical order for all charts, legends, and validation
@@ -81,7 +85,9 @@ def _main_implementation():
     # After authentication, set up global variables like NANW dashboard
     username = st.session_state.username
     password = st.session_state.password
-    
+
+    render_page_header("Genetic Sample Dashboard", "Biological sample tracking and analysis status", "🧬")
+
     # Sidebar navigation
     st.sidebar.title("Navigation")
     
@@ -152,7 +158,7 @@ st.markdown("""
     
     /* Logo and header styling */
     .logo-title {
-        color: #2E8B57;
+        color: #DB580F;
         font-size: 2.5rem;
         font-weight: bold;
         margin-bottom: 0.5rem;
@@ -170,7 +176,7 @@ st.markdown("""
         background-color: #f0f2f6;
         padding: 1rem;
         border-radius: 0.5rem;
-        border-left: 4px solid #2E8B57;
+        border-left: 4px solid #DB580F;
         margin: 0.5rem 0;
     }
     .sample-event {
@@ -179,7 +185,7 @@ st.markdown("""
         border-radius: 0.5rem;
         padding: 1rem;
         margin: 0.5rem 0;
-        border-left: 4px solid #28a745;
+        border-left: 4px solid #DB580F;
     }
     
     /* Make dataframes use full width */

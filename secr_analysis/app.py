@@ -34,6 +34,7 @@ except ImportError:
 current_dir = Path(__file__).parent
 parent_dir = current_dir.parent
 sys.path.append(str(parent_dir))
+from shared.utils import render_page_header
 
 # Try to import SECR workflow components
 try:
@@ -129,11 +130,9 @@ def ensure_r_packages():
 
 def main():
     """Main Streamlit app"""
-    
-    # Page title
-    st.title("📊 Multi-Model SECR Analysis")
+
+    render_page_header("SECR Population Analysis", "Spatially-explicit capture-recapture population estimation", "📊")
     st.caption("Build: 2026-02-21-MULTI-MODEL-v1")
-    st.markdown("*Spatially-Explicit Capture-Recapture with Detection Function Comparison*")
     st.markdown("---")
     
     # Introduction

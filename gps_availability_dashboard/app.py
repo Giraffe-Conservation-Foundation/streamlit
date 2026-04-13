@@ -9,6 +9,9 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 from ecoscope.io.earthranger import EarthRangerIO
+import sys
+sys.path.append(str(Path(__file__).parent.parent))
+from shared.utils import render_page_header
 
 ER_SERVER = "https://twiga.pamdas.org"
 
@@ -494,15 +497,11 @@ def main():
 def _main_impl():
     init_session_state()
 
-    st.title("📡 GPS Data Availability")
-    st.markdown(
-        "Quick overview of GPS tracking data by subject group — "
-        "subjects, date coverage, deployments, and tag manufacturers."
-    )
-
     if not st.session_state.authenticated:
         authenticate_earthranger()
         return
+
+    render_page_header("GPS Data Availability", "Subject group coverage and embargo tracking", "🛰️")
 
     username = st.session_state.username
     password = st.session_state.password

@@ -11,18 +11,162 @@ import io
 import streamlit as st
 from pathlib import Path
 
+BRAND_ORANGE = "#DB580F"
+
+# ── Global brand CSS ────────────────────────────────────────────────────────
+# Injected on every page via add_sidebar_logo().
+_BRAND_CSS = """
+<style>
+/* ── GCF page header banner ─────────────────────────────────────── */
+.gcf-header {
+    background: linear-gradient(90deg, #DB580F 0%, #e5661a 100%);
+    padding: 1.5rem 2rem;
+    border-radius: 10px;
+    color: white;
+    margin-bottom: 1.5rem;
+}
+.gcf-header-title {
+    font-size: 2rem;
+    font-weight: bold;
+    margin: 0;
+    color: white !important;
+}
+.gcf-header-subtitle {
+    font-size: 1rem;
+    opacity: 0.9;
+    margin: 0.3rem 0 0 0;
+    color: white !important;
+}
+
+/* ── Metric cards ───────────────────────────────────────────────── */
+.gcf-metric-card {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    padding: 1.5rem;
+    border-radius: 10px;
+    border: 1px solid #dee2e6;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    margin: 0.5rem 0;
+}
+.gcf-metric-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #DB580F;
+    margin-bottom: 0.25rem;
+    line-height: 1.1;
+}
+.gcf-metric-label {
+    font-size: 1rem;
+    color: #6c757d;
+    font-weight: 500;
+}
+.gcf-metric-description {
+    font-size: 0.85rem;
+    color: #868e96;
+    margin-top: 0.4rem;
+}
+
+/* ── Section headers ────────────────────────────────────────────── */
+.gcf-section-header {
+    color: #DB580F;
+    font-size: 1.6rem;
+    font-weight: bold;
+    margin: 1.5rem 0 0.8rem 0;
+    padding-bottom: 0.4rem;
+    border-bottom: 3px solid #DB580F;
+}
+
+/* ── Secondary (small) metric row ───────────────────────────────── */
+.gcf-sub-metric {
+    padding: 0.5rem 1rem;
+    color: #6c757d;
+    font-size: 0.95rem;
+}
+.gcf-sub-metric-value {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #495057;
+}
+
+/* ── Status badge ───────────────────────────────────────────────── */
+.gcf-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+</style>
+"""
+
 def add_sidebar_logo():
     """
-    Add GCF logo to the top of the sidebar for consistent branding across all pages
+    Add GCF logo to the top of the sidebar and inject global brand CSS.
+    Called on every page so brand styles are always available.
     """
+    # Inject brand CSS globally
+    st.markdown(_BRAND_CSS, unsafe_allow_html=True)
+
     # Get the path to the shared logo
     current_file_dir = Path(__file__).parent
     logo_path = current_file_dir / "logo.png"
-    
+
     with st.sidebar:
         if logo_path.exists():
             st.image(str(logo_path), width=180)
         st.markdown("---")
+
+
+def render_page_header(title: str, subtitle: str = "", icon: str = "") -> None:
+    """
+    Render a consistent GCF-branded orange page header banner.
+
+    Args:
+        title:    Main page title
+        subtitle: Optional one-line description shown below the title
+        icon:     Optional emoji prefix for the title
+    """
+    icon_prefix = f"{icon} " if icon else ""
+    subtitle_html = (
+        f'<p class="gcf-header-subtitle">{subtitle}</p>' if subtitle else ""
+    )
+    st.markdown(
+        f'<div class="gcf-header">'
+        f'<h1 class="gcf-header-title">{icon_prefix}{title}</h1>'
+        f'{subtitle_html}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_metric_card(value: str, label: str, description: str = "", icon: str = "") -> str:
+    """
+    Return HTML for a branded metric card (pass to st.markdown(..., unsafe_allow_html=True)).
+
+    Args:
+        value:       Formatted metric value string
+        label:       Short metric label
+        description: Optional longer description
+        icon:        Optional emoji icon
+    """
+    icon_html = (
+        f'<span style="font-size:1.8rem;margin-right:0.8rem;">{icon}</span>'
+        if icon else ""
+    )
+    desc_html = (
+        f'<div class="gcf-metric-description">{description}</div>'
+        if description else ""
+    )
+    return (
+        f'<div class="gcf-metric-card">'
+        f'<div style="display:flex;align-items:center;margin-bottom:0.8rem;">'
+        f'{icon_html}'
+        f'<div>'
+        f'<div class="gcf-metric-value">{value}</div>'
+        f'<div class="gcf-metric-label">{label}</div>'
+        f'</div></div>'
+        f'{desc_html}'
+        f'</div>'
+    )
 
 def validate_image_file(file_data):
     """

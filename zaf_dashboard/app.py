@@ -7,6 +7,9 @@ from pandas import json_normalize, to_datetime
 import requests
 import os
 from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).parent.parent))
+from shared.utils import render_page_header
 
 def main():
     """Main function for the ZAF Dashboard"""
@@ -65,21 +68,7 @@ def main():
     username = st.session_state["username"]
     password = st.session_state["password"]
 
-    # Header with logo
-    current_dir = Path(__file__).parent.parent
-    logo_path = current_dir / "shared" / "logo.png"
-
-    if logo_path.exists():
-        try:
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                st.image(str(logo_path), width=300)
-                st.markdown('<div style="text-align: center;"><h1>🦒 ZAF Giraffe Monitoring Dashboard</h1></div>', unsafe_allow_html=True)
-                #st.markdown('<div style="text-align: center;"><h3>🇿🇦 South Africa Conservation Tracking</h3></div>', unsafe_allow_html=True)
-        except Exception:
-            st.title("🦒 ZAF Giraffe Monitoring Dashboard")
-    else:
-        st.title("🦒 ZAF Giraffe Monitoring Dashboard")
+    render_page_header("Survey Dashboard — South Africa", "Giraffe survey encounter data", "🦒")
 
     # Simplified ZAF dashboard without subject group dependencies
 
