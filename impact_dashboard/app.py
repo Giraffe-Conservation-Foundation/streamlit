@@ -253,10 +253,12 @@ def get_range_expansion_metrics(start_date, end_date):
     """Calculate range expansion metrics from translocation data - FOUNDER POPULATIONS ONLY"""
     if not TRANSLOCATION_AVAILABLE:
         return 0, 0, []
-    
+
     try:
-        # Get translocation events
-        events_df = get_translocation_events(start_date, end_date)
+        # Get translocation events - pass credentials from session state
+        username = st.session_state.get('username', '')
+        password = st.session_state.get('password', '')
+        events_df = get_translocation_events(start_date, end_date, username=username, _password=password)
         
         if events_df.empty:
             return 0, 0, []
@@ -269,10 +271,12 @@ def get_range_expansion_metrics(start_date, end_date):
         for idx, event in events_df.iterrows():
             event_details = event.get('event_details', {})
             if isinstance(event_details, dict):
-                trans_type = event_details.get('trans_type')
-                
+                trans_type = event_details.get('translocation_type') or event_details.get('trans_type')
+                if isinstance(trans_type, dict):
+                    trans_type = trans_type.get('name') or trans_type.get('type') or ''
+
                 # Only count FOUNDER translocations
-                if trans_type and trans_type.lower() == 'founder':
+                if trans_type and str(trans_type).lower() == 'founder':
                     total_founder_translocations += 1
                     
                     # Extract species information
@@ -407,7 +411,35 @@ def impact_dashboard():
     
     # Range Expansion Section
     st.markdown('<div class="section-header">🗺️ Range Expansion</div>', unsafe_allow_html=True)
-    
+
+    # --- DIAGNOSTIC (temporary) ---
+    if st.checkbox("🔍 Show range expansion diagnostics", value=False):
+        username = st.session_state.get('username', '')
+        password = st.session_state.get('password', '')
+        st.write(f"Credentials present: username=`{bool(username)}`, password=`{bool(password)}`")
+        if TRANSLOCATION_AVAILABLE and username and password:
+            from translocation_dashboard.app import get_translocation_events
+            with st.spinner("Fetching raw veterinary events..."):
+                raw_df = get_translocation_events(start_date, end_date, username=username, _password=password)
+            st.write(f"Total events returned: **{len(raw_df)}**")
+            if not raw_df.empty:
+                if 'event_type' in raw_df.columns:
+                    st.write("Event types found:", raw_df['event_type'].value_counts().to_dict())
+                # Show a sample of event_details keys and translocation_type values
+                sample_types = []
+                for _, row in raw_df.head(5).iterrows():
+                    ed = row.get('event_details', {})
+                    if isinstance(ed, dict):
+                        sample_types.append({
+                            'event_type': row.get('event_type'),
+                            'translocation_type': ed.get('translocation_type'),
+                            'trans_type': ed.get('trans_type'),
+                            'destination_site': ed.get('destination_site'),
+                            'destination_location': ed.get('destination_location'),
+                        })
+                st.write("Sample event_details fields:", sample_types)
+    # --- END DIAGNOSTIC ---
+
     with st.spinner("Calculating range expansion metrics..."):
         num_founder_translocations, total_km2, range_details = get_range_expansion_metrics(start_date, end_date)
     
