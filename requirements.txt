@@ -45,4 +45,4 @@ folium>=0.15.0  # Interactive maps
 streamlit-folium>=0.15.0  # Folium integration for Streamlit
 
 # GAD Dashboard - ArcGIS Integration  
-arcgis<2.3,>=2.1  # ArcGIS API - version constrained for stability
+arcgis>=2.4.0,<2.5  # 2.4+ required for pandas 2.0 compatibility (infer_datetime_format removed)
