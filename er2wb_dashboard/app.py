@@ -1,19 +1,7 @@
 """
-ER2WB: EarthRanger → GiraffeSpotter (WildBook) Bulk Import Formatter  v2.1 Python
+ER2WB: EarthRanger → GiraffeSpotter (WildBook) Bulk Import Formatter  v2.2 Python
 Uses ecoscope EarthRangerIO to fetch giraffe survey encounter events,
 formats them for GiraffeSpotter bulk import, and renames associated images.
-
-v2.1 changes
-------------
-- Bug fix: alphanumeric image stems (e.g. 4D1A2407) now preserved correctly
-- Username/password authentication alongside bearer-token
-- Persistent settings via st.session_state
-- Quick date-preset buttons (Last 7d / 14d / 30d)
-- Summary metrics after processing
-- Encounter map preview (st.map)
-- Data validation summary
-- Progress bar during image processing
-- Reset / Start Over button
 """
 
 import io
@@ -70,6 +58,18 @@ COUNTRY_SITES = {
     "ZAF":      ["TKGR"],
     "ZMB":      ["LVNP", "LUNP"],
     # ZCP_SMART and RWA_AKNP have non-standard data structures — handled separately
+}
+
+COUNTRY_NAMES = {
+    "BWA":  "Botswana",
+    "CMR":  "Cameroon",
+    "KEN":  "Kenya",
+    "NAM":  "Namibia",
+    "NANW": "Namibia (North-West)",
+    "TZA":  "Tanzania",
+    "UGA":  "Uganda",
+    "ZAF":  "South Africa",
+    "ZMB":  "Zambia",
 }
 
 SITE_NAMES = {
@@ -904,12 +904,6 @@ def main():
 
 
 
-    # ── Reset button (only shown once data has been processed) ─────────────────
-    if st.session_state.processed_df is not None:
-        if st.button("🔄 Start Over — clear results", type="secondary"):
-            _reset_results()
-            st.rerun()
-
     # ══════════════════════════════════════════════════════════════════════════
     # STEP 1 — EarthRanger login
     # ══════════════════════════════════════════════════════════════════════════
@@ -955,12 +949,17 @@ def main():
         st.stop()   # nothing below renders until logged in
 
     # ── Logged-in banner ──────────────────────────────────────────────────────
-    lc1, lc2 = st.columns([4, 1])
+    lc1, lc2, lc3 = st.columns([4, 1, 1])
     with lc1:
         st.success(
             f"✅ Connected to **{st.session_state.er_instance}** "
             f"as **{st.session_state.er_login_user}**")
     with lc2:
+        if st.session_state.processed_df is not None:
+            if st.button("🔄 Start Over", use_container_width=True):
+                _reset_results()
+                st.rerun()
+    with lc3:
         if st.button("Disconnect", use_container_width=True):
             _disconnect_er()
             st.rerun()
@@ -982,13 +981,17 @@ def main():
 
     sv_c1, sv_c2 = st.columns(2)
     with sv_c1:
-        country = st.selectbox("Country", country_keys, key="country_sel",
-                               on_change=_on_country_change)
+        country = st.selectbox(
+            "Country", country_keys, key="country_sel",
+            format_func=lambda c: COUNTRY_NAMES.get(c, c),
+            on_change=_on_country_change)
     with sv_c2:
         site_options = COUNTRY_SITES.get(country, [])
         if st.session_state.site_sel not in site_options:
             st.session_state.site_sel = site_options[0] if site_options else None
-        site = st.selectbox("Site", site_options, key="site_sel")
+        site = st.selectbox(
+            "Site", site_options, key="site_sel",
+            format_func=lambda s: SITE_NAMES.get(s, s))
 
     # Dates
     dt_c1, dt_c2 = st.columns(2)
@@ -999,11 +1002,7 @@ def main():
 
     # ── Event type selector ───────────────────────────────────────────────────
     st.markdown("**EarthRanger event type**")
-    st.caption(
-        "Select the encounter event type to fetch. Giraffe-related types are listed first. "
-        "If your instance is not GCF's Twiga, pick whatever event type holds your "
-        "giraffe survey encounters."
-    )
+    st.caption("Select the giraffe survey encounter event type to fetch from EarthRanger.")
 
     er_event_types = st.session_state.er_event_types   # [{label, uuid, category}]
 
@@ -1013,21 +1012,14 @@ def main():
 
     if er_event_types:
         et_labels = [et["label"] for et in er_event_types]
-        # Default to first giraffe type or first in list
         if st.session_state.event_type_sel not in et_labels:
             st.session_state.event_type_sel = et_labels[0]
 
-        et_c1, et_c2 = st.columns([3, 1])
-        with et_c1:
-            event_type_label = st.selectbox(
-                "Encounter event type", et_labels, key="event_type_sel",
-                help="Fetched from your EarthRanger instance. Giraffe types appear first.")
-        with et_c2:
-            matched = next((et for et in er_event_types
-                            if et["label"] == event_type_label), None)
-            event_type_uuid = matched["uuid"] if matched else ""
-            if event_type_uuid:
-                st.caption(f"UUID: `{event_type_uuid[:8]}…`")
+        event_type_label = st.selectbox(
+            "Encounter event type", et_labels, key="event_type_sel")
+        matched = next((et for et in er_event_types
+                        if et["label"] == event_type_label), None)
+        event_type_uuid = matched["uuid"] if matched else ""
     else:
         # Fallback: manual UUID entry (e.g. if get_event_types() is unavailable)
         st.info("Could not fetch event types from this ER instance. "
@@ -1078,7 +1070,7 @@ def main():
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("---")
     st.subheader("🔄 Step 2: Fetch my ER data")
-    st.caption("Fetches events from EarthRanger via ecoscope and formats them for GiraffeSpotter.")
+    st.caption("Fetches events from EarthRanger and formats them for GiraffeSpotter.")
 
     if st.button("Fetch my ER data", type="primary"):
         with st.spinner("Fetching events from EarthRanger…"):
@@ -1096,8 +1088,7 @@ def main():
 
                     if processed.empty:
                         st.warning(
-                            "No records after filtering. "
-                            "Check your observer name, date range, and country.")
+                            "No records found. Check your date range and event type selection.")
                     else:
                         gs = format_gs_data(
                             processed, country, site,
@@ -1184,18 +1175,14 @@ def main():
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("---")
     st.subheader("📸 Step 3: Process my images")
-
-    if not st.session_state.has_images:
-        st.info("Image processing skipped — download your GS Excel directly from Step 2.")
-    else:
-        st.caption("Upload a single flat ZIP of your survey JPEGs (max 1 GB, no subfolders needed).")
+    st.caption("Upload a single flat ZIP of your survey JPEGs (max 1 GB, no subfolders needed).")
 
         uploaded_zip = st.file_uploader("Upload image ZIP", type=["zip"])
 
         if uploaded_zip and st.button("Rename my images"):
             if st.session_state.gs_data is None:
                 st.error("Run Step 2 first so we know how to name the images.")
-            elif not initials:
+            elif not initials.strip():
                 st.error("No initials — enter your initials in the Step 1 GiraffeSpotter section.")
             else:
                 progress_bar = st.progress(0, text="Processing images…")
@@ -1240,81 +1227,74 @@ def main():
     st.markdown("---")
     st.subheader("⬇️ Step 4: Download your GiraffeSpotter data packet")
 
-    if not st.session_state.has_images:
-        # No images — Step 4 is just the GS Excel download (already in Step 2)
-        st.info("No images to package. Download your GiraffeSpotter Excel from Step 2 above.")
-    else:
-        can_build = (st.session_state.gs_data is not None
-                     and bool(st.session_state.renamed_files))
+    can_build = (st.session_state.gs_data is not None
+                 and bool(st.session_state.renamed_files))
 
-        if not can_build and st.session_state.gs_data is not None:
-            st.info("Complete Step 3 (rename images) before building the ZIP.")
+    if not can_build and st.session_state.gs_data is not None:
+        st.info("Complete Step 3 (rename images) before building the ZIP.")
 
-        if st.button("Build Download ZIP", type="primary", disabled=not can_build):
-            with st.spinner("Packaging images + GS Excel…"):
-                try:
-                    zip_bytes, n = build_download_zip(
-                        st.session_state.renamed_files,
-                        st.session_state.gs_data,
-                        country, site)
-                    st.session_state.download_zip = zip_bytes
-                    st.session_state.n_matched    = n
+    if st.button("Build Download ZIP", type="primary", disabled=not can_build):
+        with st.spinner("Packaging images + GS Excel…"):
+            try:
+                zip_bytes, n = build_download_zip(
+                    st.session_state.renamed_files,
+                    st.session_state.gs_data,
+                    country, site)
+                st.session_state.download_zip = zip_bytes
+                st.session_state.n_matched    = n
 
-                    # Image match summary
-                    n_renamed = len(st.session_state.renamed_files)
-                    n_unmatched = n_renamed - n
-                    st.success(f"✅ ZIP ready — **{n}** matched images + GS Excel.")
-                    if n_unmatched > 0:
-                        st.warning(
-                            f"⚠️ **{n_unmatched}** renamed image(s) had no matching "
-                            "encounter record and were excluded from the ZIP. "
-                            "Check that image_prefix and photo numbers in EarthRanger "
-                            "match the actual image filenames.")
-                    if n == 0:
-                        st.error(
-                            "No images matched any encounter record. "
-                            "Verify that the image_prefix and photo number fields "
-                            "in EarthRanger are correct.")
-                except Exception as exc:
-                    st.error(f"❌ {exc}")
-                    st.exception(exc)
+                n_renamed   = len(st.session_state.renamed_files)
+                n_unmatched = n_renamed - n
+                st.success(f"✅ ZIP ready — **{n}** matched images + GS Excel.")
+                if n_unmatched > 0:
+                    st.warning(
+                        f"⚠️ **{n_unmatched}** renamed image(s) had no matching "
+                        "encounter record and were excluded from the ZIP. "
+                        "Check that image_prefix and photo numbers in EarthRanger "
+                        "match the actual image filenames.")
+                if n == 0:
+                    st.error(
+                        "No images matched any encounter record. "
+                        "Verify that the image_prefix and photo number fields "
+                        "in EarthRanger are correct.")
+            except Exception as exc:
+                st.error(f"❌ {exc}")
+                st.exception(exc)
 
-        if st.session_state.download_zip:
-            n = st.session_state.n_matched or 0
-            today_str = date.today().strftime("%Y%m%d")
-            st.download_button(
-                f"⬇️ Download ZIP ({n} images + GS Excel)",
-                data=st.session_state.download_zip,
-                file_name=f"GS_bulkimport_{country}{site}_{today_str}.zip",
-                mime="application/zip",
-            )
+    if st.session_state.download_zip:
+        n = st.session_state.n_matched or 0
+        today_str = date.today().strftime("%Y%m%d")
+        st.download_button(
+            f"⬇️ Download ZIP ({n} images + GS Excel)",
+            data=st.session_state.download_zip,
+            file_name=f"GS_bulkimport_{country}{site}_{today_str}.zip",
+            mime="application/zip",
+        )
 
     # ══════════════════════════════════════════════════════════════════════════
-    # Done
+    # Done — only shown once ZIP is ready
     # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("---")
-    st.subheader("✅ Done!")
-    st.markdown("""
+    if st.session_state.download_zip:
+        st.markdown("---")
+        st.subheader("✅ Done!")
+        st.markdown("""
 Use the files in your downloaded ZIP for the **GiraffeSpotter bulk import**:
 - **Excel file** → upload as the bulk import spreadsheet
 - **Images** → upload as media assets
 
-To process a new survey, click **Start Over** at the top of the page.
+To process a new survey, click **🔄 Start Over** in the banner above.
 """)
 
+    st.markdown("---")
     with st.expander("❓ Help"):
         st.markdown("""
 **Mistake in my data?**
 Download the raw ER data (Step 2), find the record using `evt_serial`,
-fix it directly in EarthRanger, then click Start Over and re-run.
-
-**No images but still need GS data?**
-Use the *Download GS data (no images)* button in Step 2.
+fix it directly in EarthRanger, then click **Start Over** and re-run.
 
 **Image count mismatch?**
-The tool only includes images that match the `Encounter.mediaAsset0/1` filenames
-derived from the EarthRanger data. Check that your image prefix and photo numbers
-in EarthRanger match the actual filenames.
+The tool only includes images that match the filenames derived from EarthRanger.
+Check that your image prefix and photo numbers in EarthRanger match the actual filenames.
 
 **Alphanumeric image filenames (e.g. 4D1A2407.JPG)?**
 These are handled automatically. The full stem is preserved and matched against
