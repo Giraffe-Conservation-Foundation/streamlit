@@ -1177,49 +1177,49 @@ def main():
     st.subheader("📸 Step 3: Process my images")
     st.caption("Upload a single flat ZIP of your survey JPEGs (max 1 GB, no subfolders needed).")
 
-        uploaded_zip = st.file_uploader("Upload image ZIP", type=["zip"])
+    uploaded_zip = st.file_uploader("Upload image ZIP", type=["zip"])
 
-        if uploaded_zip and st.button("Rename my images"):
-            if st.session_state.gs_data is None:
-                st.error("Run Step 2 first so we know how to name the images.")
-            elif not initials.strip():
-                st.error("No initials — enter your initials in the Step 1 GiraffeSpotter section.")
-            else:
-                progress_bar = st.progress(0, text="Processing images…")
-                try:
-                    renamed, log, gps_lookup = process_images_zip(
-                        uploaded_zip.read(),
-                        country, site, initials,
-                        on_progress=lambda p: progress_bar.progress(
-                            p, text=f"Processing images… {int(p * 100)}%"),
+    if uploaded_zip and st.button("Rename my images"):
+        if st.session_state.gs_data is None:
+            st.error("Run Step 2 first so we know how to name the images.")
+        elif not initials.strip():
+            st.error("No initials — enter your initials in the Step 1 GiraffeSpotter section.")
+        else:
+            progress_bar = st.progress(0, text="Processing images…")
+            try:
+                renamed, log, gps_lookup = process_images_zip(
+                    uploaded_zip.read(),
+                    country, site, initials,
+                    on_progress=lambda p: progress_bar.progress(
+                        p, text=f"Processing images… {int(p * 100)}%"),
+                )
+                progress_bar.empty()
+
+                st.session_state.renamed_files = renamed
+                st.success(f"✅ Renamed **{len(renamed)}** images.")
+                st.dataframe(log)
+
+                # ZMB: apply EXIF GPS direction reprojection
+                if country == "ZMB" and gps_lookup:
+                    st.info(
+                        f"🧭 Found EXIF GPS bearings in **{len(gps_lookup)}** images. "
+                        "Applying coordinate reprojection for records without manual direction…"
                     )
-                    progress_bar.empty()
+                    updated_df = apply_exif_reprojection(
+                        st.session_state.processed_df, gps_lookup)
+                    st.session_state.processed_df = updated_df
 
-                    st.session_state.renamed_files = renamed
-                    st.success(f"✅ Renamed **{len(renamed)}** images.")
-                    st.dataframe(log)
+                    updated_gs = format_gs_data(
+                        updated_df, country, site,
+                        gs_username, gs_org, species_epithet, initials)
+                    st.session_state.gs_data = updated_gs
+                    st.success("✅ Coordinates updated using EXIF GPS directions. "
+                               "GiraffeSpotter data has been refreshed.")
 
-                    # ZMB: apply EXIF GPS direction reprojection
-                    if country == "ZMB" and gps_lookup:
-                        st.info(
-                            f"🧭 Found EXIF GPS bearings in **{len(gps_lookup)}** images. "
-                            "Applying coordinate reprojection for records without manual direction…"
-                        )
-                        updated_df = apply_exif_reprojection(
-                            st.session_state.processed_df, gps_lookup)
-                        st.session_state.processed_df = updated_df
-
-                        updated_gs = format_gs_data(
-                            updated_df, country, site,
-                            gs_username, gs_org, species_epithet, initials)
-                        st.session_state.gs_data = updated_gs
-                        st.success("✅ Coordinates updated using EXIF GPS directions. "
-                                   "GiraffeSpotter data has been refreshed.")
-
-                except Exception as exc:
-                    progress_bar.empty()
-                    st.error(f"❌ {exc}")
-                    st.exception(exc)
+            except Exception as exc:
+                progress_bar.empty()
+                st.error(f"❌ {exc}")
+                st.exception(exc)
 
     # ══════════════════════════════════════════════════════════════════════════
     # STEP 4 — Download ZIP
