@@ -226,17 +226,14 @@ def _fetch_event_types(client: EarthRangerIO) -> list:
         rows = []
         for _, row in df.iterrows():
             label = str(row.get("display", row.get("value", ""))).strip()
-            uuid  = str(row.get("value", "")).strip()
+            uuid  = str(row.get("id", "")).strip()
             cat   = str(row.get("category", "")).strip()
-            if label and uuid:
+            if label and uuid and uuid.lower() not in ("nan", "none", ""):
                 rows.append({"label": label, "uuid": uuid, "category": cat})
-        # Sort: giraffe types first, then alphabetical within each group
-        giraffe_kw = ("giraffe", "giraffa")
-        rows.sort(key=lambda x: (
-            0 if any(k in x["label"].lower() or k in x["category"].lower()
-                     for k in giraffe_kw) else 1,
-            x["label"].lower()
-        ))
+        # Filter to giraffe survey encounter types only
+        rows = [r for r in rows if "giraffe survey encounter" in r["label"].lower()]
+        # Sort alphabetically
+        rows.sort(key=lambda x: x["label"].lower())
         return rows
     except Exception:
         return []
@@ -380,6 +377,10 @@ def fetch_er_events(country: str,
 
     if gdf is None or gdf.empty:
         return []
+
+    # Ensure id and serial_number are columns (ecoscope may set id as the index)
+    if "id" not in gdf.columns:
+        gdf = gdf.reset_index()
 
     # Convert GeoDataFrame rows to dicts that match what process_er_data expects
     results = []
@@ -922,7 +923,7 @@ def main():
                 "Instance", key="er_instance",
                 help="Without https://, e.g. twiga.pamdas.org")
         with er_c2:
-            st.text_input("Username (email)", key="er_login_user")
+            st.text_input("Username", key="er_login_user")
         with er_c3:
             st.text_input("Password", type="password", key="er_login_pass")
 
@@ -990,25 +991,11 @@ def main():
         site = st.selectbox("Site", site_options, key="site_sel")
 
     # Dates
-    dt_c1, dt_c2, dt_c3 = st.columns([2, 2, 1])
+    dt_c1, dt_c2 = st.columns(2)
     with dt_c1:
         date_start = st.date_input("Start date", key="date_start")
     with dt_c2:
         date_end   = st.date_input("End date",   key="date_end")
-    with dt_c3:
-        st.caption("Quick range:")
-        if st.button("7d",  use_container_width=True):
-            st.session_state["date_start"] = date.today() - timedelta(days=7)
-            st.session_state["date_end"]   = date.today()
-            st.rerun()
-        if st.button("14d", use_container_width=True):
-            st.session_state["date_start"] = date.today() - timedelta(days=14)
-            st.session_state["date_end"]   = date.today()
-            st.rerun()
-        if st.button("30d", use_container_width=True):
-            st.session_state["date_start"] = date.today() - timedelta(days=30)
-            st.session_state["date_end"]   = date.today()
-            st.rerun()
 
     # ── Event type selector ───────────────────────────────────────────────────
     st.markdown("**EarthRanger event type**")
@@ -1065,18 +1052,10 @@ def main():
         gs_org      = st.session_state.gs_org   # kept in state but not shown prominently
 
     with gs_c2:
-        er_observer = st.text_input(
-            "Observer name (filter)", key="er_observer",
-            help="Filters fetched events to this reporter name. Leave blank to include all observers.")
-
-        # Auto-derive initials from observer name if field is blank
-        if er_observer.strip() and not st.session_state.er_initials.strip():
-            st.session_state.er_initials = get_initials(er_observer)
-
         initials = st.text_input(
             "Initials (image filenames)", key="er_initials",
-            help="Used in renamed image filenames, e.g. CM → NAM_EHGR_20250101_CM_0001.JPG. "
-                 "Auto-filled from observer name but you can edit it.")
+            help="Used in renamed image filenames, e.g. CM → NAM_EHGR_20250101_CM_0001.JPG.")
+        er_observer = ""
 
     with gs_c3:
         # Persist species selection
@@ -1092,22 +1071,16 @@ def main():
         subsp_choice    = st.selectbox("Subspecies", subsp_options, key="subsp_sel")
         species_epithet = SPECIES_MAP[species_choice][subsp_choice]
 
-    # Images checkbox
-    st.markdown("---")
-    has_images = st.checkbox(
-        "I have images to process (Step 3)",
-        key="has_images",
-        help="Uncheck if you only need the GiraffeSpotter Excel — skips the image rename step."
-    )
+    st.session_state["has_images"] = True
 
     # ══════════════════════════════════════════════════════════════════════════
     # STEP 2 — Fetch & Format
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("---")
-    st.subheader("🔄 Step 2: Fetch & format my data")
+    st.subheader("🔄 Step 2: Fetch my ER data")
     st.caption("Fetches events from EarthRanger via ecoscope and formats them for GiraffeSpotter.")
 
-    if st.button("Process Data", type="primary"):
+    if st.button("Fetch my ER data", type="primary"):
         with st.spinner("Fetching events from EarthRanger…"):
             try:
                 raw = fetch_er_events(country, date_start, date_end,
