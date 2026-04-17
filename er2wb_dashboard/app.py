@@ -528,26 +528,25 @@ def process_er_data(raw_events: list, country: str, er_username: str,
     final["evt_lat_original"] = final["evt_lat"]
     final["evt_notes"]        = None
 
-    if country == "ZMB":
-        def _reproject(row):
-            try:
-                if pd.notna(row["gir_direction"]) and pd.notna(row["gir_distance"]):
-                    new_lon, new_lat = dest_point(
-                        float(row["evt_lon_original"]), float(row["evt_lat_original"]),
-                        float(row["gir_direction"]), float(row["gir_distance"]),
-                    )
-                    note = (
-                        f"reprojected from lon={row['evt_lon_original']:.6f}, "
-                        f"lat={row['evt_lat_original']:.6f} using manual direction "
-                        f"{float(row['gir_direction']):.0f}°"
-                    )
-                    return pd.Series({"evt_lon": new_lon, "evt_lat": new_lat, "evt_notes": note})
-            except Exception:
-                pass
-            return pd.Series({"evt_lon": row["evt_lon"], "evt_lat": row["evt_lat"],
-                               "evt_notes": None})
+    def _reproject(row):
+        try:
+            if pd.notna(row["gir_direction"]) and pd.notna(row["gir_distance"]):
+                new_lon, new_lat = dest_point(
+                    float(row["evt_lon_original"]), float(row["evt_lat_original"]),
+                    float(row["gir_direction"]), float(row["gir_distance"]),
+                )
+                note = (
+                    f"reprojected from lon={row['evt_lon_original']:.6f}, "
+                    f"lat={row['evt_lat_original']:.6f} using manual direction "
+                    f"{float(row['gir_direction']):.0f}°"
+                )
+                return pd.Series({"evt_lon": new_lon, "evt_lat": new_lat, "evt_notes": note})
+        except Exception:
+            pass
+        return pd.Series({"evt_lon": row["evt_lon"], "evt_lat": row["evt_lat"],
+                           "evt_notes": None})
 
-        final[["evt_lon", "evt_lat", "evt_notes"]] = final.apply(_reproject, axis=1)
+    final[["evt_lon", "evt_lat", "evt_notes"]] = final.apply(_reproject, axis=1)
 
     return final
 
@@ -659,7 +658,11 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
         "Encounter.lifeStage":          df["gir_giraffeAge"],
         "Encounter.genus":              "Giraffa",
         "Encounter.specificEpithet":    species_epithet,
-        "Encounter.occurrenceRemarks":  df["gir_giraffeNotes"].fillna(""),
+        "Encounter.occurrenceRemarks":  df.apply(
+            lambda r: "; ".join(filter(None, [
+                str(r["gir_giraffeNotes"]).strip() if pd.notna(r["gir_giraffeNotes"]) and str(r["gir_giraffeNotes"]).strip() else "",
+                str(r["evt_notes"]).strip()        if pd.notna(r.get("evt_notes")) and str(r.get("evt_notes", "")).strip() else "",
+            ])), axis=1),
         "Encounter.mediaAsset0":        df["media0"],
         "Encounter.mediaAsset1":        df["media1"],
     })
