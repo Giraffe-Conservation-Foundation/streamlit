@@ -156,12 +156,15 @@ def _init_session_state():
         "event_type_sel":   "",    # label of selected event type
         "event_type_uuid":  "",    # UUID of selected event type (empty = use category)
         # ── Processed data (cleared by Reset) ──────────────────────────────────
-        "processed_df":    None,
-        "gs_data":         None,
-        "renamed_files":   {},
-        "download_zip":    None,
-        "n_matched":       None,
+        "processed_df":         None,
+        "gs_data":              None,
+        "renamed_files":        {},
+        "download_zip":         None,
+        "n_matched":            None,
+        "raw_events":           [],
+        "available_observers":  [],
         # ── Settings (persisted across reruns) ─────────────────────────────────
+        "er_observer_filter":   "",    # "" = all observers
         "er_instance":     "twiga.pamdas.org",
         "er_login_user":   "",
         "er_login_pass":   "",
@@ -184,11 +187,13 @@ def _init_session_state():
 
 def _reset_results():
     """Clear processed data but keep all settings."""
-    st.session_state.processed_df  = None
-    st.session_state.gs_data       = None
-    st.session_state.renamed_files = {}
-    st.session_state.download_zip  = None
-    st.session_state.n_matched     = None
+    st.session_state.processed_df         = None
+    st.session_state.gs_data              = None
+    st.session_state.renamed_files        = {}
+    st.session_state.download_zip         = None
+    st.session_state.n_matched            = None
+    st.session_state.raw_events           = []
+    st.session_state.available_observers  = []
 
 
 def _disconnect_er():
@@ -649,7 +654,7 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
         "Occurrence.numCalves":         df["ca"].fillna(0).astype(int),
         "Occurrence.distance":          "",
         "Occurrence.bearing":           "",
-        "Encounter.individualID":       df["gir_giraffeId"],
+        "Encounter.individualID":       df["gir_giraffeId"].fillna(""),
         "Encounter.sex":                df["gir_giraffeSex"],
         "Encounter.lifeStage":          df["gir_giraffeAge"],
         "Encounter.genus":              "Giraffa",
@@ -1031,6 +1036,17 @@ def main():
                 key="event_type_uuid",
                 help="e.g. 3837db4e-efa3-4b7c-bf42-0e029f09565e")
 
+    # ── Observer filter ───────────────────────────────────────────────────────
+    st.markdown("**Observer filter**")
+    _obs_available = st.session_state.available_observers
+    if _obs_available:
+        _obs_options = ["All observers"] + _obs_available
+        if st.session_state.er_observer_filter not in _obs_options:
+            st.session_state.er_observer_filter = "All observers"
+        st.selectbox("Export data for", _obs_options, key="er_observer_filter")
+    else:
+        st.caption("Fetch data in Step 2 to see available observers.")
+
     st.markdown("---")
 
     # ── 1c: GiraffeSpotter ────────────────────────────────────────────────────
@@ -1045,7 +1061,6 @@ def main():
         initials = st.text_input(
             "Observer initials (e.g., CM)", key="er_initials",
             help="Used in renamed image filenames, e.g. CM → NAM_EHGR_20250101_CM_0001.JPG.")
-        er_observer = ""
 
     with gs_c3:
         # Persist species selection
@@ -1062,6 +1077,24 @@ def main():
         species_epithet = SPECIES_MAP[species_choice][subsp_choice]
 
     st.session_state["has_images"] = True
+
+    # ── Auto-reprocess when observer filter changes (no re-fetch needed) ─────
+    _obs_filter = st.session_state.er_observer_filter
+    _obs_for_proc = "" if _obs_filter in ("", "All observers") else _obs_filter
+    _prev_filter  = st.session_state.get("_prev_observer_filter", _obs_filter)
+    if (st.session_state.raw_events
+            and st.session_state.processed_df is not None
+            and _prev_filter != _obs_filter):
+        st.session_state._prev_observer_filter = _obs_filter
+        _reprocessed = process_er_data(
+            st.session_state.raw_events, country, _obs_for_proc,
+            date_start, date_end)
+        if not _reprocessed.empty:
+            st.session_state.processed_df = _reprocessed
+            st.session_state.gs_data = format_gs_data(
+                _reprocessed, country, site,
+                gs_username, gs_org, species_epithet, initials)
+        st.rerun()
 
     # ══════════════════════════════════════════════════════════════════════════
     # STEP 2 — Fetch & Format
@@ -1080,8 +1113,19 @@ def main():
                 if not raw:
                     st.warning("No events returned for this date range and country.")
                 else:
-                    st.info(f"Fetched **{len(raw)}** raw events.")
-                    processed = process_er_data(raw, country, er_observer,
+                    # Extract unique observer names for the filter selectbox
+                    _obs_names = sorted({
+                        evt.get("reported_by", {}).get("name", "")
+                        for evt in raw
+                        if evt.get("reported_by", {}).get("name", "")
+                    })
+                    st.session_state.raw_events          = raw
+                    st.session_state.available_observers = _obs_names
+                    st.session_state._prev_observer_filter = _obs_for_proc
+
+                    st.info(f"Fetched **{len(raw)}** raw events from "
+                            f"**{len(_obs_names)}** observer(s).")
+                    processed = process_er_data(raw, country, _obs_for_proc,
                                                 date_start, date_end)
 
                     if processed.empty:
