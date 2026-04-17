@@ -553,8 +553,9 @@ def process_er_data(raw_events: list, country: str, er_username: str,
                 )
                 note = (
                     f"reprojected from lon={row['evt_lon_original']:.6f}, "
-                    f"lat={row['evt_lat_original']:.6f} using manual direction "
-                    f"{float(row['gir_direction']):.0f}°"
+                    f"lat={row['evt_lat_original']:.6f} "
+                    f"(bearing={float(row['gir_direction']):.0f}°, "
+                    f"distance={float(row['gir_distance']):.0f}m)"
                 )
                 return pd.Series({"evt_lon": new_lon, "evt_lat": new_lat, "evt_notes": note})
         except Exception:
@@ -879,7 +880,9 @@ def apply_exif_reprojection(processed_df: pd.DataFrame,
             )
             note = (
                 f"reprojected from lon={row['evt_lon_original']:.6f}, "
-                f"lat={row['evt_lat_original']:.6f} using EXIF GPS direction {bearing:.0f}°"
+                f"lat={row['evt_lat_original']:.6f} "
+                f"(bearing={bearing:.0f}° from EXIF, "
+                f"distance={float(row['gir_distance']):.0f}m)"
             )
             return pd.Series({"evt_lon": new_lon, "evt_lat": new_lat, "evt_notes": note})
         except Exception:
