@@ -387,6 +387,19 @@ def fetch_er_events(country: str,
     if "id" not in gdf.columns:
         gdf = gdf.reset_index()
 
+    # Pre-scan GDF columns for any reporter-name shaped column ecoscope may use
+    _rb_name_col = next(
+        (c for c in gdf.columns
+         if "reported_by" in c.lower() and "name" in c.lower()),
+        None,
+    )
+    _rb_id_col = next(
+        (c for c in gdf.columns
+         if "reported_by" in c.lower() and "id" in c.lower()
+         and c != _rb_name_col),
+        None,
+    )
+
     # Convert GeoDataFrame rows to dicts that match what process_er_data expects
     results = []
     for _, row in gdf.iterrows():
@@ -399,26 +412,42 @@ def fetch_er_events(country: str,
         else:
             rec.setdefault("location", {})
 
-        # Ensure reported_by is a dict with a "name" key.
-        # Ecoscope may: (a) keep it as a nested dict, (b) flatten it into
-        # reported_by_name / reported_by_id columns, or (c) stringify the dict.
-        rb = rec.get("reported_by")
-        if isinstance(rb, dict) and rb.get("name"):
-            pass  # already correct
-        else:
-            rb_name = str(rec.get("reported_by_name") or "").strip()
-            rb_id   = str(rec.get("reported_by_id")   or "").strip()
-            # fallback: try parsing a stringified dict  e.g. "{'name': 'Jane'}"
-            if not rb_name and isinstance(rb, str) and rb.startswith("{"):
-                try:
-                    import ast
-                    _parsed = ast.literal_eval(rb)
-                    if isinstance(_parsed, dict):
-                        rb_name = str(_parsed.get("name") or "").strip()
-                        rb_id   = str(_parsed.get("id")   or "").strip()
-                except Exception:
-                    pass
-            rec["reported_by"] = {"name": rb_name, "id": rb_id}
+        # Build a clean {"name": ..., "id": ...} reported_by dict regardless of
+        # how ecoscope returned it (nested dict, flattened columns, stringified).
+        rb     = rec.get("reported_by")
+        rb_name, rb_id = "", ""
+
+        if isinstance(rb, dict):
+            # name or username may hold the display name
+            rb_name = str(rb.get("name") or rb.get("username") or "").strip()
+            rb_id   = str(rb.get("id")   or "").strip()
+
+        if not rb_name:
+            # flattened columns detected by pre-scan
+            if _rb_name_col:
+                rb_name = str(rec.get(_rb_name_col) or "").strip()
+            if _rb_id_col and not rb_id:
+                rb_id = str(rec.get(_rb_id_col) or "").strip()
+
+        if not rb_name:
+            # dot-notation variants pandas sometimes creates
+            rb_name = str(
+                rec.get("reported_by.name") or
+                rec.get("reported_by_name")  or ""
+            ).strip()
+
+        if not rb_name and isinstance(rb, str) and "{" in rb:
+            # last resort: stringified dict e.g. "{'name': 'Jane Smith'}"
+            try:
+                import ast
+                _parsed = ast.literal_eval(rb)
+                if isinstance(_parsed, dict):
+                    rb_name = str(_parsed.get("name") or _parsed.get("username") or "").strip()
+                    rb_id   = str(_parsed.get("id") or "").strip()
+            except Exception:
+                pass
+
+        rec["reported_by"] = {"name": rb_name, "id": rb_id}
 
         # Ensure event_details is a dict
         ed = rec.get("event_details")
