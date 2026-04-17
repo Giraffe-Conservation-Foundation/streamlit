@@ -186,14 +186,15 @@ def _init_session_state():
 
 
 def _reset_results():
-    """Clear processed data but keep all settings."""
-    st.session_state.processed_df         = None
-    st.session_state.gs_data              = None
-    st.session_state.renamed_files        = {}
-    st.session_state.download_zip         = None
-    st.session_state.n_matched            = None
-    st.session_state.raw_events           = []
-    st.session_state.available_observers  = []
+    """Clear processed data but keep all settings and observer list."""
+    st.session_state.processed_df  = None
+    st.session_state.gs_data       = None
+    st.session_state.renamed_files = {}
+    st.session_state.download_zip  = None
+    st.session_state.n_matched     = None
+    st.session_state.raw_events    = []
+    # available_observers intentionally NOT cleared — list is refreshed on
+    # every fetch and should survive Start Over / date changes.
 
 
 def _disconnect_er():
