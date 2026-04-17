@@ -399,10 +399,26 @@ def fetch_er_events(country: str,
         else:
             rec.setdefault("location", {})
 
-        # Ensure reported_by is a dict (ecoscope may store as dict already)
+        # Ensure reported_by is a dict with a "name" key.
+        # Ecoscope may: (a) keep it as a nested dict, (b) flatten it into
+        # reported_by_name / reported_by_id columns, or (c) stringify the dict.
         rb = rec.get("reported_by")
-        if not isinstance(rb, dict):
-            rec["reported_by"] = {}
+        if isinstance(rb, dict) and rb.get("name"):
+            pass  # already correct
+        else:
+            rb_name = str(rec.get("reported_by_name") or "").strip()
+            rb_id   = str(rec.get("reported_by_id")   or "").strip()
+            # fallback: try parsing a stringified dict  e.g. "{'name': 'Jane'}"
+            if not rb_name and isinstance(rb, str) and rb.startswith("{"):
+                try:
+                    import ast
+                    _parsed = ast.literal_eval(rb)
+                    if isinstance(_parsed, dict):
+                        rb_name = str(_parsed.get("name") or "").strip()
+                        rb_id   = str(_parsed.get("id")   or "").strip()
+                except Exception:
+                    pass
+            rec["reported_by"] = {"name": rb_name, "id": rb_id}
 
         # Ensure event_details is a dict
         ed = rec.get("event_details")
