@@ -1117,14 +1117,21 @@ def main():
                     st.warning("No events returned for this date range and country.")
                 else:
                     # Extract unique observer names for the filter selectbox
-                    _obs_names = sorted({
-                        evt.get("reported_by", {}).get("name", "")
-                        for evt in raw
-                        if evt.get("reported_by", {}).get("name", "")
-                    })
-                    st.session_state.raw_events          = raw
-                    st.session_state.available_observers = _obs_names
+                    st.session_state.raw_events = raw
                     st.session_state._prev_observer_filter = _obs_for_proc
+
+                    # Extract unique observer names via an unfiltered process pass
+                    _all_processed = process_er_data(raw, country, "",
+                                                     date_start, date_end)
+                    if "usr_name" in _all_processed.columns:
+                        _obs_names = sorted(
+                            _all_processed["usr_name"].dropna()
+                            .astype(str).str.strip()
+                            .replace("", pd.NA).dropna().unique().tolist()
+                        )
+                    else:
+                        _obs_names = []
+                    st.session_state.available_observers = _obs_names
 
                     st.info(f"Fetched **{len(raw)}** raw events from "
                             f"**{len(_obs_names)}** observer(s).")
