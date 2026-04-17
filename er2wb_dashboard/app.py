@@ -382,11 +382,13 @@ def fetch_er_events(country: str,
     gdf = er_client.get_events(**kwargs)
 
     if gdf is None or gdf.empty:
-        return []
+        return [], []
 
     # Ensure id and serial_number are columns (ecoscope may set id as the index)
     if "id" not in gdf.columns:
         gdf = gdf.reset_index()
+
+    _gdf_cols = list(gdf.columns)   # exposed for debug
 
     # Pre-scan GDF columns for any reporter-name shaped column ecoscope may use
     _rb_name_col = next(
@@ -457,7 +459,7 @@ def fetch_er_events(country: str,
 
         results.append(rec)
 
-    return results
+    return results, _gdf_cols
 
 
 # ─── Data processing ───────────────────────────────────────────────────────────
@@ -1158,14 +1160,13 @@ def main():
     if st.button("Fetch my ER data", type="primary"):
         with st.spinner("Fetching events from EarthRanger…"):
             try:
-                raw = fetch_er_events(country, date_start, date_end,
-                                      st.session_state.er_client,
-                                      event_type_uuid=event_type_uuid or None)
+                raw, _gdf_cols = fetch_er_events(country, date_start, date_end,
+                                               st.session_state.er_client,
+                                               event_type_uuid=event_type_uuid or None)
 
                 if not raw:
                     st.warning("No events returned for this date range and country.")
                 else:
-                    # Extract unique observer names for the filter selectbox
                     st.session_state.raw_events = raw
                     st.session_state._prev_observer_filter = _obs_for_proc
 
@@ -1184,6 +1185,16 @@ def main():
 
                     st.info(f"Fetched **{len(raw)}** raw events from "
                             f"**{len(_obs_names)}** observer(s).")
+
+                    # ── Temporary debug: expand to diagnose observer names ──
+                    with st.expander("🔍 Debug: reporter name structure (share with dev)"):
+                        st.write("**GDF columns:**", _gdf_cols)
+                        st.write("**First raw event `reported_by`:**",
+                                 raw[0].get("reported_by") if raw else "—")
+                        st.write("**Unique usr_name values:**",
+                                 _all_processed["usr_name"].unique().tolist()
+                                 if "usr_name" in _all_processed.columns else "column missing")
+
                     processed = process_er_data(raw, country, _obs_for_proc,
                                                 date_start, date_end)
 
