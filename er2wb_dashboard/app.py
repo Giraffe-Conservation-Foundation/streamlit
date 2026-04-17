@@ -1045,7 +1045,7 @@ def main():
 
     with gs_c2:
         initials = st.text_input(
-            "Initials (image filenames)", key="er_initials",
+            "Observer initials (e.g., CM)", key="er_initials",
             help="Used in renamed image filenames, e.g. CM → NAM_EHGR_20250101_CM_0001.JPG.")
         er_observer = ""
 
@@ -1113,15 +1113,49 @@ def main():
                             f"from **{n_enc}** encounters.")
 
                         # ── Encounter map ──────────────────────────────────────
+                        _map_cols = ["evt_id", "evt_lat", "evt_lon", "evt_serial",
+                                     "evt_dttm", "gir_herdSize", "usr_name",
+                                     "gir_riverSystem"]
+                        _avail = [c for c in _map_cols if c in processed.columns]
                         map_df = (
-                            processed[["evt_lat", "evt_lon"]]
-                            .dropna()
+                            processed[_avail]
+                            .drop_duplicates(subset=["evt_id"])
+                            .dropna(subset=["evt_lat", "evt_lon"])
                             .rename(columns={"evt_lat": "latitude",
                                              "evt_lon": "longitude"})
                         )
                         if not map_df.empty:
                             with st.expander("🗺️ Encounter locations", expanded=True):
-                                st.map(map_df)
+                                import folium
+                                import streamlit.components.v1 as _components
+                                _fmap = folium.Map(
+                                    location=[map_df["latitude"].mean(),
+                                              map_df["longitude"].mean()],
+                                    zoom_start=10,
+                                    tiles="CartoDB positron",
+                                )
+                                for _, _row in map_df.iterrows():
+                                    _dttm = str(_row.get("evt_dttm", ""))[:19]
+                                    _popup_html = (
+                                        f"<div style='font-family:sans-serif;font-size:13px;line-height:1.6'>"
+                                        f"<b>Serial:</b> {_row.get('evt_serial', '—')}<br/>"
+                                        f"<b>Date/Time (UTC):</b> {_dttm}<br/>"
+                                        f"<b>Herd size:</b> {_row.get('gir_herdSize', '—')}<br/>"
+                                        f"<b>Observer:</b> {_row.get('usr_name', '—')}<br/>"
+                                        f"<b>Lat:</b> {_row['latitude']:.6f}<br/>"
+                                        f"<b>Lon:</b> {_row['longitude']:.6f}"
+                                        f"</div>"
+                                    )
+                                    folium.CircleMarker(
+                                        location=[_row["latitude"], _row["longitude"]],
+                                        radius=7,
+                                        color="#DB580F",
+                                        fill=True,
+                                        fill_color="#DB580F",
+                                        fill_opacity=0.85,
+                                        popup=folium.Popup(_popup_html, max_width=260),
+                                    ).add_to(_fmap)
+                                _components.html(_fmap._repr_html_(), height=440)
 
                         # ── Validation summary ─────────────────────────────────
                         issues = validate_gs_data(gs)
