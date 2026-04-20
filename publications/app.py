@@ -23,6 +23,9 @@ except ImportError:
     def add_sidebar_logo():
         pass
 
+# Shared GCF Google OIDC login helper
+from shared.auth import require_gcf_login
+
 # Custom CSS for better styling
 st.markdown("""
 <style>
@@ -55,46 +58,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ======== Authentication Functions ========
-
-def check_password():
-    """Returns `True` if the user had the correct password."""
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        try:
-            # Try to get password from secrets
-            if st.session_state["password"] == st.secrets["passwords"]["publications_password"]:
-                st.session_state["password_correct"] = True
-                del st.session_state["password"]  # don't store password
-            else:
-                st.session_state["password_correct"] = False
-        except Exception as e:
-            # For local development without secrets.toml, use a default password
-            if st.session_state["password"] == "admin":
-                st.session_state["password_correct"] = True
-                del st.session_state["password"]
-            else:
-                st.session_state["password_correct"] = False
-
-    if "password_correct" not in st.session_state:
-        # First run, show input for password
-        st.text_input(
-            "Password", type="password", on_change=password_entered, key="password"
-        )
-        st.write("*Please enter password to access the Publications Dashboard.*")
-        st.caption("Hint: Steph cell")
-        return False
-    elif not st.session_state["password_correct"]:
-        # Password incorrect, show input + error
-        st.text_input(
-            "Password", type="password", on_change=password_entered, key="password"
-        )
-        st.caption("Hint: Steph cell")
-        st.error("😕 Password incorrect")
-        return False
-    else:
-        # Password correct
-        return True
+# ======== Authentication ========
+# Gating is handled by `require_gcf_login()` inside main() — a Google OIDC
+# flow restricted to @giraffeconservation.org accounts (see shared/auth.py).
 
 # ======== Zotero Functions ========
 
@@ -201,10 +167,9 @@ def main():
     
     # Add logo to sidebar
     add_sidebar_logo()
-    
-    # Check password
-    if not check_password():
-        return
+
+    # Gate behind GCF Google OIDC login (@giraffeconservation.org only)
+    require_gcf_login(page_label="Publications")
     
     # Page title
     st.title("📚 GCF Publications")

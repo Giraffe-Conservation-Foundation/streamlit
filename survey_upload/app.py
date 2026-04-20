@@ -14,95 +14,35 @@ selects on the page.
 import io
 import json
 import re
+import sys
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-from google.cloud import storage
-from google.oauth2 import service_account
+
+# Shared helpers (Google OIDC login + GCS client). Resolve project root so the
+# module is importable whether this file is executed directly or via exec().
+_streamlit_root = Path(__file__).resolve().parent.parent
+if str(_streamlit_root) not in sys.path:
+    sys.path.insert(0, str(_streamlit_root))
+
+from shared.auth import (  # noqa: E402
+    require_gcf_login,
+    get_storage_client,
+    load_buckets,
+    extract_countries_sites_from_buckets,
+    resolve_bucket_name,
+)
 
 
 # ─── Constants ────────────────────────────────────────────────────────────────
-ALLOWED_DOMAIN = "giraffeconservation.org"
 IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
 RETAINED_NON_IMAGE_EXTS = (".xlsx", ".xls", ".csv", ".txt", ".pdf")
 # ER2WB-produced image names: COUNTRY_SITE_YYYYMMDD_XX_####.ext
 ER2WB_PATTERN = re.compile(r"^[A-Z]{3,4}_[A-Z]{3,4}_(\d{8})_", re.IGNORECASE)
 MAX_ZIP_MB = 1024  # 1 GB — matches ER2WB output ceiling and server.maxUploadSize
-
-
-# ─── Authentication ───────────────────────────────────────────────────────────
-def require_login() -> None:
-    """Gate the page behind Google OIDC; restrict to the GCF domain."""
-    if not getattr(st, "user", None) or not getattr(st.user, "is_logged_in", False):
-        st.info("🔐 Sign in with your GCF Google account to continue.")
-        with st.expander("ℹ️ How to sign in", expanded=False):
-            st.markdown(
-                f"""
-1. Click **Sign in with Google** below.
-2. You'll be redirected to **Google's own sign-in page** — the same one you
-   use for Gmail. Enter your **@{ALLOWED_DOMAIN}** email and password there
-   (plus 2FA if enabled).
-3. Google sends you back to Twiga Tools automatically.
-
-**You do not create a separate password for Twiga Tools.** Your GCF Google
-account is your login. If you can check Gmail with your GCF account, you
-can use this page.
-
-**Who can sign in:** anyone with an **@{ALLOWED_DOMAIN}** Google Workspace
-account. Other addresses (Gmail, partner orgs) will be rejected — speak to
-Courtney if you need access but don't have a GCF account.
-
-**Signing out:** use the **Log out** button in the sidebar once you're in.
-                """
-            )
-        col1, _ = st.columns([1, 3])
-        if col1.button("Sign in with Google", type="primary"):
-            st.login()
-        st.stop()
-
-    email = (st.user.email or "").lower()
-    if not email.endswith(f"@{ALLOWED_DOMAIN}"):
-        st.error(f"Access is restricted to @{ALLOWED_DOMAIN} accounts.")
-        if st.button("Log out"):
-            st.logout()
-        st.stop()
-
-
-def get_storage_client() -> storage.Client:
-    """Build a GCS client from the shared service account in app secrets."""
-    if "gcs_client" in st.session_state:
-        return st.session_state.gcs_client
-    try:
-        creds_info = dict(st.secrets["gcp_service_account"])
-    except KeyError:
-        st.error("Missing `gcp_service_account` in app secrets. Ask an admin.")
-        st.stop()
-    try:
-        credentials = service_account.Credentials.from_service_account_info(creds_info)
-        client = storage.Client(credentials=credentials)
-        st.session_state.gcs_client = client
-        return client
-    except Exception as e:
-        st.error(f"Failed to initialise Cloud Storage client: {e}")
-        st.stop()
-
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-def extract_countries_sites(bucket_names: list[str]) -> dict[str, list[str]]:
-    """Map gcf_<country>_<site> buckets into {country: [sites]}."""
-    out: dict[str, set[str]] = {}
-    for name in bucket_names:
-        lower = name.lower()
-        if not lower.startswith("gcf"):
-            continue
-        parts = re.split(r"[_\-]", lower)
-        if len(parts) >= 3:
-            country, site = parts[1].upper(), parts[2].upper()
-            out.setdefault(country, set()).add(site)
-    return {c: sorted(s) for c, s in sorted(out.items())}
 
 
 def month_folder_from_filename(name: str) -> str | None:
@@ -122,26 +62,16 @@ def er2wb_reminder() -> None:
 
 # ─── Main flow ────────────────────────────────────────────────────────────────
 def main() -> None:
-    require_login()
+    require_gcf_login(page_label="Survey data backup")
 
     st.title("🚗 Survey data backup")
     st.caption(f"Signed in as **{st.user.email}**")
-    with st.sidebar:
-        if st.button("Log out", use_container_width=True):
-            st.logout()
 
     er2wb_reminder()
 
     client = get_storage_client()
-    if "available_buckets" not in st.session_state:
-        with st.spinner("Loading available buckets…"):
-            try:
-                st.session_state.available_buckets = [b.name for b in client.list_buckets()]
-            except Exception as e:
-                st.error(f"Could not list buckets: {e}")
-                st.stop()
-
-    countries_sites = extract_countries_sites(st.session_state.available_buckets)
+    bucket_names = load_buckets(client)
+    countries_sites = extract_countries_sites_from_buckets(bucket_names)
     if not countries_sites:
         st.error("No `gcf_<country>_<site>` buckets are accessible to the service account.")
         st.stop()
@@ -176,14 +106,12 @@ def main() -> None:
     )
     fallback_folder = f"{fallback_year}{fallback_month:02d}"
 
-    expected = f"gcf_{country.lower()}_{site.lower()}"
-    bucket_name = next(
-        (b for b in st.session_state.available_buckets
-         if b.lower().replace("-", "_") == expected),
-        None,
-    )
+    bucket_name = resolve_bucket_name(country, site, bucket_names)
     if not bucket_name:
-        st.error(f"No bucket matching `{expected}` is accessible to the service account.")
+        st.error(
+            f"No bucket matching `gcf_{country.lower()}_{site.lower()}` is "
+            f"accessible to the service account."
+        )
         st.stop()
     st.success(f"Target bucket: `{bucket_name}`")
 

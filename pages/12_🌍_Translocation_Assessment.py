@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -7,6 +10,19 @@ import streamlit.components.v1 as components
 #     page_icon="🌍",
 #     layout="wide"
 # )
+
+# ── Shared helpers (logo + GCF Google OIDC gate) ─────────────────────────────
+_streamlit_root = Path(__file__).resolve().parent.parent
+if str(_streamlit_root) not in sys.path:
+    sys.path.insert(0, str(_streamlit_root))
+
+from shared.utils import add_sidebar_logo  # noqa: E402
+from shared.auth import require_gcf_login  # noqa: E402
+
+add_sidebar_logo()
+
+# Gate behind GCF Google OIDC login (@giraffeconservation.org only)
+require_gcf_login(page_label="Translocation Priority Assessment")
 
 st.title("🌍 Giraffe Translocation Priority Assessment")
 

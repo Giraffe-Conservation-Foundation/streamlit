@@ -8,8 +8,15 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import sys
 from datetime import datetime
 from pathlib import Path
+
+# Shared GCF Google OIDC login helper
+_streamlit_root = Path(__file__).parent.parent
+if str(_streamlit_root) not in sys.path:
+    sys.path.insert(0, str(_streamlit_root))
+from shared.auth import require_gcf_login
 
 # Path to local trade data CSV
 TRADE_DATA_CSV = Path(__file__).parent / "comptabExport_1975_2025__251209.csv"
@@ -221,7 +228,10 @@ def create_trade_visualizations(df, last_updated):
 
 def main():
     """Main application function"""
-    
+
+    # Gate behind GCF Google OIDC login (@giraffeconservation.org only)
+    require_gcf_login(page_label="CITES Trade Database")
+
     st.title("📋 CITES Trade Database - Giraffe")
     
     st.markdown("""

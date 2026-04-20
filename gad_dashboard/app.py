@@ -9,8 +9,15 @@ from arcgis.gis import GIS
 from arcgis.features import FeatureLayer
 from arcgis.geometry import Point
 import os
+import sys
 from pathlib import Path
 import json
+
+# Shared GCF Google OIDC login helper
+_streamlit_root = Path(__file__).parent.parent
+if str(_streamlit_root) not in sys.path:
+    sys.path.insert(0, str(_streamlit_root))
+from shared.auth import require_gcf_login
 
 # DEBUG: Check secrets at module load time
 try:
@@ -33,45 +40,9 @@ try:
 except Exception:
     TOKEN = None  # For local development without secrets
 
-# ======== Authentication Functions ========
-
-def check_password():
-    """Returns `True` if the user had the correct password."""
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        try:
-            if st.session_state["password"] == st.secrets["passwords"]["admin_password"]:
-                st.session_state["password_correct"] = True
-                del st.session_state["password"]  # don't store password
-            else:
-                st.session_state["password_correct"] = False
-        except Exception as e:
-            # For local development without secrets.toml, use a default password
-            if st.session_state["password"] == "admin":  # Default for local dev
-                st.session_state["password_correct"] = True
-                del st.session_state["password"]
-            else:
-                st.session_state["password_correct"] = False
-
-    if "password_correct" not in st.session_state:
-        # First run, show input for password
-        st.text_input(
-            "Password", type="password", on_change=password_entered, key="password"
-        )
-        st.write("*Please enter password to access the GAD.*")
-        st.caption("Hint: CJ cell")
-        return False
-    elif not st.session_state["password_correct"]:
-        # Password incorrect, show input + error
-        st.text_input(
-            "Password", type="password", on_change=password_entered, key="password"
-        )
-        st.caption("Hint: CJ cell")
-        st.error("😕 Password incorrect")
-        return False
-    else:
-        # Password correct
-        return True
+# ======== Authentication ========
+# Gating is handled by `require_gcf_login()` inside main() — a Google OIDC
+# flow restricted to @giraffeconservation.org accounts (see shared/auth.py).
 
 # ======== Data Loading Functions ========
 
@@ -515,9 +486,8 @@ def main():
     # Set pandas display options to show all rows
     pd.set_option('display.max_rows', None)
 
-    # Check password before showing content
-    if not check_password():
-        st.stop()
+    # Gate behind GCF Google OIDC login (@giraffeconservation.org only)
+    require_gcf_login(page_label="GAD")
 
 
 
