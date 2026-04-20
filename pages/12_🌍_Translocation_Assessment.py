@@ -1,11 +1,12 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.set_page_config(
-    page_title="Translocation Assessment",
-    page_icon="🌍",
-    layout="wide"
-)
+# Page Configuration set by twiga_tools.py (st.navigation entry point)
+# st.set_page_config(
+#     page_title="Translocation Assessment",
+#     page_icon="🌍",
+#     layout="wide"
+# )
 
 st.title("🌍 Giraffe Translocation Priority Assessment")
 

@@ -1,140 +1,120 @@
 """
 Streamlit Multipage App Structure
-This is the main entry point that uses Streamlit's built-in multipage functionality.
-Much cleaner than the current complex fallback system.
+Entry point using st.navigation() for grouped sidebar sections.
+Requires streamlit >= 1.36.0
 """
 
 import streamlit as st
 from pathlib import Path
 
-# Set page config (must be first Streamlit command)
+# ── Page config (must be first Streamlit command) ─────────────────────────────
 st.set_page_config(
     page_title="Twiga Tools - GCF Conservation Platform",
-    #page_icon="🦒",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# Custom CSS to force full sidebar navigation visibility
-st.markdown("""
-<style>
-    /* Force sidebar to be full height and show all navigation items */
-    .css-1d391kg, [data-testid="stSidebar"] .css-1d391kg {
-        height: 100vh !important;
-        max-height: 100vh !important;
-        overflow-y: auto !important;
-        padding-bottom: 2rem !important;
-    }
-    
-    /* Target the navigation container specifically */
-    [data-testid="stSidebar"] nav, 
-    [data-testid="stSidebar"] .nav-link-container,
-    [data-testid="stSidebar"] .stSelectbox > div,
-    section[data-testid="stSidebar"] nav[role="navigation"] {
-        max-height: none !important;
-        height: auto !important;
-        overflow: visible !important;
-    }
-    
-    /* Remove any height limits on navigation lists */
-    [data-testid="stSidebar"] ul,
-    [data-testid="stSidebar"] .nav-wrapper,
-    [data-testid="stSidebar"] .css-17lntkn {
-        max-height: none !important;
-        height: auto !important;
-        overflow: visible !important;
-    }
-    
-    /* Hide the expand/collapse controls */
-    [data-testid="stSidebar"] .css-1avcm0n button,
-    [data-testid="stSidebar"] [kind="secondary"],
-    [data-testid="stSidebar"] .css-1avcm0n [data-testid="expanderToggle"] {
-        display: none !important;
-    }
-    
-    /* Force navigation items to be visible */
-    [data-testid="stSidebar"] .css-1avcm0n > div,
-    [data-testid="stSidebar"] .nav-item {
-        display: block !important;
-        opacity: 1 !important;
-        visibility: visible !important;
-    }
-    
-    /* Ensure sidebar content scrolls properly */
-    [data-testid="stSidebar"] > div {
-        overflow-y: auto !important;
-        max-height: 100vh !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Main page content
 current_dir = Path(__file__).parent
 
-# Add logo to sidebar
+# ── Sidebar header (logo) ─────────────────────────────────────────────────────
 with st.sidebar:
     if (current_dir / "shared" / "logo.png").exists():
         st.image(str(current_dir / "shared" / "logo.png"), width=200)
     st.markdown("---")
 
-# Main content with logo at top
-if (current_dir / "shared" / "logo.png").exists():
-    st.image(str(current_dir / "shared" / "logo.png"), width=300)
 
-st.title("Twiga Tools")
-st.markdown("*Conservation Technology Platform*")
-st.markdown("---")
+# ── Welcome / landing page ────────────────────────────────────────────────────
+def _welcome_page():
+    if (current_dir / "shared" / "logo.png").exists():
+        st.image(str(current_dir / "shared" / "logo.png"), width=300)
 
-st.markdown("""
+    st.title("Twiga Tools")
+    st.markdown("*Conservation Technology Platform*")
+    st.markdown("---")
 
+    st.markdown("""
 This integrated platform provides essential tools for giraffe conservation research, monitoring, and data management.
 
 ### 📊 Available tools
 
-Navigate using the sidebar to access:
+Use the grouped sidebar to access:
 
-- **Our impact** - quick look at our conservation success
-- **GPS unit check** - monitor GPS tracking device performance over 7 days
-- **Survey dashboard (NANW)** - monitor Northwest Namibia giraffe population
-- **Survey dashboard (ZAF)** - monitor South Africa giraffe survey encounters
-- **Survey dashboard (EHGR)** - monitor Etosha Heights giraffe encounters and patrol data
-- **Survey data upload** - process and upload survey images direct to Google Cloud
-- **Camera trap data upload** - process and upload camera trap images direct to Google Cloud
-- **Post-tagging dashboard** - monitor giraffe locations during first 7 days after collar deployment
-- **GAD** - review, download, or submit giraffe population to the Giraffe Africa Database
-- **Translocation dashboard** - monitor and review giraffe translocation events
-- **Genetic dashboard** - monitor and review biological sample events
-- **Mortality Dashboard** - track and analyze giraffe mortality events with timeline and location mapping
-- **Create ID Book** - create and download an ID book using a GiraffeSpotter export
-- **SECR Population Analysis** - spatially-explicit capture-recapture and Bailey's Triple Catch population estimation
-- **ER2WB Converter** - convert EarthRanger giraffe encounter data to GiraffeSpotter bulk import format
-
-### 🚧 Coming soon
-
-- **Life history** - see all events linked with an individual giraffe (sightings, immobilisations, etc)
-- **Impact reports**
-- **Patrol Download** - download patrol tracks as shapefiles from EarthRanger for GIS analysis
-- **ER Backup** - comprehensive backup of all EarthRanger data
-
-Please send any other tool/dashboard requests to courtney
+- **Home** — overview dashboards: Our Impact, Twiga Dash, Life History, Publications, Preferred Suppliers
+- **Survey dashboards** — country-level survey encounter dashboards (EHGR, NANW, ZAF, ZMB) and Patrol shapefile download
+- **Technical** — GPS unit health and deployment tools
+- **Data upload** — survey and camera trap image ingestion
+- **GiraffeSpotter** — converters and ID book generator for Wildbook
+- **GAD** — Giraffe Africa Database, mortality, and genetic sample tracking
+- **Translocations** — translocation events and priority assessment
+- **Other** — CITES trade data and SECR population analysis
 
 ### 🚀 Getting started
 
-1. Use the sidebar navigation to select a tool
+1. Pick a tool from the sidebar
 2. Follow the authentication/log in steps
 3. Follow the guided process
-4. If you need further help, please contact courtney@giraffeconservation.org             
+4. Contact courtney@giraffeconservation.org for help or new tool requests
 
 ### 🔒 Security
 
 All tools use secure authentication and encrypted data transmission.
 """)
 
-# Footer
-st.markdown("---")
-st.markdown("© 2025 Giraffe Conservation Foundation.")
+    st.markdown("---")
+    st.markdown("© 2025 Giraffe Conservation Foundation.")
 
-# Sidebar footer content
+
+# ── Page registry ─────────────────────────────────────────────────────────────
+pages = {
+    "Home": [
+        st.Page(_welcome_page, title="Welcome", icon="🦒", default=True, url_path="welcome"),
+        st.Page("pages/0_🌍_Our_Impact.py",            title="Our Impact",          icon="🌍"),
+        st.Page("pages/17_🦒_Twiga_Dash.py",           title="Twiga Dash",          icon="🦒"),
+        st.Page("pages/16_📜_Life_History.py",         title="Life History",        icon="📜"),
+        st.Page("pages/15_📚_Publications.py",         title="Publications",        icon="📚"),
+        st.Page("pages/2_🔧_Preferred_Suppliers.py",   title="Preferred Suppliers", icon="🔧"),
+    ],
+    "Survey dashboards": [
+        st.Page("pages/4_🦒_Survey_dashboard_(EHGR).py", title="Survey dashboard (EHGR)", icon="🦒"),
+        st.Page("pages/2_🦒_Survey_dashboard_(NANW).py", title="Survey dashboard (NANW)", icon="🦒"),
+        st.Page("pages/3_🦒_Survey_dashboard_(ZAF).py",  title="Survey dashboard (ZAF)",  icon="🦒"),
+        st.Page("pages/20_🦒_Survey_dashboard_ZMB.py",   title="Survey dashboard (ZMB)",  icon="🦒"),
+        st.Page("pages/11_🗺️_Patrol_shp_download.py",   title="Patrol shp download",     icon="🗺️"),
+    ],
+    "Technical": [
+        st.Page("pages/1_🔋_GPS_unit_check.py",         title="GPS unit check",        icon="🔋"),
+        st.Page("pages/2_🛰️_GPS_Data_Availability.py",  title="GPS Data Availability", icon="🛰️"),
+        st.Page("pages/7_📍_Post-Tagging_Dashboard.py", title="Post-Tagging Dashboard", icon="📍"),
+    ],
+    "Data upload": [
+        st.Page("pages/5_🚗_Survey_data_upload.py",      title="Survey data upload",      icon="🚗"),
+        st.Page("pages/6_📷_Camera_trap_data_upload.py", title="Camera trap data upload", icon="📷"),
+    ],
+    "GiraffeSpotter": [
+        st.Page("pages/18_🦒_ER2WB_Converter.py",                        title="ER2WB Converter",   icon="🦒"),
+        st.Page("pages/19_📋_SMART2WB_Converter.py",                     title="SMART2WB Converter", icon="📋"),
+        st.Page("pages/10_📖_Create_an_ID_book_(GiraffeSpotter).py",     title="Create ID Book",    icon="📖"),
+    ],
+    "GAD": [
+        st.Page("pages/7_🦒_GAD.py",                title="GAD",                 icon="🦒"),
+        st.Page("pages/13_☠️_Mortality_Dashboard.py", title="Mortality Dashboard", icon="☠️"),
+        st.Page("pages/9_🧬_Genetic_dashboard.py",  title="Genetic dashboard",   icon="🧬"),
+    ],
+    "Translocations": [
+        st.Page("pages/8_🚁_Translocation_dashboard.py",  title="Translocation Dashboard",  icon="🦒"),
+        st.Page("pages/12_🌍_Translocation_Assessment.py", title="Translocation Assessment", icon="🌍"),
+    ],
+    "Other": [
+        st.Page("pages/12_📋_CITES_Trade_Database.py",      title="CITES Trade Database",      icon="📋"),
+        st.Page("pages/14_📊_SECR_Population_Analysis.py", title="SECR Population Analysis", icon="📊"),
+    ],
+}
+
+# ── Run selected page ─────────────────────────────────────────────────────────
+pg = st.navigation(pages)
+pg.run()
+
+# ── Sidebar footer (renders on every page) ────────────────────────────────────
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Giraffe Conservation Foundation**")
 st.sidebar.markdown("[GitHub Repository](https://github.com/Giraffe-Conservation-Foundation/streamlit)")

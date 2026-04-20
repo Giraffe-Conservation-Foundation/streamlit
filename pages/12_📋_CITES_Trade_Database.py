@@ -2,12 +2,12 @@ import streamlit as st
 import importlib.util
 import os
 
-# Page Configuration
-st.set_page_config(
-    page_title="CITES Trade Database", 
-    page_icon="📋", 
-    layout="wide"
-)
+# Page Configuration set by twiga_tools.py (st.navigation entry point)
+# st.set_page_config(
+#     page_title="CITES Trade Database",
+#     page_icon="📋",
+#     layout="wide"
+# )
 
 # Get the path to the CITES dashboard app
 current_dir = os.path.dirname(os.path.abspath(__file__))
