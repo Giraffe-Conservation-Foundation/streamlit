@@ -98,10 +98,10 @@ pages = {
     "GAD": [
         st.Page("pages/7_🦒_GAD.py",                title="GAD",                 icon="🦒"),
         st.Page("pages/13_☠️_Mortality_Dashboard.py", title="Mortality Dashboard", icon="☠️"),
-        st.Page("pages/9_🧬_Genetic_dashboard.py",  title="Genetic dashboard",   icon="🧬"),
+        st.Page("pages/9_🧬_Genetic_Dashboard.py",  title="Genetic dashboard",   icon="🧬"),
     ],
     "Translocations": [
-        st.Page("pages/8_🚁_Translocation_dashboard.py",  title="Translocation Dashboard",  icon="🦒"),
+        st.Page("pages/8_🚁_Translocation_Dashboard.py",  title="Translocation Dashboard",  icon="🦒"),
         st.Page("pages/12_🌍_Translocation_Assessment.py", title="Translocation Assessment", icon="🌍"),
     ],
     "Other": [
