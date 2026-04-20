@@ -2,7 +2,8 @@
 # This file contains all dependencies needed for any of the apps
 
 # Core Streamlit
-streamlit>=1.36.0  # st.navigation / st.Page grouped sidebar requires 1.36+
+streamlit>=1.42.0  # st.login / st.user OIDC auth requires 1.42+
+Authlib>=1.3.2     # Required by st.login() OIDC flow
 
 # Data Processing
 pandas>=2.0.0

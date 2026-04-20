@@ -87,7 +87,7 @@ pages = {
         st.Page("pages/7_📍_Post-Tagging_Dashboard.py", title="Post-Tagging Dashboard", icon="📍"),
     ],
     "Data upload": [
-        st.Page("pages/5_🚗_Survey_data_upload.py",      title="Survey data upload",      icon="🚗"),
+        st.Page("pages/5_🚗_Survey_data_backup.py",      title="Survey data backup",      icon="🚗"),
         st.Page("pages/6_📷_Camera_trap_data_upload.py", title="Camera trap data upload", icon="📷"),
     ],
     "GiraffeSpotter": [
