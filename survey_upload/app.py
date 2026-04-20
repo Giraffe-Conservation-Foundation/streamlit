@@ -30,7 +30,7 @@ IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
 RETAINED_NON_IMAGE_EXTS = (".xlsx", ".xls", ".csv", ".txt", ".pdf")
 # ER2WB-produced image names: COUNTRY_SITE_YYYYMMDD_XX_####.ext
 ER2WB_PATTERN = re.compile(r"^[A-Z]{3,4}_[A-Z]{3,4}_(\d{8})_", re.IGNORECASE)
-MAX_ZIP_MB = 2048  # 2 GB — Streamlit Cloud upload ceiling
+MAX_ZIP_MB = 1024  # 1 GB — matches ER2WB output ceiling and server.maxUploadSize
 
 
 # ─── Authentication ───────────────────────────────────────────────────────────
@@ -38,6 +38,26 @@ def require_login() -> None:
     """Gate the page behind Google OIDC; restrict to the GCF domain."""
     if not getattr(st, "user", None) or not getattr(st.user, "is_logged_in", False):
         st.info("🔐 Sign in with your GCF Google account to continue.")
+        with st.expander("ℹ️ How to sign in", expanded=False):
+            st.markdown(
+                f"""
+1. Click **Sign in with Google** below.
+2. You'll be redirected to **Google's own sign-in page** — the same one you
+   use for Gmail. Enter your **@{ALLOWED_DOMAIN}** email and password there
+   (plus 2FA if enabled).
+3. Google sends you back to Twiga Tools automatically.
+
+**You do not create a separate password for Twiga Tools.** Your GCF Google
+account is your login. If you can check Gmail with your GCF account, you
+can use this page.
+
+**Who can sign in:** anyone with an **@{ALLOWED_DOMAIN}** Google Workspace
+account. Other addresses (Gmail, partner orgs) will be rejected — speak to
+Courtney if you need access but don't have a GCF account.
+
+**Signing out:** use the **Log out** button in the sidebar once you're in.
+                """
+            )
         col1, _ = st.columns([1, 3])
         if col1.button("Sign in with Google", type="primary"):
             st.login()
