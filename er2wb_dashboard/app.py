@@ -383,7 +383,11 @@ def fetch_er_events(country: str,
             cat = "monitoring_zmb" if country == "ZMB" else f"monitoring_{country_lower}"
             kwargs["event_category"] = cat
 
-    gdf = er_client.get_events(**kwargs)
+    try:
+        gdf = er_client.get_events(**kwargs)
+    except AssertionError:
+        # ecoscope raises AssertionError when the query returns no events
+        return [], []
 
     if gdf is None or gdf.empty:
         return [], []
@@ -1168,7 +1172,11 @@ def main():
                                                st.session_state.er_client,
                                                event_type_uuid=event_type_uuid or None)
                 if not raw:
-                    st.warning("No events returned for this date range and country.")
+                    st.warning(
+                        "No events returned for this date range. "
+                        "If you're using a non-GCF EarthRanger instance, make sure you've "
+                        "selected the correct **Encounter event type** in the selector above."
+                    )
                 else:
                     st.session_state.raw_events = raw
                     st.session_state._prev_observer_filter = _obs_for_proc
