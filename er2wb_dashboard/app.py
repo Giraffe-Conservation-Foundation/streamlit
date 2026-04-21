@@ -54,7 +54,7 @@ COUNTRY_SITES = {
                  "MNNP", "MSCO", "MUNP", "MYCO", "NJCO", "NLNP", "NNCO", "SACO",
                  "SBCO", "SKCO", "UIFA", "WUCO"],
     "NANW":     ["NANW"],
-    "TZA":      ["SANP"],
+    "TZA":      ["MKNP", "SANP"],
     "UGA":      ["KVNP", "LMNP", "MFNP", "PUWR"],
     "ZAF":      ["TKGR"],
     "ZMB":      ["LVNP", "LUNP"],
@@ -109,7 +109,7 @@ SITE_NAMES = {
     "MPRC": "Mpala",                          "MUWC": "Mugie",
     "NIWC": "Naibunga",                       "SANR": "Samburu National Reserve",
     # Tanzania
-    "SANP": "Serengeti National Park",
+    "MKNP": "Mkomazi National Park",       "SANP": "Serengeti National Park",
     # Uganda
     "KVNP": "Kidepo Valley National Park",    "PUWR": "Pian Upe Wildlife Reserve",
     "MFNP": "Murchison Falls National Park",
