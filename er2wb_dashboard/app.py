@@ -240,8 +240,8 @@ def _fetch_event_types(client: EarthRangerIO) -> list:
             cat   = str(row.get("category", "")).strip()
             if label and uuid and uuid.lower() not in ("nan", "none", ""):
                 rows.append({"label": label, "uuid": uuid, "category": cat})
-        # Filter to giraffe survey encounter types only
-        rows = [r for r in rows if "giraffe survey encounter" in r["label"].lower()]
+        # Filter to any event type with "giraffe" in the label
+        rows = [r for r in rows if "giraffe" in r["label"].lower()]
         # Sort alphabetically
         rows.sort(key=lambda x: x["label"].lower())
         return rows
