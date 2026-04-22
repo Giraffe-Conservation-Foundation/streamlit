@@ -23,13 +23,13 @@ GS_FIELDS = [
     ("Encounter.occurrenceRemarks",  "Notes / remarks",       False, "Individual"),
     # Group counts
     ("Occurrence.groupSize",         "Group size",            False, "Group counts"),
-    ("Occurrence.numAdults",         "# adults",              False, "Group counts"),
+    ("Occurrence.numAdults",         "# adults (total)",      False, "Group counts"),
     ("Occurrence.numAdultFemales",   "# adult females",       False, "Group counts"),
     ("Occurrence.numAdultMales",     "# adult males",         False, "Group counts"),
-    ("Occurrence.numSubAdults",      "# sub-adults",          False, "Group counts"),
+    ("Occurrence.numSubAdults",      "# sub-adults (total)",  False, "Group counts"),
     ("Occurrence.numSubFemales",     "# sub-adult females",   False, "Group counts"),
     ("Occurrence.numSubMales",       "# sub-adult males",     False, "Group counts"),
-    ("Occurrence.numCalves",         "# calves",              False, "Group counts"),
+    ("Occurrence.numCalves",         "# calves / juveniles",  False, "Group counts"),
     # Sighting geometry
     ("Occurrence.distance",          "Distance (m)",          False, "Sighting geometry"),
     ("Occurrence.bearing",           "Bearing (°)",           False, "Sighting geometry"),
@@ -37,6 +37,49 @@ GS_FIELDS = [
     ("Encounter.mediaAsset0",        "Photo 1 filename",      False, "Media"),
     ("Encounter.mediaAsset1",        "Photo 2 filename",      False, "Media"),
 ]
+
+# Synonyms for auto-suggesting column matches.
+# Two lists per field:
+#   "exact"     — the full column name must equal one of these (case-insensitive)
+#   "substring" — the synonym just needs to appear anywhere in the column name
+SYNONYMS = {
+    "Encounter.decimalLatitude":    {"exact": ["lat", "latitude", "y"],
+                                     "substring": ["latitude"]},
+    "Encounter.decimalLongitude":   {"exact": ["lon", "long", "longitude", "x"],
+                                     "substring": ["longitude"]},
+    "Encounter.individualID":       {"exact": ["id", "name", "individual_id", "giraffe_id"],
+                                     "substring": ["individual", "giraffe_id", "animal_id"]},
+    "Encounter.sex":                {"exact": ["sex", "gender"],
+                                     "substring": ["sex", "gender"]},
+    "Encounter.lifeStage":          {"exact": ["age", "class", "stage"],
+                                     "substring": ["life_stage", "lifestage", "age_class"]},
+    "Encounter.occurrenceRemarks":  {"exact": ["notes", "remarks", "comments", "activity"],
+                                     "substring": ["note", "remark", "comment", "activity", "behaviour", "behavior"]},
+    "Occurrence.groupSize":         {"exact": ["size", "total", "count", "n"],
+                                     "substring": ["group_size", "herd_size", "group size"]},
+    "Occurrence.numAdults":         {"exact": ["adults", "ad"],
+                                     "substring": ["num_adult", "n_adult", "nadult"]},
+    "Occurrence.numAdultFemales":   {"exact": ["female", "females", "af"],
+                                     "substring": ["adult_f", "adult female"]},
+    "Occurrence.numAdultMales":     {"exact": ["male", "males", "am"],
+                                     "substring": ["adult_m", "adult male"]},
+    "Occurrence.numSubAdults":      {"exact": ["sa", "subadult", "sub_adult", "subadults", "juvenile"],
+                                     "substring": ["sub_adult", "subadult"]},
+    "Occurrence.numSubFemales":     {"exact": ["sf", "subf", "sub_f"],
+                                     "substring": ["sub_f", "subf"]},
+    "Occurrence.numSubMales":       {"exact": ["sm", "subm", "sub_m"],
+                                     "substring": ["sub_m", "subm"]},
+    "Occurrence.numCalves":         {"exact": ["baby", "babies", "infant", "infants", "calf", "calves", "cub"],
+                                     "substring": ["calf", "calv", "baby", "infant", "juvenile"]},
+    "Occurrence.distance":          {"exact": ["dist", "distance"],
+                                     "substring": ["dist", "distance"]},
+    "Occurrence.bearing":           {"exact": ["bearing", "direction", "azimuth"],
+                                     "substring": ["bearing", "azimuth"]},
+    "Encounter.mediaAsset0":        {"exact": ["photo", "photo1", "image", "right"],
+                                     "substring": ["photo1", "image1", "right_photo", "media0"]},
+    "Encounter.mediaAsset1":        {"exact": ["photo2", "left"],
+                                     "substring": ["photo2", "image2", "left_photo", "media1"]},
+}
 
 INT_FIELDS = {
     "Occurrence.groupSize", "Occurrence.numAdults", "Occurrence.numAdultFemales",
@@ -53,13 +96,40 @@ VESSEL_OPTIONS = [
     "vehicle_based_photographic",
     "foot_based_photographic",
     "aerial_based_photographic",
-    "boat_based_photographic",
+    "random_encounter",
 ]
 
+# Full subspecies epithets as expected by GiraffeSpotter
 SPECIES_OPTIONS = [
-    "camelopardalis", "giraffa", "reticulata", "tippelskirchi",
-    "antiquorum", "peralta", "rothschildi", "thornicrofti",
+    "giraffa giraffa",
+    "giraffa angolensis",
+    "tippelskirchi tippelskirchi",
+    "tippelskirchi thornicrofti",
+    "camelopardalis camelopardalis",
+    "camelopardalis antiquorum",
+    "camelopardalis peralta",
 ]
+
+# ISO-3166 alpha-3 codes for countries where GCF operates
+COUNTRY_CODES = [
+    ("BWA", "Botswana"),
+    ("CMR", "Cameroon"),
+    ("ETH", "Ethiopia"),
+    ("KEN", "Kenya"),
+    ("MOZ", "Mozambique"),
+    ("NAM", "Namibia"),
+    ("NGA", "Nigeria"),
+    ("RWA", "Rwanda"),
+    ("SOM", "Somalia"),
+    ("SSD", "South Sudan"),
+    ("TZA", "Tanzania"),
+    ("UGA", "Uganda"),
+    ("ZAF", "South Africa"),
+    ("ZMB", "Zambia"),
+    ("ZWE", "Zimbabwe"),
+]
+
+NONE_OPT = "(not mapped)"
 
 
 def _safe_int(x):
@@ -89,16 +159,33 @@ def _excel_bytes(df: pd.DataFrame) -> bytes:
     return buf.read()
 
 
-def _load_file(uploaded) -> pd.DataFrame:
+def _load_file(uploaded) -> tuple[pd.DataFrame, list[str]]:
+    """Return (dataframe, sheet_names). sheet_names is [] for CSV."""
     name = uploaded.name.lower()
     if name.endswith(".csv"):
-        return pd.read_csv(uploaded)
-    return pd.read_excel(uploaded)
+        return pd.read_csv(uploaded), []
+    xf = pd.ExcelFile(uploaded)
+    return None, xf.sheet_names  # caller picks sheet then re-reads
+
+
+def _auto_suggest(gs_field: str, src_cols_opt: list[str]) -> int:
+    """Return the index into src_cols_opt that best matches gs_field, or 0 (= not mapped)."""
+    syn_def = SYNONYMS.get(gs_field, {})
+    exact_syns     = syn_def.get("exact", [])
+    substring_syns = syn_def.get("substring", [])
+    # Exact match first (higher confidence)
+    for ci, sc in enumerate(src_cols_opt):
+        if sc.lower() in exact_syns:
+            return ci
+    # Substring match fallback
+    for ci, sc in enumerate(src_cols_opt):
+        sc_low = sc.lower()
+        if any(syn in sc_low for syn in substring_syns):
+            return ci
+    return 0
 
 
 def _build_gs(src: pd.DataFrame, settings: dict, date_cfg: dict, col_map: dict) -> pd.DataFrame:
-    n = len(src)
-
     # ── Resolve datetime series ────────────────────────────────────────────────
     dt = None
     mode = date_cfg["mode"]
@@ -108,18 +195,23 @@ def _build_gs(src: pd.DataFrame, settings: dict, date_cfg: dict, col_map: dict) 
         elif mode == "date_time":
             d = pd.to_datetime(src[date_cfg["date_col"]].astype(str), errors="coerce")
             if date_cfg.get("time_col"):
-                t = pd.to_datetime(src[date_cfg["time_col"]].astype(str), errors="coerce")
-                dt = d + pd.to_timedelta(t.dt.hour * 3600 + t.dt.minute * 60, unit="s")
+                t = pd.to_datetime(
+                    src[date_cfg["time_col"]].astype(str), errors="coerce",
+                    format="mixed",
+                )
+                dt = d + pd.to_timedelta(
+                    t.dt.hour * 3600 + t.dt.minute * 60, unit="s"
+                )
             else:
                 dt = d
         elif mode == "ymd":
             def _ymd(row):
                 try:
-                    y = int(row[date_cfg["year_col"]])
-                    m = int(row[date_cfg["month_col"]])
-                    d = int(row[date_cfg["day_col"]])
-                    h  = int(row[date_cfg["hour_col"]])  if date_cfg.get("hour_col")  else 0
-                    mn = int(row[date_cfg["min_col"]])   if date_cfg.get("min_col")   else 0
+                    y  = int(row[date_cfg["year_col"]])
+                    m  = int(row[date_cfg["month_col"]])
+                    d  = int(row[date_cfg["day_col"]])
+                    h  = int(row[date_cfg["hour_col"]]) if date_cfg.get("hour_col") else 0
+                    mn = int(row[date_cfg["min_col"]])  if date_cfg.get("min_col")  else 0
                     return pd.Timestamp(y, m, d, h, mn)
                 except Exception:
                     return pd.NaT
@@ -134,15 +226,18 @@ def _build_gs(src: pd.DataFrame, settings: dict, date_cfg: dict, col_map: dict) 
     def _survey_id(ts):
         if pd.isna(ts):
             return ""
-        return f"{country}_{site}_{ts.strftime('%Y%m')}" if country else site
+        prefix = f"{country}_{site}" if country else site
+        return f"{prefix}_{ts.strftime('%Y%m')}"
 
     def _occ_id(ts):
         if pd.isna(ts):
             return ""
-        return f"{country}_{site}_{ts.strftime('%Y%m%d%H%M%S')}" if country else site
+        prefix = f"{country}_{site}" if country else site
+        return f"{prefix}_{ts.strftime('%Y%m%d%H%M%S')}"
 
     rows = []
-    for i, src_row in src.iterrows():
+    for i in range(len(src)):
+        src_row = src.iloc[i]
         ts = dt.iloc[i] if dt is not None else pd.NaT
 
         def _get(gs_field):
@@ -158,16 +253,16 @@ def _build_gs(src: pd.DataFrame, settings: dict, date_cfg: dict, col_map: dict) 
             return v if v and v.lower() != "nan" else ""
 
         row = {
-            "Survey.vessel":             settings["vessel"],
-            "Survey.id":                 _get("Survey.id") or _survey_id(ts),
-            "Occurrence.occurrenceID":   _get("Occurrence.occurrenceID") or _occ_id(ts),
+            "Survey.vessel":              settings["vessel"],
+            "Survey.id":                  _survey_id(ts),
+            "Occurrence.occurrenceID":    _occ_id(ts),
             "Encounter.decimalLongitude": _get("Encounter.decimalLongitude"),
             "Encounter.decimalLatitude":  _get("Encounter.decimalLatitude"),
             "Encounter.locationID":       location,
-            "Encounter.year":             ts.year  if pd.notna(ts) else None,
-            "Encounter.month":            ts.month if pd.notna(ts) else None,
-            "Encounter.day":              ts.day   if pd.notna(ts) else None,
-            "Encounter.hour":             ts.hour  if pd.notna(ts) else None,
+            "Encounter.year":             ts.year   if pd.notna(ts) else None,
+            "Encounter.month":            ts.month  if pd.notna(ts) else None,
+            "Encounter.day":              ts.day    if pd.notna(ts) else None,
+            "Encounter.hour":             ts.hour   if pd.notna(ts) else None,
             "Encounter.minutes":          ts.minute if pd.notna(ts) else None,
             "Encounter.submitterID":      settings["submitter"],
             "Occurrence.groupSize":       _get("Occurrence.groupSize"),
@@ -206,36 +301,61 @@ def main():
     uploaded = st.file_uploader(
         "Upload xlsx, xls or csv",
         type=["xlsx", "xls", "csv"],
-        help="One row per individual giraffe encounter.",
     )
     if not uploaded:
         st.stop()
 
-    try:
-        src = _load_file(uploaded)
-    except Exception as e:
-        st.error(f"Could not read file: {e}")
-        st.stop()
+    # Sheet selection for multi-sheet Excel files
+    is_csv = uploaded.name.lower().endswith(".csv")
+    if is_csv:
+        try:
+            src = pd.read_csv(uploaded)
+        except Exception as e:
+            st.error(f"Could not read file: {e}")
+            st.stop()
+    else:
+        try:
+            xf = pd.ExcelFile(uploaded)
+            sheet_names = xf.sheet_names
+        except Exception as e:
+            st.error(f"Could not read file: {e}")
+            st.stop()
+
+        if len(sheet_names) > 1:
+            sheet = st.selectbox("Select sheet", sheet_names)
+        else:
+            sheet = sheet_names[0]
+
+        try:
+            src = xf.parse(sheet)
+        except Exception as e:
+            st.error(f"Could not read sheet '{sheet}': {e}")
+            st.stop()
+
+    # Drop entirely empty rows/cols that Excel sometimes adds
+    src = src.dropna(how="all").reset_index(drop=True)
+    src.columns = [str(c).strip() for c in src.columns]
 
     st.success(f"Loaded **{len(src):,} rows** × **{len(src.columns)} columns**")
 
     with st.expander("Preview source data", expanded=False):
         st.dataframe(src.head(20), use_container_width=True)
 
-    one_per_row = st.checkbox(
-        "Each row represents one individual giraffe (one-giraffe-per-row format)",
-        value=True,
+    st.info(
+        "This tool maps **one source row → one GiraffeSpotter row**. "
+        "Each row can be a herd-level sighting (group counts, no individual ID) "
+        "or an individually-identified giraffe — both work. "
+        "If your file has multiple giraffes per row you'll need to reshape it first."
     )
-    if not one_per_row:
-        st.warning(
-            "This tool only supports one-giraffe-per-row data. "
-            "Please reshape your spreadsheet (e.g. one row per Herd member) before uploading."
-        )
-        st.stop()
 
-    src_cols    = list(src.columns)
-    none_option = "(not mapped)"
-    src_cols_opt = [none_option] + src_cols
+    src_cols     = list(src.columns)
+    src_cols_opt = [NONE_OPT] + src_cols
+
+    # Auto-detect date column names for sensible defaults
+    _col_lower = {c.lower(): c for c in src_cols}
+    _has_date  = any("date" in c for c in _col_lower)
+    _has_time  = any(c in _col_lower for c in ["time"])
+    _has_dt    = any(c in _col_lower for c in ["datetime", "date_time", "timestamp"])
 
     # ── Step 2: Survey settings ────────────────────────────────────────────────
     st.markdown("---")
@@ -244,107 +364,120 @@ def main():
     c1, c2, c3 = st.columns(3)
     with c1:
         submitter   = st.text_input("GiraffeSpotter username (submitterID) *", placeholder="e.g. courtney_gcf")
-        location_id = st.text_input("Location / site name (locationID) *",     placeholder="e.g. Hoanib")
-        country     = st.text_input("Country code (for auto-generated IDs)",    placeholder="e.g. NAM", max_chars=3).upper()
+        location_id = st.text_input("Location / site name (locationID) *",     placeholder="e.g. Rombo")
+        country_labels = [f"{code} — {name}" for code, name in COUNTRY_CODES]
+        country_sel    = st.selectbox("Country", country_labels,
+                                      index=next((i for i, (c, _) in enumerate(COUNTRY_CODES) if c == "TZA"), 0))
+        country = COUNTRY_CODES[country_labels.index(country_sel)][0]
     with c2:
         vessel  = st.selectbox("Survey method (Survey.vessel)", VESSEL_OPTIONS)
         genus   = st.text_input("Genus", value="Giraffa")
-        epithet = st.selectbox("Species epithet", SPECIES_OPTIONS)
+        epithet = st.selectbox("Species epithet", SPECIES_OPTIONS,
+                               index=SPECIES_OPTIONS.index("tippelskirchi tippelskirchi"))
     with c3:
         st.caption(
-            "**Required fields** (marked \\*) must be filled to generate a valid GS file.  \n"
-            "Country code is used to auto-build Survey.id and Occurrence.occurrenceID — "
-            "leave blank to omit the prefix."
+            "**Required fields** (marked \\*) must be filled before generating.  \n\n"
+            "Country code is used to build `Survey.id` and `Occurrence.occurrenceID` "
+            "— leave blank to omit the prefix."
         )
 
     settings = dict(
-        submitter=submitter,
-        location_id=location_id,
-        country=country,
-        vessel=vessel,
-        genus=genus,
-        epithet=epithet,
+        submitter=submitter, location_id=location_id, country=country,
+        vessel=vessel, genus=genus, epithet=epithet,
     )
 
     # ── Step 3: Date & time ────────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Step 3: Date & time")
     st.caption(
-        "Dates are used to populate Encounter.year/month/day/hour/minutes and "
-        "to auto-generate Survey.id and Occurrence.occurrenceID."
+        "Used to populate Encounter.year/month/day/hour/minutes and to "
+        "auto-generate Survey.id and Occurrence.occurrenceID."
     )
 
-    date_mode = st.radio(
-        "How is the date stored in your file?",
-        ["Single datetime column", "Separate date + time columns", "Separate year / month / day columns"],
-        horizontal=True,
-    )
+    date_modes = [
+        "Separate date + time columns",
+        "Single datetime column",
+        "Separate year / month / day columns",
+    ]
+    default_mode = 1 if _has_dt else 0   # prefer date+time when both cols likely present
+    date_mode = st.radio("How is the date stored?", date_modes,
+                         index=default_mode, horizontal=True)
 
     date_cfg = {"mode": None}
+
     if date_mode == "Single datetime column":
-        date_cfg["mode"]   = "datetime"
-        date_cfg["dt_col"] = st.selectbox("Datetime column", src_cols_opt, key="dt_col")
-        if date_cfg["dt_col"] == none_option:
-            date_cfg["dt_col"] = None
+        date_cfg["mode"] = "datetime"
+        default_dt = next((i+1 for i, c in enumerate(src_cols)
+                           if any(k in c.lower() for k in ["datetime","timestamp","date_time"])), 0)
+        sel = st.selectbox("Datetime column", src_cols_opt, index=default_dt, key="dt_col")
+        date_cfg["dt_col"] = None if sel == NONE_OPT else sel
 
     elif date_mode == "Separate date + time columns":
         date_cfg["mode"] = "date_time"
         dc1, dc2 = st.columns(2)
         with dc1:
-            date_cfg["date_col"] = st.selectbox("Date column", src_cols_opt, key="date_col")
-            if date_cfg["date_col"] == none_option:
-                date_cfg["date_col"] = None
+            default_d = next((i+1 for i, c in enumerate(src_cols) if "date" in c.lower()), 0)
+            sel_d = st.selectbox("Date column", src_cols_opt, index=default_d, key="date_col")
+            date_cfg["date_col"] = None if sel_d == NONE_OPT else sel_d
         with dc2:
-            date_cfg["time_col"] = st.selectbox("Time column (optional)", src_cols_opt, key="time_col")
-            if date_cfg["time_col"] == none_option:
-                date_cfg["time_col"] = None
+            default_t = next((i+1 for i, c in enumerate(src_cols)
+                              if c.lower() in ("time", "time_of_day", "obs_time")), 0)
+            sel_t = st.selectbox("Time column (optional)", src_cols_opt, index=default_t, key="time_col")
+            date_cfg["time_col"] = None if sel_t == NONE_OPT else sel_t
 
     else:
         date_cfg["mode"] = "ymd"
         dc1, dc2, dc3, dc4, dc5 = st.columns(5)
-        def _pick(label, key, col):
-            with col:
-                v = st.selectbox(label, src_cols_opt, key=key)
-                return None if v == none_option else v
-        date_cfg["year_col"]  = _pick("Year",   "ymd_y", dc1)
-        date_cfg["month_col"] = _pick("Month",  "ymd_m", dc2)
-        date_cfg["day_col"]   = _pick("Day",    "ymd_d", dc3)
-        date_cfg["hour_col"]  = _pick("Hour (optional)",   "ymd_h",  dc4)
-        date_cfg["min_col"]   = _pick("Minute (optional)", "ymd_mn", dc5)
+        def _pick(label, key, hints, col_widget):
+            default = next((i+1 for i, c in enumerate(src_cols)
+                            if any(h in c.lower() for h in hints)), 0)
+            with col_widget:
+                v = st.selectbox(label, src_cols_opt, index=default, key=key)
+                return None if v == NONE_OPT else v
+        date_cfg["year_col"]  = _pick("Year",             "ymd_y",  ["year"],   dc1)
+        date_cfg["month_col"] = _pick("Month",            "ymd_m",  ["month"],  dc2)
+        date_cfg["day_col"]   = _pick("Day",              "ymd_d",  ["day"],    dc3)
+        date_cfg["hour_col"]  = _pick("Hour (optional)",  "ymd_h",  ["hour"],   dc4)
+        date_cfg["min_col"]   = _pick("Minute (optional)","ymd_mn", ["minute"], dc5)
 
     # ── Step 4: Column mapping ─────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Step 4: Map columns")
-    st.caption("Select which column in your file maps to each GiraffeSpotter field. Fields marked * are required.")
+    st.caption(
+        "Select which column in your file maps to each GiraffeSpotter field. "
+        "Suggestions are auto-filled based on column names — check them before generating. "
+        "Fields marked \\* are required."
+    )
 
-    col_map = {}
-    sections_seen = []
-    section_fields = {}
+    # Warn about common multi-column situations
+    juvenile_cols = [c for c in src_cols if any(w in c.lower() for w in ["baby","infant","cub","juvenile"])]
+    if len(juvenile_cols) > 1:
+        st.warning(
+            f"Multiple juvenile columns detected ({', '.join(juvenile_cols)}). "
+            "GiraffeSpotter has a single **# calves / juveniles** field — "
+            "map one column or combine them into a single column before uploading."
+        )
+
+    col_map      = {}
+    section_fields: dict = {}
     for gs_field, label, required, section in GS_FIELDS:
         section_fields.setdefault(section, []).append((gs_field, label, required))
 
     for section, fields in section_fields.items():
-        with st.expander(section, expanded=(section in ("Location", "Individual"))):
+        with st.expander(section, expanded=(section in ("Location", "Individual", "Group counts"))):
             ncols = 2 if len(fields) > 2 else len(fields)
             cols  = st.columns(ncols)
             for idx, (gs_field, label, required) in enumerate(fields):
                 marker = " *" if required else ""
                 with cols[idx % ncols]:
-                    # Auto-suggest: look for a source column whose name contains key words
-                    keywords = label.lower().split()
-                    default_idx = 0
-                    for ci, sc in enumerate(src_cols_opt):
-                        sc_low = sc.lower()
-                        if any(kw in sc_low for kw in keywords):
-                            default_idx = ci
-                            break
+                    default_idx = _auto_suggest(gs_field, src_cols_opt)
                     chosen = st.selectbox(
                         f"{label}{marker}",
                         src_cols_opt,
                         index=default_idx,
                         key=f"map_{gs_field}",
                     )
-                    col_map[gs_field] = None if chosen == none_option else chosen
+                    col_map[gs_field] = None if chosen == NONE_OPT else chosen
 
     # ── Step 5: Generate ───────────────────────────────────────────────────────
     st.markdown("---")
@@ -377,8 +510,8 @@ def main():
         with st.expander("Preview GS output", expanded=True):
             st.dataframe(gs, use_container_width=True)
 
-        today = date.today().strftime("%Y%m%d")
-        slug  = f"{country}{location_id}" if country else location_id
+        today    = date.today().strftime("%Y%m%d")
+        slug     = f"{country}_{location_id}" if country else location_id
         filename = f"GS_bulkimport_{slug}_{today}.xlsx"
 
         st.download_button(
