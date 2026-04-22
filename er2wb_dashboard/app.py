@@ -599,7 +599,7 @@ def process_er_data(raw_events: list, country: str, er_username: str,
         gid = str(gid).strip()
         if giraffe_id_map and gid in giraffe_id_map:
             gid = giraffe_id_map[gid]
-        return gid.split("_")[0] if "_" in gid else gid
+        return gid  # full resolved name; GS export applies the _ clip separately
 
     final["gir_giraffeId"] = final["gir_giraffeId"].apply(clean_id)
 
@@ -733,7 +733,8 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
         "Occurrence.numCalves":         df["ca"].fillna(0).astype(int),
         "Occurrence.distance":          df["gir_distance"],
         "Occurrence.bearing":           df["gir_direction"],
-        "Encounter.individualID":       df["gir_giraffeId"].fillna(""),
+        "Encounter.individualID":       df["gir_giraffeId"].fillna("").apply(
+            lambda v: v.split("_")[0] if "_" in v else v),
         "Encounter.sex":                df["gir_giraffeSex"],
         "Encounter.lifeStage":          df["gir_giraffeAge"],
         "Encounter.genus":              "Giraffa",
