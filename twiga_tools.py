@@ -91,9 +91,10 @@ pages = {
         st.Page("pages/6_📷_Camera_trap_data_upload.py", title="Camera trap data upload", icon="📷"),
     ],
     "GiraffeSpotter": [
-        st.Page("pages/18_🦒_ER2WB_Converter.py",                        title="ER2WB Converter",   icon="🦒"),
+        st.Page("pages/18_🦒_ER2WB_Converter.py",                        title="ER2WB Converter",    icon="🦒"),
         st.Page("pages/19_📋_SMART2WB_Converter.py",                     title="SMART2WB Converter", icon="📋"),
-        st.Page("pages/10_📖_Create_an_ID_book_(GiraffeSpotter).py",     title="Create ID Book",    icon="📖"),
+        st.Page("pages/21_📊_Format_xlsx_for_GS.py",                     title="Format xlsx for GS", icon="📊"),
+        st.Page("pages/10_📖_Create_an_ID_book_(GiraffeSpotter).py",     title="Create ID Book",     icon="📖"),
     ],
     "GAD": [
         st.Page("pages/7_🦒_GAD.py",                title="GAD",                 icon="🦒"),
