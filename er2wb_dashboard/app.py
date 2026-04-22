@@ -167,6 +167,7 @@ def _init_session_state():
         "n_matched":            None,
         "raw_events":           [],
         "available_observers":  [],
+        "giraffe_id_map":       {},    # UUID → display-name for giraffe_id choice field
         # ── Settings (persisted across reruns) ─────────────────────────────────
         "er_observer_filter":   "",    # "" = all observers
         "er_instance":     "twiga.pamdas.org",
@@ -197,6 +198,7 @@ def _reset_results():
     st.session_state.download_zip  = None
     st.session_state.n_matched     = None
     st.session_state.raw_events    = []
+    st.session_state.giraffe_id_map = {}
     # available_observers intentionally NOT cleared — list is refreshed on
     # every fetch and should survive Start Over / date changes.
 
@@ -247,6 +249,24 @@ def _fetch_event_types(client: EarthRangerIO) -> list:
         return rows
     except Exception:
         return []
+
+
+def _fetch_giraffe_id_mapping(client: EarthRangerIO, _event_type_uuid: str = "") -> dict:
+    """
+    Build a subject UUID → subject name mapping by fetching all subjects from ER.
+    The giraffe_id field in event_details stores a subject UUID; this map resolves it
+    to the human-readable subject name (e.g. "HNBF093_Aubrey").
+    Returns {} on any failure so callers degrade gracefully.
+    """
+    try:
+        df = client.get_subjects(include_inactive=True)
+        if df is None or df.empty:
+            return {}
+        if "id" not in df.columns or "name" not in df.columns:
+            return {}
+        return dict(zip(df["id"].astype(str), df["name"].astype(str)))
+    except Exception:
+        return {}
 
 
 def _on_country_change():
@@ -473,7 +493,8 @@ def fetch_er_events(country: str,
 # ─── Data processing ───────────────────────────────────────────────────────────
 
 def process_er_data(raw_events: list, country: str, er_username: str,
-                    date_start: date, date_end: date) -> pd.DataFrame:
+                    date_start: date, date_end: date,
+                    giraffe_id_map: dict = None) -> pd.DataFrame:
     """
     Flatten raw ER event JSON into a tidy DataFrame.
     One row per individual giraffe (Herd record), joined with event-level fields.
@@ -575,7 +596,9 @@ def process_er_data(raw_events: list, country: str, er_username: str,
     def clean_id(gid):
         if pd.isna(gid) or str(gid).strip().lower() in ("unknown", ""):
             return ""
-        gid = str(gid)
+        gid = str(gid).strip()
+        if giraffe_id_map and gid in giraffe_id_map:
+            gid = giraffe_id_map[gid]
         return gid.split("_")[0] if "_" in gid else gid
 
     final["gir_giraffeId"] = final["gir_giraffeId"].apply(clean_id)
@@ -1150,7 +1173,8 @@ def main():
         st.session_state._prev_observer_filter = _obs_filter
         _reprocessed = process_er_data(
             st.session_state.raw_events, country, _obs_for_proc,
-            date_start, date_end)
+            date_start, date_end,
+            giraffe_id_map=st.session_state.get("giraffe_id_map", {}))
         if not _reprocessed.empty:
             st.session_state.processed_df = _reprocessed
             st.session_state.gs_data = format_gs_data(
@@ -1181,8 +1205,14 @@ def main():
                     st.session_state.raw_events = raw
                     st.session_state._prev_observer_filter = _obs_for_proc
 
+                    # Resolve giraffe_id subject UUIDs → subject names
+                    giraffe_id_map = _fetch_giraffe_id_mapping(
+                        st.session_state.er_client, event_type_uuid)
+                    st.session_state.giraffe_id_map = giraffe_id_map
+
                     # Unfiltered pass → populate observer dropdown
-                    _all_proc = process_er_data(raw, country, "", date_start, date_end)
+                    _all_proc = process_er_data(raw, country, "", date_start, date_end,
+                                                giraffe_id_map=giraffe_id_map)
                     _obs_names = sorted(
                         _all_proc["usr_name"].dropna()
                         .astype(str).str.strip()
@@ -1192,7 +1222,8 @@ def main():
 
                     # Filtered pass → GS output
                     processed = process_er_data(raw, country, _obs_for_proc,
-                                                date_start, date_end)
+                                                date_start, date_end,
+                                                giraffe_id_map=giraffe_id_map)
                     if processed.empty:
                         st.warning(
                             "No records found. Check your date range and event type selection.")
