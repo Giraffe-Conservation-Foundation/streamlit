@@ -88,7 +88,7 @@ pages = {
     ],
     "Data upload": [
         st.Page("pages/5_🚗_Survey_data_backup.py",      title="Survey data backup",      icon="🚗"),
-        st.Page("pages/6_📷_Camera_trap_data_upload.py", title="Camera trap data upload", icon="📷"),
+        st.Page("pages/6_📷_Camera_trap_data_backup.py", title="Camera trap data backup", icon="📷"),
     ],
     "GiraffeSpotter": [
         st.Page("pages/18_🦒_ER2WB_Converter.py",                        title="ER2WB Converter",    icon="🦒"),

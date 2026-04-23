@@ -51,6 +51,16 @@ def require_gcf_login(page_label: Optional[str] = None) -> None:
     """
     label = f" to access {page_label}" if page_label else ""
 
+    # Local dev bypass: if no auth provider is configured, skip the gate entirely.
+    try:
+        _auth_configured = "auth" in st.secrets
+    except Exception:
+        _auth_configured = False
+
+    if not _auth_configured:
+        st.sidebar.info("🛠️ Local dev — auth bypassed")
+        return
+
     if not getattr(st, "user", None) or not getattr(st.user, "is_logged_in", False):
         st.markdown("### 🔐 Log in with your GCF Google account")
         st.info(
@@ -76,7 +86,14 @@ Courtney if you need access but don't have a GCF account.
             )
         col1, _ = st.columns([1, 3])
         if col1.button("Sign in with Google", type="primary", key=f"gcf_login_{page_label or 'default'}"):
-            st.login()
+            try:
+                st.login()
+            except Exception:
+                st.error(
+                    "Google authentication is not configured in this environment. "
+                    "This page requires a GCF Google account on the live app."
+                )
+                st.stop()
         st.stop()
 
     email = (st.user.email or "").lower()

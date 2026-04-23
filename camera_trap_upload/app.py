@@ -1,7 +1,6 @@
 import streamlit as st
 import os
-from google.cloud import storage
-from google.oauth2 import service_account
+import sys
 import pandas as pd
 from PIL import Image
 import io
@@ -11,6 +10,20 @@ import tempfile
 import zipfile
 import json
 from pathlib import Path
+
+# Resolve project root so shared.auth is importable when executed via exec()
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
+from shared.auth import (  # noqa: E402
+    require_gcf_login,
+    get_storage_client,
+    load_buckets,
+    extract_countries_sites_from_buckets,
+    resolve_bucket_name,
+)
+
 from utils import (
     validate_image_file,
     get_image_metadata,
@@ -20,6 +33,9 @@ from utils import (
     compress_image_if_needed,
     batch_rename_preview
 )
+
+# This module always runs in camera-trap mode (not survey mode)
+CAMERA_TRAP_MODE = True
 
 # Page configuration - handled by main Twiga Tools app
 # st.set_page_config(
@@ -48,58 +64,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Constants
-BUCKET_NAME = "giraffe-conservation-images"  # Replace with your actual bucket name
-
-def extract_countries_sites_from_buckets(bucket_names):
-    """Extract country and site combinations from bucket names following gcf_country_site pattern"""
-    countries_sites = {}
-    
-    for bucket_name in bucket_names:
-        # Check if bucket follows the gcf_country_site pattern
-        if bucket_name.lower().startswith('gcf'):
-            parts = bucket_name.lower().split('_')
-            # Expected pattern: gcf_country_site or variations with separators
-            if len(parts) >= 3:
-                # Extract country and site from bucket name
-                country = parts[1].upper()  # Convert to uppercase for consistency
-                site = parts[2].upper()     # Convert to uppercase for consistency
-                
-                # Add to countries_sites dictionary
-                if country not in countries_sites:
-                    countries_sites[country] = []
-                
-                if site not in countries_sites[country]:
-                    countries_sites[country].append(site)
-            
-            # Also handle patterns with dashes (gcf-country-site)
-            elif '-' in bucket_name:
-                parts = bucket_name.lower().split('-')
-                if len(parts) >= 3:
-                    country = parts[1].upper()
-                    site = parts[2].upper()
-                    
-                    if country not in countries_sites:
-                        countries_sites[country] = []
-                    
-                    if site not in countries_sites[country]:
-                        countries_sites[country].append(site)
-    
-    # Sort countries and sites for consistent display
-    for country in countries_sites:
-        countries_sites[country].sort()
-    
-    # Store in session state for persistence
-    st.session_state.countries_sites = countries_sites
-    
-    return countries_sites
 
 def init_session_state():
     """Initialize session state variables"""
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
-    if 'storage_client' not in st.session_state:
-        st.session_state.storage_client = None
     if 'selected_country' not in st.session_state:
         st.session_state.selected_country = None
     if 'selected_site' not in st.session_state:
@@ -147,81 +114,17 @@ def validate_country_site_compatibility():
             st.session_state.selected_site = None
             st.session_state.site_selection_complete = False
 
-def authenticate_google_cloud():
-    """Handle Google Cloud authentication"""
-    st.header("🔐 Google Cloud Authentication")
-    
-    st.write("Upload your Google Cloud Service Account JSON key file to authenticate:")
-    
-    uploaded_file = st.file_uploader(
-        "Choose JSON key file",
-        type=['json'],
-        help="Download this from Google Cloud Console > IAM & Admin > Service Accounts"
-    )
-    
-    if uploaded_file is not None:
-        try:
-            # Read the JSON content
-            key_data = json.load(uploaded_file)
-            
-            # Create credentials from the service account info
-            credentials = service_account.Credentials.from_service_account_info(key_data)
-            
-            # Initialize the storage client
-            storage_client = storage.Client(credentials=credentials)
-            
-            # Test the connection
-            try:
-                # Try to list buckets to verify authentication
-                buckets = list(storage_client.list_buckets())
-                st.success("✅ Successfully authenticated with Google Cloud!")
-                st.session_state.authenticated = True
-                st.session_state.storage_client = storage_client
-                
-                # Display available buckets
-                if buckets:
-                    bucket_names = [bucket.name for bucket in buckets]
-                    st.session_state.available_buckets = bucket_names
-                    
-                    # Extract country/site combinations from bucket names
-                    countries_sites = extract_countries_sites_from_buckets(bucket_names)
-                    
-                    # Display extracted country/site information
-                    if countries_sites:
-                        pass  # Countries/sites extracted successfully
-                        
-                    else:
-                        st.warning("⚠️ **No GCF pattern buckets found!**")
-                        st.info("Looking for buckets with pattern: `gcf_country_site` (e.g., 'gcf_ago_llnp', 'gcf_nam_ehgr')")
-                
-                else:
-                    st.warning("No buckets found in your project")
-                
-                # Add a button to proceed to next step
-                if countries_sites:
-                    if st.button("✅ Continue to Site Selection", type="primary"):
-                        st.rerun()
-                else:
-                    st.error("❌ **Cannot proceed:** No valid location buckets detected")
-                    st.info("💡 **Solution:** Ensure your buckets follow the naming pattern `gcf_country_site`")
-                
-            except Exception as e:
-                st.error(f"Authentication failed: {str(e)}")
-                
-        except Exception as e:
-            st.error(f"Error reading service account file: {str(e)}")
-    
-    else:
-        st.info("Please upload your service account JSON key file to continue.")
 
 def site_selection():
     """Handle site selection interface"""
     st.header("📍 Step 2: Configuration & Site Selection")
-    
-    # Country and Site Selection
-    #st.subheader("🌍 Location Selection")
-    
-    # Get countries/sites from session state instead of global variable
+
+    # Populate bucket list and country/site map from the shared service account
+    if not st.session_state.get('available_buckets'):
+        client = get_storage_client()
+        bucket_names = load_buckets(client)
+        st.session_state.countries_sites = extract_countries_sites_from_buckets(bucket_names)
+
     countries_sites = st.session_state.get('countries_sites', {})
     
     # Check if we have any countries/sites extracted from buckets
@@ -499,7 +402,7 @@ def handle_fast_stream_upload(uploaded_file):
     
     if st.button("✅ Start Upload", type="primary"):
         try:
-            bucket = st.session_state.storage_client.bucket(bucket_name)
+            bucket = get_storage_client().bucket(bucket_name)
             
             # Create progress tracking
             progress_bar = st.progress(0)
@@ -1036,6 +939,9 @@ def upload_to_gcs():
         st.warning("No processed images found. Please upload and process images first!")
         return
     
+    if not st.session_state.get('available_buckets'):
+        client = get_storage_client()
+        st.session_state.available_buckets = load_buckets(client)
     if not st.session_state.available_buckets:
         st.error("No buckets available. Please check your authentication.")
         return
@@ -1174,7 +1080,7 @@ def upload_to_gcs():
     
     try:
         # Get the bucket
-        bucket = st.session_state.storage_client.bucket(bucket_name)
+        bucket = get_storage_client().bucket(bucket_name)
         
         # Create progress tracking
         progress_bar = st.progress(0)
@@ -1461,100 +1367,36 @@ def upload_to_gcs():
 
 def main():
     """Main application logic"""
+    require_gcf_login(page_label="Camera Trap Data Backup")
     init_session_state()
-    
-    # Header with logo
-    with st.container():
-        # Try to load and display logo
-        logo_displayed = False
-        
-        # Get the absolute path to the logo file
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        logo_path = os.path.join(current_dir, 'logo.png')
-        
-        if os.path.exists(logo_path):
-            try:
-                # Process the logo for better display but preserve transparency
-                with Image.open(logo_path) as img:
-                    # Keep original format - preserve transparency
-                    original_img = img.copy()
-                    
-                    # Resize if too large (maintain aspect ratio)
-                    if img.width > 150:
-                        aspect_ratio = img.height / img.width
-                        new_width = 150
-                        new_height = int(new_width * aspect_ratio)
-                        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                    
-                    # Simple layout - let Streamlit handle the background
-                    col1, col2 = st.columns([1, 4])
-                    with col1:
-                        # Display logo with transparency preserved
-                        st.image(img, width=120)
-                    with col2:
-                        pass  # Logo column, no additional content needed
-                    
-                    logo_displayed = True
-                    
-            except Exception as e:
-                st.error(f"❌ Error processing logo: {str(e)}")
-        
-        # Fallback header without logo
-        if not logo_displayed:
-            pass  # No header needed when called from Twiga Tools
-    
-    
-    # Landing page (only shown if not authenticated yet)
-    if not st.session_state.authenticated:
-        #st.header("📷 Camera Trap Upload Tool")
-        #st.write("Welcome to the camera trap image upload system.")
-        
-        # Show process steps 1-6 on landing page
-        #st.subheader("📋 Upload Process Overview")
-        #st.info("""
-        #**Step 1:** Authenticate with Google Cloud
-        #**Step 2:** Configure camera trap type and select location  
-        #**Step 3:** Upload ZIP file with images
-        #**Step 4:** Review processed images
-        #**Step 5:** Confirm upload settings
-        #**Step 6:** Upload to cloud storage
-        #""")
-        
-        # Show authentication directly on landing page
-        authenticate_google_cloud()
-        return  # Don't show the rest of the app until authenticated
-    
-
 
     # Sidebar navigation
     st.sidebar.title("Navigation")
+    st.sidebar.caption(f"👤 {st.user.email}")
 
-    # Step 1: Authentication (completed)
-    st.sidebar.markdown("### Step 1: Authentication ✅")
-
-    # Step 2: Site Selection
+    # Step 1: Site Selection
     if not st.session_state.site_selection_complete:
-        st.sidebar.markdown("### Step 2: Site Selection ❌")
+        st.sidebar.markdown("### Step 1: Site Selection ❌")
         site_selection()
         return
     else:
-        st.sidebar.markdown("### Step 2: Site Selection ✅")
+        st.sidebar.markdown("### Step 1: Site Selection ✅")
         st.sidebar.write(f"**Country:** {st.session_state.get('selected_country', 'N/A')}")
         st.sidebar.write(f"**Site:** {st.session_state.selected_site}")
         if st.session_state.get('camera_type'):
             st.sidebar.write(f"**Camera Type:** {st.session_state.camera_type.replace('_', ' ').title()}")
-    
-    # Step 3: Image Processing
+
+    # Step 2: Image Processing
     if not st.session_state.processed_images:
-        st.sidebar.markdown("### Step 3: Image Processing ❌")
+        st.sidebar.markdown("### Step 2: Image Processing ❌")
         image_processing()
         return
     else:
-        st.sidebar.markdown("### Step 3: Image Processing ✅")
+        st.sidebar.markdown("### Step 2: Image Processing ✅")
         st.sidebar.write(f"**Images:** {len(st.session_state.processed_images)} processed")
-    
-    # Step 4: Upload
-    st.sidebar.markdown("### Step 4: Upload to Cloud ⏳")
+
+    # Step 3: Upload
+    st.sidebar.markdown("### Step 3: Upload to Cloud ⏳")
     upload_to_gcs()
     
     # Reset button
