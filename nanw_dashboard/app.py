@@ -95,7 +95,7 @@ def get_active_aag_subjects():
         username=username,
         password=password
     )
-    subjects_df = er.get_subjects(subject_group_id="660dbfb0-a7cb-4b93-92e9-a8f006f9bead")
+    subjects_df = er.get_subjects(subject_group_id="660dbfb0-a7cb-4b93-92e9-a8f006f9bead", include_inactive=True)
     subjects = subjects_df.to_dict('records')
     return subjects
 
@@ -107,7 +107,7 @@ def get_hoanib_giraffe_subjects():
         username=username,
         password=password
     )
-    subjects_df = er.get_subjects(subject_group_name="NAM_Hoanib_giraffe")
+    subjects_df = er.get_subjects(subject_group_name="NAM_Hoanib_giraffe", include_inactive=True)
     subjects = subjects_df.to_dict('records')
     return subjects
 

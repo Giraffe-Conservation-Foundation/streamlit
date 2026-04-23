@@ -91,7 +91,7 @@ def load_subject_tracks(er_username: str, er_password: str,
 
     # Get subjects in the group
     try:
-        subjects_gdf = er.get_subjects(subject_group_name=SUBJECT_GROUP)
+        subjects_gdf = er.get_subjects(subject_group_name=SUBJECT_GROUP, include_inactive=True)
     except Exception as exc:
         return {}, f"Could not fetch subjects: {exc}"
 
