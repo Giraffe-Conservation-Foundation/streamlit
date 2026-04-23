@@ -246,20 +246,47 @@ def get_storage_client():
 
 
 def load_buckets(client=None) -> list[str]:
-    """Return the list of bucket names accessible to the service account."""
+    """Return the list of bucket names accessible to the service account.
+
+    Tries two strategies in order:
+    1. ``list_buckets()`` — requires Storage Admin / Legacy Bucket Reader at
+       project level. Works when the SA has broad project permissions.
+    2. Secrets fallback — reads ``st.secrets["gcs_buckets"]["buckets"]`` (a
+       TOML array of bucket names). Use this when the SA only has per-bucket
+       IAM and cannot list all project buckets.
+    """
     if "available_buckets" in st.session_state:
         return st.session_state.available_buckets
 
     if client is None:
         client = get_storage_client()
+
+    # Strategy 1: project-level bucket listing
     try:
         names = [b.name for b in client.list_buckets()]
-    except Exception as e:
-        st.error(f"Could not list buckets: {e}")
-        st.stop()
+        if names:
+            st.session_state.available_buckets = names
+            return names
+    except Exception:
+        pass  # fall through to secrets fallback
 
-    st.session_state.available_buckets = names
-    return names
+    # Strategy 2: explicit bucket list in secrets
+    try:
+        names = list(st.secrets["gcs_buckets"]["buckets"])
+        if names:
+            st.session_state.available_buckets = names
+            return names
+    except Exception:
+        pass
+
+    st.error(
+        "Could not discover any GCS buckets. "
+        "Either grant the service account the **Storage Legacy Bucket Reader** "
+        "role at project level, or add a `[gcs_buckets]` section to app secrets "
+        "listing the bucket names explicitly.\n\n"
+        "```toml\n[gcs_buckets]\nbuckets = [\"gcf_nam_ehgr\", \"gcf_ken_snn\"]\n```"
+    )
+    st.stop()
 
 
 def extract_countries_sites_from_buckets(bucket_names: list[str]) -> dict[str, list[str]]:
