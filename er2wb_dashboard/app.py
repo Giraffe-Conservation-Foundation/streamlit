@@ -1253,8 +1253,11 @@ def main():
 
         n_enc    = processed["evt_id"].nunique()
         n_gir    = len(gs)
-        n_photos = gs["Encounter.mediaAsset0"].apply(
-            lambda v: pd.notna(v) and str(v) not in ("", "nan", "None")
+        def _has_media(v):
+            return pd.notna(v) and str(v) not in ("", "nan", "None")
+        n_photos = (
+            gs["Encounter.mediaAsset0"].apply(_has_media) |
+            gs["Encounter.mediaAsset1"].apply(_has_media)
         ).sum()
         m1, m2, m3 = st.columns(3)
         m1.metric("Encounters",  n_enc)
