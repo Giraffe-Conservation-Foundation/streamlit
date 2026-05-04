@@ -2,7 +2,7 @@
 # This file contains all dependencies needed for any of the apps
 
 # Core Streamlit
-streamlit>=1.42.0  # st.login / st.user OIDC auth requires 1.42+
+streamlit>=1.42.0,<1.57.0  # st.login / st.user OIDC auth requires 1.42+; 1.57.0 broke OAuth callback (Tornado→Starlette)
 Authlib>=1.3.2     # Required by st.login() OIDC flow
 
 # Data Processing
