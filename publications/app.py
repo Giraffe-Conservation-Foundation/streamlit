@@ -62,6 +62,13 @@ st.markdown("""
 # Gating is handled by `require_gcf_login()` inside main() — a Google OIDC
 # flow restricted to @giraffeconservation.org accounts (see shared/auth.py).
 
+import re
+
+def format_item_type(item_type):
+    """Convert camelCase Zotero item type to sentence case. e.g. journalArticle -> Journal article"""
+    spaced = re.sub(r'([A-Z])', r' \1', item_type)
+    return spaced.strip().capitalize()
+
 # ======== Zotero Functions ========
 
 def get_zotero_gcf_publications(library_id, library_type="group", api_key=None, tag="GCF", collection_key=None):
@@ -141,14 +148,17 @@ def get_zotero_gcf_publications(library_id, library_type="group", api_key=None, 
             
             authors_str = "; ".join(authors) if authors else "Unknown"
             
+            item_key = item.get("key", "")
+            zotero_url = f"https://www.zotero.org/groups/{library_id}/items/{item_key}" if item_key else None
+
             publications.append({
                 "title": data.get("title", "Untitled"),
                 "authors": authors_str,
                 "year": year,
                 "date": date_str,
-                "item_type": data.get("itemType", "Unknown"),
+                "item_type": format_item_type(data.get("itemType", "Unknown")),
                 "publication_title": data.get("publicationTitle", ""),
-                "url": data.get("url", ""),
+                "zotero_url": zotero_url,
                 "doi": data.get("DOI", ""),
                 "tags": [tag.get("tag", "") for tag in data.get("tags", [])]
             })
@@ -280,14 +290,6 @@ def main():
                 paper_bgcolor='rgba(0,0,0,0)',
             )
             st.plotly_chart(fig, use_container_width=True)
-        
-        # Summary table
-        st.markdown("### Summary by Year")
-        summary_df = pd.DataFrame([
-            {"Year": year, "Number of Publications": count}
-            for year, count in sorted(year_counts.items(), reverse=True)
-        ])
-        st.dataframe(summary_df, use_container_width=True, hide_index=True)
     
     # List all publications
     st.markdown('<div class="section-header">📚 All Publications</div>', unsafe_allow_html=True)
@@ -296,27 +298,25 @@ def main():
     col1, col2 = st.columns(2)
     
     with col1:
-        filter_year = st.selectbox(
+        filter_years = st.multiselect(
             "Filter by Year",
-            ["All"] + sorted_years,
-            index=0
+            sorted_years,
         )
-    
+
     with col2:
         # Get unique item types
         item_types = sorted(list(set([pub['item_type'] for pub in publications])))
-        filter_type = st.selectbox(
+        filter_types = st.multiselect(
             "Filter by Type",
-            ["All"] + item_types,
-            index=0
+            item_types,
         )
-    
+
     # Filter publications
     filtered_pubs = publications
-    if filter_year != "All":
-        filtered_pubs = [pub for pub in filtered_pubs if pub['year'] == filter_year]
-    if filter_type != "All":
-        filtered_pubs = [pub for pub in filtered_pubs if pub['item_type'] == filter_type]
+    if filter_years:
+        filtered_pubs = [pub for pub in filtered_pubs if pub['year'] in filter_years]
+    if filter_types:
+        filtered_pubs = [pub for pub in filtered_pubs if pub['item_type'] in filter_types]
     
     # Sort by year (descending)
     filtered_pubs = sorted(filtered_pubs, key=lambda x: x['year'], reverse=True)
@@ -328,24 +328,20 @@ def main():
         # Create DataFrame for display
         table_data = []
         for pub in filtered_pubs:
-            # Create hyperlink if URL exists
-            title_with_link = pub['title']
-            if pub['url']:
-                title_with_link = f'[{pub["title"]}]({pub["url"]})'
-            
             table_data.append({
-                "Title": title_with_link,
+                "Title": pub['title'],
                 "Authors": pub['authors'],
                 "Year": pub['year'],
                 "Type": pub['item_type'],
                 "Journal/Publication": pub['publication_title'],
                 "DOI": pub['doi'],
-                "URL": pub['url']
+                "Zotero": pub['zotero_url'],
             })
-        
+
         display_df = pd.DataFrame(table_data)
         st.dataframe(display_df, use_container_width=True, hide_index=True, column_config={
-            "Title": st.column_config.LinkColumn("Title", width="large"),
+            "Title": st.column_config.TextColumn("Title", width="large"),
+            "Zotero": st.column_config.LinkColumn("Zotero", display_text="Open in Zotero ↗"),
         })
 
 if __name__ == "__main__":
