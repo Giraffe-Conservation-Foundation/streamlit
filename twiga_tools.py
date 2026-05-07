@@ -79,6 +79,7 @@ pages = {
         st.Page("pages/2_🦒_Survey_dashboard_(NANW).py", title="Survey dashboard (NANW)", icon="🦒"),
         st.Page("pages/3_🦒_Survey_dashboard_(ZAF).py",  title="Survey dashboard (ZAF)",  icon="🦒"),
         st.Page("pages/20_🦒_Survey_dashboard_ZMB.py",   title="Survey dashboard (ZMB)",  icon="🦒"),
+        st.Page("pages/22_🦒_KEEP.py",                   title="KEEP",                    icon="🦒"),
         st.Page("pages/11_🗺️_Patrol_shp_download.py",   title="Patrol shp download",     icon="🗺️"),
     ],
     "Technical": [
