@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import calendar
 from datetime import date, datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import plotly.express as px
 import plotly.graph_objects as go
 from ecoscope.io.earthranger import EarthRangerIO
@@ -1060,21 +1061,16 @@ def fetch_subjectsources_all(_username, _password):
     return all_results
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_recently_active_sources(_username, _password, source_ids_tuple, since_iso, until_iso):
     """Return the subset of source IDs that have any observation between since_iso and until_iso.
 
-    Both since AND until are required — the ER observations endpoint ignores a lone
-    'since' and returns arbitrary historical records.  Passing until=today gives the
-    same since+until pattern used by the billing month checks, which is confirmed working.
-
-    Cached for 1 hour — reflects current deployment status, changes infrequently.
+    Requests run in parallel (up to 10 threads) to avoid sequential HTTP round-trips.
     """
     er = EarthRangerIO(server=ER_SERVER, username=_username, password=_password)
     headers = er.auth_headers()
-    active = set()
-    for source_id in source_ids_tuple:
+
+    def _check(source_id):
         url = (
             f"{ER_SERVER}/api/v1.0/observations/"
             f"?source_id={source_id}&since={since_iso}&until={until_iso}&page_size=1"
@@ -1084,41 +1080,52 @@ def fetch_recently_active_sources(_username, _password, source_ids_tuple, since_
             resp.raise_for_status()
             data = resp.json()
             items = data.get('results') or data.get('data', {}).get('results', [])
-            if items:
-                active.add(source_id)
+            return source_id if items else None
         except Exception:
-            pass
+            return None
+
+    active = set()
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        for result in as_completed(pool.submit(_check, sid) for sid in source_ids_tuple):
+            sid = result.result()
+            if sid:
+                active.add(sid)
     return active
 
 
 def fetch_all_source_active_months(_username, _password, source_ids_tuple, billing_months_tuple):
     """Check which billing months each source had GPS observations.
 
-    Makes one lightweight REST call (page_size=1) per source per billing month,
-    all reusing the same authenticated session.
+    Runs all source × month checks in parallel (up to 10 threads).
     Returns dict: source_id → set of (year, month) tuples.
     """
     er = EarthRangerIO(server=ER_SERVER, username=_username, password=_password)
     headers = er.auth_headers()
     results = {sid: set() for sid in source_ids_tuple}
 
-    for source_id in source_ids_tuple:
-        for y, m in billing_months_tuple:
-            m_start = date(y, m, 1).isoformat()
-            m_end = date(y, m, calendar.monthrange(y, m)[1]).isoformat()
-            url = (
-                f"{ER_SERVER}/api/v1.0/observations/"
-                f"?source_id={source_id}&since={m_start}&until={m_end}&page_size=1"
-            )
-            try:
-                resp = er._http_session.get(url, headers=headers)
-                resp.raise_for_status()
-                data = resp.json()
-                items = data.get('results') or data.get('data', {}).get('results', [])
-                if items:
-                    results[source_id].add((y, m))
-            except Exception:
-                pass
+    def _check(source_id, y, m):
+        m_start = date(y, m, 1).isoformat()
+        m_end = date(y, m, calendar.monthrange(y, m)[1]).isoformat()
+        url = (
+            f"{ER_SERVER}/api/v1.0/observations/"
+            f"?source_id={source_id}&since={m_start}&until={m_end}&page_size=1"
+        )
+        try:
+            resp = er._http_session.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get('results') or data.get('data', {}).get('results', [])
+            return source_id, y, m, bool(items)
+        except Exception:
+            return source_id, y, m, False
+
+    tasks = [(sid, y, m) for sid in source_ids_tuple for y, m in billing_months_tuple]
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = [pool.submit(_check, sid, y, m) for sid, y, m in tasks]
+        for future in as_completed(futures):
+            source_id, y, m, had_data = future.result()
+            if had_data:
+                results[source_id].add((y, m))
 
     return results
 
@@ -1181,6 +1188,24 @@ def _billing_months(start_d, end_d):
     return months
 
 
+_INVOICE_PRESETS = {
+    "SpoorTrack": dict(
+        cost_active=41.0,
+        cost_suspended=3.0,
+        activation_fee=30.0,
+        suspension_fee=3.0,
+        schedule_change_fee=0.50,
+    ),
+    "Savannah Tracking": dict(
+        cost_active=30.0,
+        cost_suspended=0.0,
+        activation_fee=35.0,
+        suspension_fee=0.0,
+        schedule_change_fee=0.0,
+    ),
+}
+
+
 def iridium_invoice_tab():
     """Iridium satellite billing validator."""
     st.header("📡 Iridium Invoice Calculator")
@@ -1189,12 +1214,29 @@ def iridium_invoice_tab():
         "were active each month of the billing period."
     )
 
+    # ── Manufacturer selector ─────────────────────────────────────────────────
+    manufacturer = st.selectbox(
+        "Manufacturer", list(_INVOICE_PRESETS.keys()), key="inv_manufacturer",
+    )
+
+    # When manufacturer changes, push preset values into session state so the
+    # number inputs below pick them up on the next render.
+    if st.session_state.get("_inv_last_mfr") != manufacturer:
+        st.session_state["_inv_last_mfr"] = manufacturer
+        p = _INVOICE_PRESETS[manufacturer]
+        st.session_state["inv_cost_active"]    = p["cost_active"]
+        st.session_state["inv_cost_suspended"] = p["cost_suspended"]
+        st.session_state["inv_activation"]     = p["activation_fee"]
+        st.session_state["inv_susp_fee"]       = p["suspension_fee"]
+        st.session_state["inv_sched_fee"]      = p["schedule_change_fee"]
+        st.rerun()
+
     # ── Billing parameters ────────────────────────────────────────────────────
     st.subheader("⚙️ Billing Parameters")
 
     # Default: most recent complete calendar quarter
     today = datetime.utcnow().date()
-    q = (today.month - 1) // 3          # 0-based quarter of current month
+    q = (today.month - 1) // 3
     if q == 0:
         def_start = date(today.year - 1, 10, 1)
         def_end = date(today.year - 1, 12, 31)
@@ -1207,27 +1249,22 @@ def iridium_invoice_tab():
     with c1:
         start_date = st.date_input("Billing period start", value=def_start, key="inv_start")
         cost_active = st.number_input(
-            "Active unit cost (USD/month)", min_value=0.0, value=41.0, step=1.0, key="inv_cost_active"
+            "Active unit cost (USD/month)", min_value=0.0, step=1.0, key="inv_cost_active"
         )
         cost_suspended = st.number_input(
-            "Suspended unit cost (USD/month)", min_value=0.0, value=3.0, step=1.0, key="inv_cost_suspended"
+            "Suspended unit cost (USD/month)", min_value=0.0, step=1.0, key="inv_cost_suspended"
         )
         schedule_change_fee = st.number_input(
-            "Schedule change fee (USD/event)", min_value=0.0, value=0.50, step=0.10, key="inv_sched_fee"
+            "Schedule change fee (USD/event)", min_value=0.0, step=0.10, key="inv_sched_fee"
         )
     with c2:
         end_date = st.date_input("Billing period end", value=def_end, key="inv_end")
         activation_fee = st.number_input(
-            "Activation fee (USD/event)", min_value=0.0, value=30.0, step=1.0, key="inv_activation"
+            "Activation fee (USD/event)", min_value=0.0, step=1.0, key="inv_activation"
         )
         suspension_fee = st.number_input(
-            "Suspension fee, one-time (USD/event)", min_value=0.0, value=3.0, step=1.0, key="inv_susp_fee"
+            "Suspension fee, one-time (USD/event)", min_value=0.0, step=1.0, key="inv_susp_fee"
         )
-
-    manufacturer = st.selectbox(
-        "Manufacturer", ["SpoorTrack"], key="inv_manufacturer",
-        help="Filter to units from this manufacturer. Additional providers can be added in future."
-    )
 
     with st.expander("Suspended units (charged at reduced rate)", expanded=False):
         st.caption("Enter one unit ID per line (collar_key as shown in EarthRanger).")
@@ -1332,33 +1369,29 @@ def iridium_invoice_tab():
         ):
             deploy_info[src_id] = {'deploy_start': dep_start, 'subject_name': subject_name}
 
-    # ── Pre-filter: drop units with no data in the last 3 months from today ─────
-    # A unit is inactive if its last-ever observation was > 90 days ago.
-    today_iso = datetime.utcnow().date().isoformat()
-    activity_cutoff = (datetime.utcnow().date() - timedelta(days=90)).isoformat()
+    since_iso = start_date.isoformat()
+    until_iso = end_date.isoformat()
+
+    # ── Pre-filter: drop units with no data within the billing period ────────────
     with st.spinner(
-        f"Checking which {manufacturer} units are currently active "
-        f"(data since {activity_cutoff})…"
+        f"Checking which {manufacturer} units had data between {start_date} and {end_date}…"
     ):
         recently_active_ids = fetch_recently_active_sources(
             st.session_state.username,
             st.session_state.password,
             tuple(sorted(source_ids)),
-            activity_cutoff,
-            today_iso,
+            since_iso,
+            until_iso,
         )
     source_ids = [s for s in source_ids if s in recently_active_ids]
     if not source_ids:
-        st.warning(f"No {manufacturer} units with data in the last 90 days.")
+        st.warning(f"No {manufacturer} units with data between {start_date} and {end_date}.")
         return
     st.caption(
-        f"Filtered to **{len(source_ids)}** currently active {manufacturer} units "
-        f"(last data within 90 days of today)."
+        f"Filtered to **{len(source_ids)}** {manufacturer} units with data in the billing period."
     )
 
     # ── Check which months each source had GPS activity ───────────────────────
-    since_iso = start_date.isoformat()
-    until_iso = end_date.isoformat()
     billing_ym = _billing_months(start_date, end_date)
     month_labels = [datetime(y, m, 1).strftime("%b %Y") for y, m in billing_ym]
     n_checks = len(source_ids) * len(billing_ym)
