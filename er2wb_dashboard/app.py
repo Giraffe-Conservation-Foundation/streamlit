@@ -635,7 +635,8 @@ def process_er_data(raw_events: list, country: str, er_username: str,
 
 def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
                    gs_username: str, gs_org: str,
-                   species_epithet: str, initials: str) -> pd.DataFrame:
+                   species_epithet: str, initials: str,
+                   date_start: date = None) -> pd.DataFrame:
     """Convert processed ER DataFrame to GiraffeSpotter bulk import format."""
     if final_df.empty:
         return pd.DataFrame()
@@ -709,8 +710,12 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
     gs = pd.DataFrame({
         "_evt_serial":              df["evt_serial"],   # internal — stripped before export
         "Survey.vessel":            "vehicle_based_photographic",
-        "Survey.id":                df["evt_dttm_local"].apply(
-            lambda d: f"{country}_{site}_{d.strftime('%Y%m')}" if pd.notna(d) else ""),
+        "Survey.id":                (
+            f"{country}_{site}_{date_start.strftime('%Y%m')}"
+            if date_start is not None
+            else df["evt_dttm_local"].apply(
+                lambda d: f"{country}_{site}_{d.strftime('%Y%m')}" if pd.notna(d) else "")
+        ),
         "Occurrence.occurrenceID":  df.apply(
             lambda r: f"{country}_{site}_{r['evt_dttm_local'].strftime('%Y%m%d%H%M%S')}"
                       if pd.notna(r["evt_dttm_local"]) else "", axis=1),
@@ -1180,7 +1185,8 @@ def main():
             st.session_state.processed_df = _reprocessed
             st.session_state.gs_data = format_gs_data(
                 _reprocessed, country, site,
-                gs_username, gs_org, species_epithet, initials)
+                gs_username, gs_org, species_epithet, initials,
+                date_start=date_start)
         st.rerun()
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -1230,7 +1236,8 @@ def main():
                             "No records found. Check your date range and event type selection.")
                     else:
                         gs = format_gs_data(processed, country, site,
-                                            gs_username, gs_org, species_epithet, initials)
+                                            gs_username, gs_org, species_epithet, initials,
+                                            date_start=date_start)
                         st.session_state.processed_df = processed
                         st.session_state.gs_data      = gs
                         st.rerun()   # rerun so observer filter renders with the new names
@@ -1379,7 +1386,8 @@ def main():
 
                     updated_gs = format_gs_data(
                         updated_df, country, site,
-                        gs_username, gs_org, species_epithet, initials)
+                        gs_username, gs_org, species_epithet, initials,
+                        date_start=date_start)
                     st.session_state.gs_data = updated_gs
                     st.success("✅ Coordinates updated using EXIF GPS directions. "
                                "GiraffeSpotter data has been refreshed.")
