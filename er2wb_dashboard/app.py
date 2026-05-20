@@ -47,7 +47,7 @@ COUNTRY_SITES = {
     "BWA":      ["CHNP", "CTGR", "MWNP", "NPNP", "NTGR"],
     "CMR":      ["BNNP"],
     "KEN":      ["COCO", "EOCO", "IMRA", "ISCO", "LECO", "LOWC", "MBCO", "MMNR",
-                 "MNWC", "MOCO", "MPRC", "MTCO", "MUWC", "NACO", "NAWC", "NIWC",
+                 "MNWC", "MOCO", "MPRC", "MTCO", "MUWC", "MWNR", "NACO", "NAWC", "NIWC",
                  "OHCO", "OICO", "OLCO", "OKWC", "PACA", "RHNP", "RICO", "RUNP",
                  "SANR", "SICO", "TENP", "TWNP"],
     "NAM":      ["BACO", "BLCO", "BWNP", "DZCO", "EHGR", "GMCO", "KWCO", "MNCO",
@@ -107,7 +107,8 @@ SITE_NAMES = {
     "SICO": "Siana Conservancy",
     "IMRA": "Ilmotiok",                       "LOWC": "Loisaba",
     "MPRC": "Mpala",                          "MUWC": "Mugie",
-    "NIWC": "Naibunga",                       "SANR": "Samburu National Reserve",
+    "MWNR": "Mwea National Reserve",          "NIWC": "Naibunga",
+    "SANR": "Samburu National Reserve",
     # Tanzania
     "MKNP": "Mkomazi National Park",       "SANP": "Serengeti National Park",
     # Uganda

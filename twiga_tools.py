@@ -88,8 +88,9 @@ pages = {
         st.Page("pages/7_📍_Post-Tagging_Dashboard.py", title="Post-Tagging Dashboard", icon="📍"),
     ],
     "Data upload": [
-        st.Page("pages/5_🚗_Survey_data_backup.py",      title="Survey data backup",      icon="🚗"),
-        st.Page("pages/6_📷_Camera_trap_data_backup.py", title="Camera trap data backup", icon="📷"),
+        st.Page("pages/5_🚗_Survey_data_backup.py",          title="Survey data backup",      icon="🚗"),
+        st.Page("pages/6_📷_Camera_trap_data_backup.py",     title="Camera trap data backup", icon="📷"),
+        st.Page("pages/23_☁️_Google_Cloud_Buckets.py",       title="Google Cloud Buckets",    icon="☁️"),
     ],
     "GiraffeSpotter": [
         st.Page("pages/18_🦒_ER2WB_Converter.py",                        title="ER2WB Converter",    icon="🦒"),
