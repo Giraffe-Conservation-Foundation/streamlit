@@ -26,13 +26,11 @@ st.markdown("---")
 # ── Auth gate ─────────────────────────────────────────────────────────────────
 require_gcf_login("Google Cloud Buckets")
 
-# ── Deep-dive config: bucket → top-level folder → sub-folders to expand ──────
-# For these buckets, specific first-level folders will show their sub-folders.
+# ── Deep-dive config: folder name → sub-folders to expand ────────────────────
+# Any bucket containing these top-level folder names will show their sub-folders.
 DEEP_FOLDERS = {
-    "gcf_nam_ehgr": {
-        "survey":      ["survey_vehicle", "survey_aerial"],
-        "camera_trap": ["camera_fence", "camera_water", "camera_grid"],
-    }
+    "survey":      ["survey_vehicle", "survey_aerial"],
+    "camera_trap": ["camera_fence", "camera_water", "camera_grid"],
 }
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -102,8 +100,6 @@ st.markdown("")
 
 # ── Per-bucket expanders ──────────────────────────────────────────────────────
 for bucket in buckets:
-    deep_config = DEEP_FOLDERS.get(bucket.name, {})
-
     with st.expander(f"🪣  {bucket.name}", expanded=False):
         col1, col2 = st.columns([3, 1])
 
@@ -119,11 +115,11 @@ for bucket in buckets:
                 for folder_prefix in top_folders:
                     folder_name = folder_prefix.rstrip("/")
 
-                    if folder_name in deep_config:
+                    if folder_name in DEEP_FOLDERS:
                         # Render with nested sub-folder expansion
                         render_deep_folder(
                             client, bucket.name,
-                            folder_name, deep_config[folder_name]
+                            folder_name, DEEP_FOLDERS[folder_name]
                         )
                     else:
                         st.markdown(f"&nbsp;&nbsp;&nbsp;📁 `{folder_name}`")
