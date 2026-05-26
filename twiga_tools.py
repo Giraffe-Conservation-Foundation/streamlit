@@ -81,6 +81,7 @@ pages = {
         st.Page("pages/20_🦒_Survey_dashboard_ZMB.py",   title="Survey dashboard (ZMB)",  icon="🦒"),
         st.Page("pages/22_🦒_KEEP.py",                   title="KEEP",                    icon="🦒"),
         st.Page("pages/11_🗺️_Patrol_shp_download.py",   title="Patrol shp download",     icon="🗺️"),
+        st.Page("pages/24_📥_Event_download.py",          title="Event download",           icon="📥"),
     ],
     "Technical": [
         st.Page("pages/1_🔋_GPS_unit_check.py",         title="GPS unit check",        icon="🔋"),
