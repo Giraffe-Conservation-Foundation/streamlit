@@ -30,15 +30,44 @@ def authenticate_earthranger(server: str, username: str, password: str):
         return None, str(exc)
 
 
-def build_subject_lookup(er_io) -> dict:
-    """Return {uuid: display_name} for all subjects (including inactive)."""
+def build_entity_lookup(er_io) -> dict:
+    """Return {uuid: display_name} covering subjects, sources (GPS units), and users."""
+    lookup = {}
+
+    # Subjects (collared animals)
     try:
         df = er_io.get_subjects(include_inactive=True)
         if df is not None and not df.empty and "id" in df.columns and "name" in df.columns:
-            return dict(zip(df["id"].astype(str), df["name"].astype(str)))
+            lookup.update(zip(df["id"].astype(str), df["name"].astype(str)))
     except Exception:
         pass
-    return {}
+
+    # Sources (GPS units / devices)
+    try:
+        df = er_io.get_sources()
+        if df is not None and not df.empty and "id" in df.columns:
+            # Prefer 'manufacturer_id' as the human-readable label, fall back to 'model'
+            label_col = next(
+                (c for c in ["manufacturer_id", "model", "provider_key"] if c in df.columns), None
+            )
+            if label_col:
+                lookup.update(zip(df["id"].astype(str), df[label_col].astype(str)))
+    except Exception:
+        pass
+
+    # Users / reporters
+    try:
+        df = er_io.get_users()
+        if df is not None and not df.empty and "id" in df.columns:
+            label_col = next(
+                (c for c in ["name", "username", "display_name"] if c in df.columns), None
+            )
+            if label_col:
+                lookup.update(zip(df["id"].astype(str), df[label_col].astype(str)))
+    except Exception:
+        pass
+
+    return lookup
 
 
 _UUID_RE = _re.compile(
@@ -202,8 +231,8 @@ def _flatten_and_display(events_gdf: gpd.GeoDataFrame, start_date, end_date, sel
         )
 
     # ── Resolve UUIDs in detail_ columns ──────────────────────────────────────
-    with st.spinner("Resolving subject names in event detail fields..."):
-        uuid_to_name = build_subject_lookup(st.session_state.er_io)
+    with st.spinner("Resolving display names for ID fields..."):
+        uuid_to_name = build_entity_lookup(st.session_state.er_io)
     events_gdf = resolve_uuid_columns(events_gdf, uuid_to_name, col_prefix="")
 
     st.success(f"✅ {len(events_gdf):,} event row(s) extracted and flattened!")
