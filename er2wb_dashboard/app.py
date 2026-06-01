@@ -234,19 +234,36 @@ def _fetch_event_types(client: EarthRangerIO) -> tuple:
     all_rows  = []
     debug_info = {}
 
-    for api_ver in ("v1", "v2"):
+    try:
+        # Use paginated fetch — get_event_types() uses single-page _get() and misses
+        # event types beyond the first page. get_objects_multithreaded() fetches all.
+        records = client.get_objects_multithreaded(
+            object="activity/events/eventtypes",
+            threads=client.tcp_limit,
+            page_size=client.sub_page_size,
+            include_inactive=True,
+        )
+        df = pd.DataFrame(records)
+        debug_info["paginated"] = {
+            "status":  "ok",
+            "rows":    len(df),
+            "kaza":    [r for r in records if "kaza" in str(r).lower()],
+        }
+        for _, row in df.iterrows():
+            value = str(row.get("value", "")).strip()
+            label = str(row.get("display", value)).strip()
+            uuid  = str(row.get("id", "")).strip()
+            if not uuid or uuid.lower() in ("nan", "none", ""):
+                uuid = value
+            cat = str(row.get("category", "")).strip()
+            if label and uuid:
+                all_rows.append({"label": label, "uuid": uuid,
+                                 "category": cat, "value": value.lower()})
+    except Exception as e:
+        debug_info["paginated"] = {"status": f"error: {e}"}
+        # Fallback to single-page get_event_types if paginated call fails
         try:
-            df = client.get_event_types(include_inactive=True, api_version=api_ver)
-            if df is None or df.empty:
-                debug_info[api_ver] = {"status": "empty", "columns": [], "rows": 0}
-                continue
-            debug_info[api_ver] = {
-                "status":  "ok",
-                "columns": list(df.columns),
-                "rows":    len(df),
-                "sample":  df.head(3).to_dict("records"),
-                "kaza":    df[df.apply(lambda r: "kaza" in str(r.values).lower(), axis=1)].to_dict("records"),
-            }
+            df = client.get_event_types(include_inactive=True)
             for _, row in df.iterrows():
                 value = str(row.get("value", "")).strip()
                 label = str(row.get("display", value)).strip()
@@ -257,9 +274,8 @@ def _fetch_event_types(client: EarthRangerIO) -> tuple:
                 if label and uuid:
                     all_rows.append({"label": label, "uuid": uuid,
                                      "category": cat, "value": value.lower()})
-        except Exception as e:
-            debug_info[api_ver] = {"status": f"error: {e}", "columns": [], "rows": 0}
-            continue
+        except Exception:
+            pass
 
     if not all_rows:
         return [], debug_info
