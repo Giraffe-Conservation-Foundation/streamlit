@@ -230,24 +230,42 @@ def _fetch_event_types(client: EarthRangerIO) -> list:
     Giraffe-related types are sorted to the top.
     Falls back to [] if the call fails or the method is unavailable.
     """
-    try:
-        df = client.get_event_types()
-        if df is None or df.empty:
-            return []
-        rows = []
-        for _, row in df.iterrows():
-            label = str(row.get("display", row.get("value", ""))).strip()
-            uuid  = str(row.get("id", "")).strip()
-            cat   = str(row.get("category", "")).strip()
-            if label and uuid and uuid.lower() not in ("nan", "none", ""):
-                rows.append({"label": label, "uuid": uuid, "category": cat})
-        # Filter to any event type with "giraffe" in the label
-        rows = [r for r in rows if "giraffe" in r["label"].lower()]
-        # Sort alphabetically
-        rows.sort(key=lambda x: x["label"].lower())
-        return rows
-    except Exception:
+    all_rows = []
+    # Fetch v1 and v2 separately so a failure in one doesn't lose the other
+    for api_ver in ("v1", "v2"):
+        try:
+            df = client.get_event_types(include_inactive=True, api_version=api_ver)
+            if df is None or df.empty:
+                continue
+            for _, row in df.iterrows():
+                # v1 uses 'id'; v2 may use 'id' or 'value' as identifier
+                uuid = str(row.get("id", "")).strip()
+                if not uuid or uuid.lower() in ("nan", "none", ""):
+                    continue
+                label = str(row.get("display", row.get("value", ""))).strip()
+                value = str(row.get("value", "")).strip().lower()
+                cat   = str(row.get("category", "")).strip()
+                if label:
+                    all_rows.append({"label": label, "uuid": uuid,
+                                     "category": cat, "value": value})
+        except Exception:
+            continue
+
+    if not all_rows:
         return []
+
+    # Deduplicate by uuid, filter to giraffe-related types, sort
+    seen = set()
+    rows = []
+    for r in all_rows:
+        if r["uuid"] not in seen:
+            seen.add(r["uuid"])
+            rows.append(r)
+
+    rows = [r for r in rows if "giraffe" in r["label"].lower()
+            or "giraffe" in r["value"].lower()]
+    rows.sort(key=lambda x: x["label"].lower())
+    return rows
 
 
 def _fetch_giraffe_id_mapping(client: EarthRangerIO, _event_type_uuid: str = "") -> dict:
@@ -1060,10 +1078,19 @@ def main():
                         status = getattr(getattr(exc, "response", None), "status_code", None)
                         if status == 401:
                             st.error("❌ Login failed — check your username and password.")
+                        elif status == 403:
+                            st.error("❌ Access denied (403) — your account may not have API access.")
                         elif status:
                             st.error(f"❌ API error {status}. Check the instance URL.")
                         else:
-                            st.error(f"❌ Could not connect: {exc}")
+                            msg = str(exc)
+                            st.error(f"❌ Could not connect: {msg}")
+                            if "Failed login" in msg:
+                                st.info(
+                                    "💡 Common causes: wrong username (try email address instead), "
+                                    "wrong password, or account not active on this EarthRanger instance. "
+                                    "Try logging in at the EarthRanger web interface to confirm your credentials."
+                                )
         st.stop()   # nothing below renders until logged in
 
     # ── Logged-in banner ──────────────────────────────────────────────────────
