@@ -22,12 +22,18 @@ COUNTRY_EVENT_UUIDS = {
     "bwa":      "3837db4e-efa3-4b7c-bf42-0e029f09565e",
     "cmr":      "c6a1ef55-f02f-40f8-800f-d22fb3cda632",
     "ken":      "3ed0d010-132a-4814-b8c3-eb1815de9378",
+    "kaza":     "16847384-f16c-4a1c-aa57-6bba66fb7ed2",
     "nam":      "242cc527-4ab2-4e5d-85cf-76b011720fae",
     "nanw":     "a10bb6b4-4d0f-4814-b5fe-9c4c3ec3c1ab",
     "tza":      "53a18c77-b733-4129-bb9c-15a37782b4c1",
     "uga":      "541f0ec7-1c76-4a23-93bf-c2a117287aa2",
     "zaf":      "4d5eb11e-1585-4d73-9594-461f34a75e01",
     "zmb":      "cb2eedf0-38c7-4b8c-a76c-9cc3b90b01ae",
+}
+
+# Value string → UUID for event types not returned by the API due to permissions
+EVENT_VALUE_TO_UUID = {
+    "giraffe_survey_kaza": "16847384-f16c-4a1c-aa57-6bba66fb7ed2",
 }
 
 TIMEZONE_MAP = {
@@ -43,6 +49,7 @@ TIMEZONE_MAP = {
 }
 
 COUNTRY_SITES = {
+    "KAZA":     ["HWGE", "HWGE"],  # placeholder — add real site codes
     "BWA":      ["CHNP", "CTGR", "MWNP", "NPNP", "NTGR"],
     "CMR":      ["BNNP"],
     "KEN":      ["COCO", "EOCO", "IMRA", "ISCO", "LECO", "LOWC", "MBCO", "MMNR",
@@ -1193,7 +1200,15 @@ def main():
              "giraffe_survey_kaza) or UUID directly to fetch those events.",
     )
     if manual_et.strip():
-        event_type_uuid = manual_et.strip()
+        _manual = manual_et.strip()
+        # If a value string (not UUID) is entered, resolve to UUID if known
+        import re as _re
+        _UUID_RE = _re.compile(
+            r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+            _re.IGNORECASE)
+        if not _UUID_RE.match(_manual):
+            _manual = EVENT_VALUE_TO_UUID.get(_manual.lower(), _manual)
+        event_type_uuid = _manual
 
     # ── Observer filter ───────────────────────────────────────────────────────
     st.markdown("**Observer filter**")
