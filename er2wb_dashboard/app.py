@@ -238,16 +238,16 @@ def _fetch_event_types(client: EarthRangerIO) -> list:
             if df is None or df.empty:
                 continue
             for _, row in df.iterrows():
-                # v1 uses 'id'; v2 may use 'id' or 'value' as identifier
-                uuid = str(row.get("id", "")).strip()
+                value = str(row.get("value", "")).strip()
+                label = str(row.get("display", value)).strip()
+                # v1 has a UUID 'id'; v2 may only have 'value' — use whichever is available
+                uuid  = str(row.get("id", "")).strip()
                 if not uuid or uuid.lower() in ("nan", "none", ""):
-                    continue
-                label = str(row.get("display", row.get("value", ""))).strip()
-                value = str(row.get("value", "")).strip().lower()
-                cat   = str(row.get("category", "")).strip()
-                if label:
+                    uuid = value   # fall back to value string as identifier
+                cat = str(row.get("category", "")).strip()
+                if label and uuid:
                     all_rows.append({"label": label, "uuid": uuid,
-                                     "category": cat, "value": value})
+                                     "category": cat, "value": value.lower()})
         except Exception:
             continue
 
