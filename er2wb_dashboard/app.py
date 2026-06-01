@@ -154,6 +154,7 @@ def _init_session_state():
         "er_client":        None,
         "er_authenticated": False,
         "er_event_types":   [],    # [{label, uuid, category}] fetched from ER after login
+        "er_et_debug":      {},    # raw debug info from _fetch_event_types
         "event_type_sel":   "",    # label of selected event type
         "event_type_uuid":  "",    # UUID of selected event type (empty = use category)
         # ── Processed data (cleared by Reset) ──────────────────────────────────
@@ -223,38 +224,46 @@ def _make_er_client(instance: str, username: str, password: str) -> EarthRangerI
 
 # ─── Event-type fetch ─────────────────────────────────────────────────────────
 
-def _fetch_event_types(client: EarthRangerIO) -> list:
+def _fetch_event_types(client: EarthRangerIO) -> tuple:
     """
     Fetch all event types from EarthRanger.
-    Returns a sorted list of dicts: [{label, uuid, category}].
-    Giraffe-related types are sorted to the top.
-    Falls back to [] if the call fails or the method is unavailable.
+    Returns (filtered_rows, debug_info) where:
+      filtered_rows = sorted list of dicts [{label, uuid, category, value}]
+      debug_info    = dict with raw results per API version for diagnostics
     """
-    all_rows = []
-    # Fetch v1 and v2 separately so a failure in one doesn't lose the other
+    all_rows  = []
+    debug_info = {}
+
     for api_ver in ("v1", "v2"):
         try:
             df = client.get_event_types(include_inactive=True, api_version=api_ver)
             if df is None or df.empty:
+                debug_info[api_ver] = {"status": "empty", "columns": [], "rows": 0}
                 continue
+            debug_info[api_ver] = {
+                "status":  "ok",
+                "columns": list(df.columns),
+                "rows":    len(df),
+                "sample":  df.head(3).to_dict("records"),
+                "kaza":    df[df.apply(lambda r: "kaza" in str(r.values).lower(), axis=1)].to_dict("records"),
+            }
             for _, row in df.iterrows():
                 value = str(row.get("value", "")).strip()
                 label = str(row.get("display", value)).strip()
-                # v1 has a UUID 'id'; v2 may only have 'value' — use whichever is available
                 uuid  = str(row.get("id", "")).strip()
                 if not uuid or uuid.lower() in ("nan", "none", ""):
-                    uuid = value   # fall back to value string as identifier
+                    uuid = value
                 cat = str(row.get("category", "")).strip()
                 if label and uuid:
                     all_rows.append({"label": label, "uuid": uuid,
                                      "category": cat, "value": value.lower()})
-        except Exception:
+        except Exception as e:
+            debug_info[api_ver] = {"status": f"error: {e}", "columns": [], "rows": 0}
             continue
 
     if not all_rows:
-        return []
+        return [], debug_info
 
-    # Deduplicate by uuid, filter to giraffe-related types, sort
     seen = set()
     rows = []
     for r in all_rows:
@@ -265,7 +274,7 @@ def _fetch_event_types(client: EarthRangerIO) -> list:
     rows = [r for r in rows if "giraffe" in r["label"].lower()
             or "giraffe" in r["value"].lower()]
     rows.sort(key=lambda x: x["label"].lower())
-    return rows
+    return rows, debug_info
 
 
 def _fetch_giraffe_id_mapping(client: EarthRangerIO, _event_type_uuid: str = "") -> dict:
@@ -1072,7 +1081,9 @@ def main():
                         st.session_state.er_client        = client
                         st.session_state.er_authenticated = True
                         # Fetch event types for the selector
-                        st.session_state.er_event_types = _fetch_event_types(client)
+                        et_rows, et_debug = _fetch_event_types(client)
+                        st.session_state.er_event_types  = et_rows
+                        st.session_state.er_et_debug     = et_debug
                         st.rerun()
                     except Exception as exc:
                         status = getattr(getattr(exc, "response", None), "status_code", None)
@@ -1148,6 +1159,13 @@ def main():
     # ── Event type selector ───────────────────────────────────────────────────
     st.markdown("**EarthRanger event type**")
     st.caption("Select the giraffe survey encounter event type to fetch from EarthRanger.")
+
+    # ── Temporary debug expander (remove once KAZA v2 issue resolved) ─────────
+    if st.session_state.get("er_et_debug"):
+        with st.expander("🔧 Event type fetch debug (temporary)", expanded=False):
+            import json as _json
+            st.json(_json.dumps(st.session_state.er_et_debug, default=str, indent=2))
+    # ──────────────────────────────────────────────────────────────────────────
 
     er_event_types = st.session_state.er_event_types   # [{label, uuid, category}]
 
