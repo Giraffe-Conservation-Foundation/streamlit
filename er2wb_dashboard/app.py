@@ -22,7 +22,6 @@ COUNTRY_EVENT_UUIDS = {
     "bwa":      "3837db4e-efa3-4b7c-bf42-0e029f09565e",
     "cmr":      "c6a1ef55-f02f-40f8-800f-d22fb3cda632",
     "ken":      "3ed0d010-132a-4814-b8c3-eb1815de9378",
-    "kaza":     "16847384-f16c-4a1c-aa57-6bba66fb7ed2",
     "nam":      "242cc527-4ab2-4e5d-85cf-76b011720fae",
     "nanw":     "a10bb6b4-4d0f-4814-b5fe-9c4c3ec3c1ab",
     "tza":      "53a18c77-b733-4129-bb9c-15a37782b4c1",
@@ -49,7 +48,6 @@ TIMEZONE_MAP = {
 }
 
 COUNTRY_SITES = {
-    "KAZA":     ["HWGE", "HWGE"],  # placeholder — add real site codes
     "BWA":      ["CHNP", "CTGR", "MWNP", "NPNP", "NTGR"],
     "CMR":      ["BNNP"],
     "KEN":      ["COCO", "EOCO", "IMRA", "ISCO", "LECO", "LOWC", "MBCO", "MMNR",
@@ -1161,12 +1159,6 @@ def main():
     st.markdown("**EarthRanger event type**")
     st.caption("Select the giraffe survey encounter event type to fetch from EarthRanger.")
 
-    # ── Temporary debug expander (remove once KAZA v2 issue resolved) ─────────
-    if st.session_state.get("er_et_debug"):
-        with st.expander("🔧 Event type fetch debug (temporary)", expanded=False):
-            import json as _json
-            st.json(_json.dumps(st.session_state.er_et_debug, default=str, indent=2))
-    # ──────────────────────────────────────────────────────────────────────────
 
     er_event_types = st.session_state.er_event_types   # [{label, uuid, category}]
 
