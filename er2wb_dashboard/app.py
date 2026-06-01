@@ -173,6 +173,8 @@ def _init_session_state():
         "er_observer":     "",    # full name → used to filter events by reporter
         "er_initials":     "",    # initials for image filenames (auto-derived, editable)
         "has_images":      True,  # whether to show Step 3 image processing
+        "compress_images": False,
+        "compress_quality": 85,
         "gs_org":          "Giraffe Conservation Foundation",
         "gs_username":     "",
         "date_start":      date.today() - timedelta(days=10),
@@ -834,8 +836,23 @@ def validate_gs_data(gs_df: pd.DataFrame) -> list:
 
 # ─── Image processing ──────────────────────────────────────────────────────────
 
+def compress_image(img_bytes: bytes, quality: int) -> bytes:
+    """Re-save JPEG at the given quality (1–95). Strips non-essential metadata
+    but preserves EXIF so datetime and GPS direction extraction still works."""
+    from PIL import Image
+    img = Image.open(io.BytesIO(img_bytes))
+    # Preserve EXIF data
+    exif = img.info.get("exif", b"")
+    out  = io.BytesIO()
+    img.save(out, format="JPEG", quality=quality, optimize=True,
+             exif=exif if exif else None)
+    out.seek(0)
+    return out.read()
+
+
 def process_images_zip(zip_bytes: bytes, country: str, site: str,
                        initials: str,
+                       compress: bool = False, quality: int = 85,
                        on_progress=None) -> tuple:
     """
     Extract ZIP, rename every JPEG using EXIF datetime.
@@ -873,7 +890,17 @@ def process_images_zip(zip_bytes: bytes, country: str, site: str,
                 num  = stem.zfill(4) if stem.isdigit() else stem
                 # ─────────────────────────────────────────────────────────────
 
-                new_name         = f"{country}_{site}_{date_str}_{initials}_{num}.JPG".upper()
+                new_name = f"{country}_{site}_{date_str}_{initials}_{num}.JPG".upper()
+                if compress:
+                    try:
+                        orig_kb = len(img_bytes) // 1024
+                        img_bytes = compress_image(img_bytes, quality)
+                        comp_kb   = len(img_bytes) // 1024
+                        compress_note = f" | {orig_kb} KB → {comp_kb} KB"
+                    except Exception as ce:
+                        compress_note = f" | compress failed: {ce}"
+                else:
+                    compress_note = ""
                 renamed[new_name] = img_bytes
 
                 # ZMB: capture GPS bearing from EXIF for coordinate reprojection
@@ -890,7 +917,7 @@ def process_images_zip(zip_bytes: bytes, country: str, site: str,
                 log_rows.append({
                     "Original": Path(name).name,
                     "Renamed":  new_name,
-                    "Status":   f"✅ OK{gps_note}",
+                    "Status":   f"✅ OK{gps_note}{compress_note}",
                 })
             except Exception as exc:
                 log_rows.append({"Original": Path(name).name,
@@ -1351,6 +1378,29 @@ def main():
 
     uploaded_zip = st.file_uploader("Upload image ZIP", type=["zip"])
 
+    # ── Compression option ─────────────────────────────────────────────────────
+    _QUALITY_PRESETS = {
+        "None — keep original":                    None,
+        "Medium — 85% quality (~50% smaller)":     85,
+        "High compression — 75% quality (~65% smaller, smallest files)": 75,
+    }
+    compress_choice = st.radio(
+        "Image compression",
+        options=list(_QUALITY_PRESETS.keys()),
+        index=0,
+        horizontal=True,
+        help=(
+            "**JPEG quality compression** — reduces file size by increasing lossy "
+            "encoding of colour and fine detail. Image dimensions (pixels) are unchanged. "
+            "85% quality is generally indistinguishable from the original and recommended "
+            "for GiraffeSpotter photo-ID. 75% gives the smallest files and is still "
+            "suitable for pattern matching, but fine texture in close-ups may soften slightly. "
+            "EXIF metadata (datetime, GPS) is preserved in all cases."
+        ),
+    )
+    _compress_quality = _QUALITY_PRESETS[compress_choice]
+    _do_compress      = _compress_quality is not None
+
     if uploaded_zip and st.button("Rename my images"):
         if st.session_state.gs_data is None:
             st.error("Run Step 2 first so we know how to name the images.")
@@ -1362,6 +1412,8 @@ def main():
                 renamed, log, gps_lookup = process_images_zip(
                     uploaded_zip.read(),
                     country, site, initials,
+                    compress=_do_compress,
+                    quality=_compress_quality or 85,
                     on_progress=lambda p: progress_bar.progress(
                         p, text=f"Processing images… {int(p * 100)}%"),
                 )
