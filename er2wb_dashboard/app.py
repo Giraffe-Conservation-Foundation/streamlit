@@ -234,36 +234,13 @@ def _fetch_event_types(client: EarthRangerIO) -> tuple:
     all_rows  = []
     debug_info = {}
 
-    try:
-        # Use paginated fetch — get_event_types() uses single-page _get() and misses
-        # event types beyond the first page. get_objects_multithreaded() fetches all.
-        records = client.get_objects_multithreaded(
-            object="activity/events/eventtypes",
-            threads=client.tcp_limit,
-            page_size=client.sub_page_size,
-            include_inactive=True,
-        )
-        df = pd.DataFrame(records)
-        debug_info["paginated"] = {
-            "status":  "ok",
-            "rows":    len(df),
-            "kaza":    [r for r in records if "kaza" in str(r).lower()],
-        }
-        for _, row in df.iterrows():
-            value = str(row.get("value", "")).strip()
-            label = str(row.get("display", value)).strip()
-            uuid  = str(row.get("id", "")).strip()
-            if not uuid or uuid.lower() in ("nan", "none", ""):
-                uuid = value
-            cat = str(row.get("category", "")).strip()
-            if label and uuid:
-                all_rows.append({"label": label, "uuid": uuid,
-                                 "category": cat, "value": value.lower()})
-    except Exception as e:
-        debug_info["paginated"] = {"status": f"error: {e}"}
-        # Fallback to single-page get_event_types if paginated call fails
+    for api_ver in ("v1", "v2"):
         try:
-            df = client.get_event_types(include_inactive=True)
+            df = client.get_event_types(include_inactive=True, api_version=api_ver)
+            if df is None or df.empty:
+                debug_info[api_ver] = {"status": "empty", "rows": 0}
+                continue
+            debug_info[api_ver] = {"status": "ok", "rows": len(df)}
             for _, row in df.iterrows():
                 value = str(row.get("value", "")).strip()
                 label = str(row.get("display", value)).strip()
@@ -274,8 +251,9 @@ def _fetch_event_types(client: EarthRangerIO) -> tuple:
                 if label and uuid:
                     all_rows.append({"label": label, "uuid": uuid,
                                      "category": cat, "value": value.lower()})
-        except Exception:
-            pass
+        except Exception as e:
+            debug_info[api_ver] = {"status": f"error: {e}"}
+            continue
 
     if not all_rows:
         return [], debug_info
@@ -1200,17 +1178,22 @@ def main():
                         if et["label"] == event_type_label), None)
         event_type_uuid = matched["uuid"] if matched else ""
     else:
-        # Fallback: manual UUID entry (e.g. if get_event_types() is unavailable)
         st.info("Could not fetch event types from this ER instance. "
-                "Enter the event type UUID manually, or leave blank to use the "
-                "default country-based category filter.")
-        et_c1, et_c2 = st.columns(2)
-        with et_c1:
-            event_type_uuid = st.text_input(
-                "Event type UUID (optional)",
-                value=st.session_state.event_type_uuid,
-                key="event_type_uuid",
-                help="e.g. 3837db4e-efa3-4b7c-bf42-0e029f09565e")
+                "Enter the event type value or UUID manually below.")
+        event_type_uuid = ""
+
+    # Manual override — always visible so users can enter types not shown in the list
+    # (e.g. types in categories with restricted API permissions like monitoring_kaza)
+    manual_et = st.text_input(
+        "Event type not in list? Enter value or UUID manually",
+        value="",
+        placeholder="e.g. giraffe_survey_kaza  or  16847384-f16c-4a1c-aa57-6bba66fb7ed2",
+        help="Some event types are restricted to certain user roles in the EarthRanger API "
+             "and won't appear in the dropdown. Enter the event type value (e.g. "
+             "giraffe_survey_kaza) or UUID directly to fetch those events.",
+    )
+    if manual_et.strip():
+        event_type_uuid = manual_et.strip()
 
     # ── Observer filter ───────────────────────────────────────────────────────
     st.markdown("**Observer filter**")
