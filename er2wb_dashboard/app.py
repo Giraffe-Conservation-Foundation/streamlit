@@ -183,6 +183,7 @@ def _init_session_state():
         "compress_quality": 85,
         "gs_org":          "Giraffe Conservation Foundation",
         "gs_username":     "",
+        "survey_vessel":   "vehicle_based_photographic",
         "date_start":      date.today() - timedelta(days=10),
         "date_end":        date.today(),
         "country_sel":     list(COUNTRY_SITES.keys())[0],
@@ -661,7 +662,8 @@ def process_er_data(raw_events: list, country: str, er_username: str,
 def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
                    gs_username: str, gs_org: str,
                    species_epithet: str, initials: str,
-                   date_start: date = None) -> pd.DataFrame:
+                   date_start: date = None,
+                   survey_vessel: str = "vehicle_based_photographic") -> pd.DataFrame:
     """Convert processed ER DataFrame to GiraffeSpotter bulk import format."""
     if final_df.empty:
         return pd.DataFrame()
@@ -734,7 +736,7 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
 
     gs = pd.DataFrame({
         "_evt_serial":              df["evt_serial"],   # internal — stripped before export
-        "Survey.vessel":            "vehicle_based_photographic",
+        "Survey.vessel":            survey_vessel,
         "Survey.id":                (
             f"{country}_{site}_{date_start.strftime('%Y%m')}"
             if date_start is not None
@@ -1242,6 +1244,22 @@ def main():
         subsp_choice    = st.selectbox("Subspecies", subsp_options, key="subsp_sel")
         species_epithet = SPECIES_MAP[species_choice][subsp_choice]
 
+    _SURVEY_VESSEL_OPTIONS = {
+        "Road survey":        "vehicle_based_photographic",
+        "Random encounter":   "random_encounter",
+        "Aerial survey":      "aerial_based_photographic",
+        "Camera trap":        "camera_trap",
+    }
+    _vessel_label = st.selectbox(
+        "Survey type",
+        options=list(_SURVEY_VESSEL_OPTIONS.keys()),
+        index=list(_SURVEY_VESSEL_OPTIONS.values()).index(
+            st.session_state.get("survey_vessel", "vehicle_based_photographic")),
+        key="_survey_vessel_label",
+        help="Sets the Survey.vessel field in the GiraffeSpotter output.",
+    )
+    st.session_state["survey_vessel"] = _SURVEY_VESSEL_OPTIONS[_vessel_label]
+
     st.session_state["has_images"] = True
 
     # ── Auto-reprocess when observer filter changes (no re-fetch needed) ─────
@@ -1261,7 +1279,8 @@ def main():
             st.session_state.gs_data = format_gs_data(
                 _reprocessed, country, site,
                 gs_username, gs_org, species_epithet, initials,
-                date_start=date_start)
+                date_start=date_start,
+                survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"))
         st.rerun()
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -1312,7 +1331,8 @@ def main():
                     else:
                         gs = format_gs_data(processed, country, site,
                                             gs_username, gs_org, species_epithet, initials,
-                                            date_start=date_start)
+                                            date_start=date_start,
+                                            survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"))
                         st.session_state.processed_df = processed
                         st.session_state.gs_data      = gs
                         st.rerun()   # rerun so observer filter renders with the new names
@@ -1487,7 +1507,8 @@ def main():
                     updated_gs = format_gs_data(
                         updated_df, country, site,
                         gs_username, gs_org, species_epithet, initials,
-                        date_start=date_start)
+                        date_start=date_start,
+                        survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"))
                     st.session_state.gs_data = updated_gs
                     st.success("✅ Coordinates updated using EXIF GPS directions. "
                                "GiraffeSpotter data has been refreshed.")
