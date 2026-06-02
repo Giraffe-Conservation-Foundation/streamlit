@@ -1,0 +1,18 @@
+# Streamlit configuration for deployment compatibility
+[server]
+# 1024 MB (1 GB) — matches ER2WB Converter output ceiling so survey-backup
+# ZIPs from ER2WB upload without hitting the Streamlit default of 200 MB.
+maxUploadSize = 1024
+
+[global]
+# Enable caching for better performance
+dataFrameSerialization = "legacy"
+
+[client]
+# Improve stability
+caching = true
+showErrorDetails = true
+
+# Environment variables for deployment
+[env]
+PYTHONPATH = "."

@@ -28,8 +28,8 @@ share/python-wheels/
 *.egg
 PIPFILE.lock
 
-# Streamlit
-.streamlit/
+# Streamlit — exclude secrets but commit config
+.streamlit/secrets.toml
 
 # Virtual Environment
 venv/
