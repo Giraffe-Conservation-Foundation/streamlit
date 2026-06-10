@@ -286,7 +286,7 @@ def authenticate_earthranger():
 
 # Enable caching with 1-hour TTL to dramatically improve performance
 @st.cache_data(ttl=3600, show_spinner="🔄 Fetching biological sample data from EarthRanger...")
-def get_biological_sample_events(start_date=None, end_date=None, max_results=500):
+def get_biological_sample_events(start_date=None, end_date=None, max_results=100000):
     """Fetch biological sample events from EarthRanger using ecoscope - OPTIMIZED for speed"""
     if not ECOSCOPE_AVAILABLE:
         st.error("❌ Ecoscope package is required but not available.")
@@ -1155,8 +1155,10 @@ def genetic_dashboard():
     #st.header("🧬 Genetic Dashboard")
     #st.markdown("Monitor and analyze biological sample events from EarthRanger")
     
-    # Default date values for initial data fetch
-    start_date_temp = date(2022, 1, 1)
+    # Default date values for initial data fetch — wide enough to capture
+    # the full database history (earliest real ER sample is 2015, but older
+    # records may be imported later, so start well before that).
+    start_date_temp = date(2000, 1, 1)
     end_date_temp = date.today()
 
     # Fetch all biological sample events (no arbitrary cap)
@@ -1380,14 +1382,18 @@ def genetic_dashboard():
     with col1:
         start_date = st.date_input(
             "📅 Start Date",
-            value=date.today().replace(year=date.today().year - 1),  # Default to 1 year ago
+            value=start_date_temp,            # Default to full history, not last year
+            min_value=date(1990, 1, 1),       # Allow going back past Streamlit's 10-yr default cap
+            max_value=date.today(),
             help="Select the earliest date for biological sample events"
         )
-    
+
     with col2:
         end_date = st.date_input(
-            "📅 End Date", 
+            "📅 End Date",
             value=date.today(),  # Default to today's date
+            min_value=date(1990, 1, 1),
+            max_value=date.today(),
             help="Select the latest date for biological sample events"
         )
     
