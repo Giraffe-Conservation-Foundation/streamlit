@@ -4,6 +4,7 @@ Browse all GCS buckets and their top-level folders in the gcf-camera-traps proje
 Uses the existing gcp_service_account secret — no additional credentials required.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -44,6 +45,52 @@ def _get_client():
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp")
+_DATE_RE = re.compile(r"_(20\d{6})_")  # YYYYMMDD from standardised filenames
+
+
+def _parse_date(blob_name: str) -> str | None:
+    """Extract YYYYMMDD from a standardised filename; None if absent."""
+    m = _DATE_RE.search(Path(blob_name).name)
+    return m.group(1) if m else None
+
+
+def _fmt_date(yyyymmdd: str) -> str:
+    return f"{yyyymmdd[:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:]}"
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def first_last_images(bucket_name: str, prefix: str) -> tuple[str, str] | None:
+    """
+    First and last image names (recursive, all sub-folders) under `prefix`,
+    ordered by the YYYYMMDD date in the filename where present,
+    falling back to lexicographic order. Returns None if no images.
+    """
+    client = _get_client()
+    blobs = client.list_blobs(bucket_name, prefix=prefix, fields="items(name),nextPageToken")
+    names = [b.name for b in blobs if b.name.lower().endswith(IMAGE_EXTS)]
+    if not names:
+        return None
+    # Sort by (parsed date or fallback), then name — keeps order date-correct
+    names.sort(key=lambda n: (_parse_date(n) or "99999999", n))
+    return names[0], names[-1]
+
+
+def _date_range_line(bucket_name: str, prefix: str, display: str) -> str:
+    """Markdown line for a leaf folder with first → last image and date range."""
+    result = first_last_images(bucket_name, prefix)
+    indent = "&nbsp;" * 8
+    if result is None:
+        return f"{indent}📁 `{display}` — *no images found*"
+    first, last = result
+    d1, d2 = _parse_date(first), _parse_date(last)
+    dates = f" &nbsp;**{_fmt_date(d1)} → {_fmt_date(d2)}**" if d1 and d2 else ""
+    return (
+        f"{indent}📁 `{display}`{dates}<br>"
+        f"{indent}&nbsp;&nbsp;&nbsp;&nbsp;`{Path(first).name}` → `{Path(last).name}`"
+    )
+
+
 def list_prefixes(client: storage.Client, bucket_name: str, prefix: str = "") -> list[str]:
     """Return sorted sub-folder prefixes directly under `prefix`."""
     iterator = client.list_blobs(bucket_name, prefix=prefix or None, delimiter="/", max_results=2000)
@@ -66,10 +113,14 @@ def render_deep_folder(client, bucket_name, top_folder, sub_folders):
 
         with st.expander(f"&nbsp;&nbsp;&nbsp;&nbsp;📂 {sub}/", expanded=False):
             if sub_folders_found:
-                for sf in sub_folders_found:
-                    # Strip the parent prefix and trailing slash for clean display
-                    display = sf.removeprefix(sub_prefix).rstrip("/")
-                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;📁 `{display}`")
+                with st.spinner("Checking image date ranges…"):
+                    for sf in sub_folders_found:
+                        # Strip the parent prefix and trailing slash for clean display
+                        display = sf.removeprefix(sub_prefix).rstrip("/")
+                        st.markdown(
+                            _date_range_line(bucket_name, sf, display),
+                            unsafe_allow_html=True,
+                        )
             else:
                 st.caption("No sub-folders found.")
 
@@ -142,5 +193,6 @@ for bucket in buckets:
 st.markdown("---")
 st.caption(
     "Folder listing uses GCS delimiter `/`. "
-    "File counts and sizes are not fetched to keep this view fast."
+    "Date ranges are parsed from the YYYYMMDD in standardised filenames "
+    "(first → last image across all sub-folders) and cached for 10 minutes."
 )
