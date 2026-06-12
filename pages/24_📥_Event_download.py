@@ -235,8 +235,6 @@ def _flatten_and_display(events_gdf: gpd.GeoDataFrame, start_date, end_date, sel
         uuid_to_name = build_entity_lookup(st.session_state.er_io)
     events_gdf = resolve_uuid_columns(events_gdf, uuid_to_name, col_prefix="")
 
-    st.success(f"✅ {len(events_gdf):,} event row(s) extracted and flattened!")
-
     # ── Build display / export frame ───────────────────────────────────────────
     display_cols = [c for c in events_gdf.columns if c not in ("geometry", "geojson")]
     display_df = events_gdf[display_cols].copy()
@@ -252,38 +250,215 @@ def _flatten_and_display(events_gdf: gpd.GeoDataFrame, start_date, end_date, sel
     ordered += [c for c in display_df.columns if c not in ordered]
     display_df = display_df[ordered]
 
+    # Persist for the rendering / format-selection block below.
+    # Stored in session_state so switching output format (which triggers a
+    # Streamlit rerun) does not require re-fetching from EarthRanger.
+    st.session_state.export_df = display_df
+    st.session_state.export_meta = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "event_types": list(selected_event_types),
+    }
+
+
+# ── Camera operation table (camtrapR / unmarked) ────────────────────────────────
+
+_TRUTHY = {"true", "t", "yes", "y", "1", "1.0", "functional", "ok",
+           "working", "active", "operational", "on"}
+
+
+def _truthy(val) -> bool:
+    """Interpret a yes/no functional flag across the formats ER might store it in."""
+    if isinstance(val, bool):
+        return val
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return False
+    return str(val).strip().lower() in _TRUTHY
+
+
+def build_camera_operation_table(df, station_col, status_col, datetime_col,
+                                 window_start=None, window_end=None):
+    """
+    Reconstruct a camtrapR-style camera operation matrix from check events.
+
+    Rows = stations, columns = one per day across the survey window. Cell values:
+        1 = camera operational that day
+        0 = camera deployed but not functional (malfunction/error)
+
+    The deployment window is the selected date range (`window_start` →
+    `window_end`); columns span every day in it and every station is assumed
+    deployed across the whole window. Each check's status is carried *back* over
+    the interval since the previous check (the first check back-fills to the
+    window start), and the last check carries *forward* to the window end. When a
+    station is checked more than once on the same day, the last check of that day
+    wins. If a window is not supplied it falls back to the observed check range
+    (and days outside each station's first→last check are left as NA).
+    Returns (matrix_df, n_stations, n_days).
+    """
+    work = df[[station_col, status_col, datetime_col]].copy()
+    work[datetime_col] = pd.to_datetime(work[datetime_col], utc=True, errors="coerce")
+    work = work.dropna(subset=[station_col, datetime_col])
+    if work.empty:
+        return pd.DataFrame(), 0, 0
+
+    work["_date"] = work[datetime_col].dt.tz_convert("UTC").dt.normalize().dt.tz_localize(None)
+    work["_func"] = work[status_col].apply(lambda v: 1 if _truthy(v) else 0)
+    work[station_col] = work[station_col].astype(str)
+
+    # One status per station per day — last check of the day wins.
+    work = (
+        work.sort_values([station_col, datetime_col])
+        .groupby([station_col, "_date"], as_index=False)
+        .agg(_func=("_func", "last"))
+    )
+
+    use_window = window_start is not None and window_end is not None
+    start = pd.Timestamp(window_start).normalize() if use_window else work["_date"].min()
+    end = pd.Timestamp(window_end).normalize() if use_window else work["_date"].max()
+    all_days = pd.date_range(start, end, freq="D")
+    stations = sorted(work[station_col].unique())
+    matrix = pd.DataFrame(index=stations, columns=all_days, dtype="object")
+
+    for stn, grp in work.groupby(station_col):
+        grp = grp.sort_values("_date")
+        check_days = grp["_date"].tolist()
+        check_func = grp["_func"].tolist()
+        setup, retrieval = check_days[0], check_days[-1]
+        last_func = check_func[-1]
+        for day in all_days:
+            # status of the first check that closes the interval containing `day`
+            idx = next((i for i, cd in enumerate(check_days) if cd >= day), None)
+            if idx is not None:
+                matrix.at[stn, day] = check_func[idx]
+            elif use_window:
+                # past the last check but still inside the survey window → carry forward
+                matrix.at[stn, day] = last_func
+            # else: no window given and day > retrieval → leave NaN (NA)
+            if not use_window and (day < setup or day > retrieval):
+                matrix.at[stn, day] = None
+
+    matrix.columns = [d.strftime("%Y-%m-%d") for d in all_days]
+    matrix.insert(0, "Station", matrix.index)
+    matrix = matrix.reset_index(drop=True)
+    return matrix, len(stations), len(all_days)
+
+
+def _render_export():
+    """Render preview + output-format selection + downloads from the persisted export.
+
+    Lives outside the export button block so changing the output format (a
+    Streamlit rerun) re-renders from session_state without re-querying ER.
+    """
+    display_df = st.session_state.get("export_df")
+    if display_df is None:
+        return
+
+    meta = st.session_state.get("export_meta", {})
+    start_date = meta.get("start_date")
+    end_date = meta.get("end_date")
+    event_types = meta.get("event_types", [])
+    start_str = start_date.strftime("%y%m%d") if start_date else "start"
+    end_str = end_date.strftime("%y%m%d") if end_date else "end"
+
+    st.success(f"✅ {len(display_df):,} event row(s) extracted and flattened!")
     st.subheader("Events data preview")
     st.dataframe(display_df, use_container_width=True)
 
-    # Summary metrics
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
-        st.metric("Total event rows", f"{len(events_gdf):,}")
+        st.metric("Total event rows", f"{len(display_df):,}")
     with col_m2:
-        if "event_type" in events_gdf.columns:
-            st.metric("Event types", events_gdf["event_type"].nunique())
+        if "event_type" in display_df.columns:
+            st.metric("Event types", display_df["event_type"].nunique())
     with col_m3:
-        if "subject_name" in events_gdf.columns:
-            st.metric("Unique reporters", events_gdf["subject_name"].nunique())
+        if "subject_name" in display_df.columns:
+            st.metric("Unique reporters", display_df["subject_name"].nunique())
 
-    # ── CSV download ───────────────────────────────────────────────────────────
-    try:
-        start_str = start_date.strftime("%y%m%d")
-        end_str = end_date.strftime("%y%m%d")
+    st.markdown("---")
+    st.subheader("Output format")
+    fmt = st.radio(
+        "Choose an export format:",
+        ["Standard flattened CSV", "Camera operation table (camtrapR / unmarked)"],
+        help="The camera operation table is built for occupancy analysis. Use it "
+             "with camera-check events (e.g. cam_trap_2) that carry a functional flag.",
+    )
+
+    # ── Standard flattened CSV (original behaviour) ─────────────────────────────
+    if fmt == "Standard flattened CSV":
         type_slug = "_".join(
-            "".join(c if c.isalnum() else "_" for c in t) for t in selected_event_types[:5]
+            "".join(c if c.isalnum() else "_" for c in t) for t in event_types[:5]
         )
-        filename = f"er_events_{type_slug}_{start_str}_{end_str}.csv"
-        csv_data = display_df.to_csv(index=False)
         st.download_button(
-            label="📥 Download Events CSV",
-            data=csv_data,
-            file_name=filename,
+            "📥 Download Events CSV",
+            data=display_df.to_csv(index=False),
+            file_name=f"er_events_{type_slug}_{start_str}_{end_str}.csv",
             mime="text/csv",
             use_container_width=True,
         )
+        return
+
+    # ── Camera operation table mode ─────────────────────────────────────────────
+    # Fixed cam_trap_2 field mapping. The deployment window is the selected date
+    # range: columns span every day in it and every station is assumed deployed
+    # across the whole window. Each check's status back-fills to the previous check
+    # (first check back to the range start) and the last check carries forward to
+    # the range end. Non-functional checks become 0, i.e. the matrix always carries
+    # "problems" (camtrapR hasProblems = TRUE).
+    STATION_COL = "detail_camtrap_site"
+    STATUS_COL = "detail_camtrap_active"
+    DATETIME_COL = "event_datetime"
+
+    missing = [c for c in (STATION_COL, STATUS_COL, DATETIME_COL) if c not in display_df.columns]
+    if missing:
+        st.error(
+            "❌ Expected cam_trap_2 field(s) not found in the export: "
+            + ", ".join(f"`{c}`" for c in missing)
+            + ". Make sure you selected the `cam_trap_2` event type."
+        )
+        return
+
+    st.caption(
+        f"Station = `{STATION_COL}` · functional flag = `{STATUS_COL}` · "
+        f"check time = `{DATETIME_COL}`. Window = your selected date range "
+        f"({start_date} → {end_date}); every station is assumed deployed across it."
+    )
+
+    try:
+        matrix, n_stn, n_days = build_camera_operation_table(
+            display_df, STATION_COL, STATUS_COL, DATETIME_COL,
+            window_start=start_date, window_end=end_date,
+        )
     except Exception as exc:
-        st.error(f"❌ Error creating CSV: {exc}")
+        st.error(f"❌ Could not build camera operation table: {exc}")
+        return
+
+    if matrix.empty:
+        st.warning("No usable check records (need a station and a valid datetime).")
+        return
+
+    st.success(f"📋 Camera operation table: {n_stn} station(s) × {n_days} day(s).")
+    st.caption("1 = operational · 0 = deployed but not functional. (Any blank = NA.)")
+    st.dataframe(matrix, use_container_width=True)
+
+    # NA cells (if any) are written as the literal "NA" so R reads them with na.strings="NA".
+    csv_data = matrix.to_csv(index=False, na_rep="NA")
+    st.download_button(
+        "📥 Download camera operation table (CSV)",
+        data=csv_data,
+        file_name=f"camera_operation_{start_str}_{end_str}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+    with st.expander("How to load this in R (camtrapR / unmarked)"):
+        st.code(
+            f'op <- read.csv("camera_operation_{start_str}_{end_str}.csv",\n'
+            '               row.names = 1, check.names = FALSE, na.strings = "NA")\n'
+            'camop <- as.matrix(op)   # stations x days; 1 / 0 / NA\n\n'
+            '# 0s mark non-functional periods, so build histories with hasProblems = TRUE:\n'
+            'detHist <- camtrapR::detectionHistory(camOp = camop, hasProblems = TRUE, ...)\n'
+            '# then feed detHist$detection_history to unmarked::unmarkedFrameOccu().',
+            language="r",
+        )
 
 
 # ── Page ───────────────────────────────────────────────────────────────────────
@@ -456,3 +631,8 @@ if st.button("📥 Export selected events", type="primary", use_container_width=
             st.error(f"❌ Error during export: {exc}")
             import traceback
             st.error(traceback.format_exc())
+
+# ── 4. Preview, format selection & download ─────────────────────────────────────
+# Rendered from session_state so switching output format re-runs without
+# re-querying EarthRanger.
+_render_export()
