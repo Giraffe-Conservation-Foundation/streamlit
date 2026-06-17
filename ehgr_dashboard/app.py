@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, timedelta
 from ecoscope.io.earthranger import EarthRangerIO
 from pandas import json_normalize, to_datetime
 import requests
@@ -10,18 +10,43 @@ from pathlib import Path
 import geopandas as gpd
 from shapely.geometry import LineString
 
+
+def _zoom_for_extent(df, lat_col="lat", lon_col="lon"):
+    """Estimate a reasonable mapbox zoom level from the spread of points."""
+    lat_range = df[lat_col].max() - df[lat_col].min()
+    lon_range = df[lon_col].max() - df[lon_col].min()
+    max_range = max(lat_range, lon_range)
+    if max_range > 10:
+        return 6
+    elif max_range > 5:
+        return 7
+    elif max_range > 2:
+        return 8
+    elif max_range > 1:
+        return 9
+    elif max_range > 0.5:
+        return 10
+    return 11
+
+
+def _format_photo_number(x):
+    if pd.isna(x):
+        return x
+    try:
+        return str(int(float(x))).zfill(4)
+    except (ValueError, TypeError):
+        return x
+
+
 def main():
     """Main function for the EHGR Dashboard"""
-    
+
     # Try to load environment variables from .env file
     try:
         from dotenv import load_dotenv
         load_dotenv()
     except ImportError:
         st.sidebar.warning("⚠️ python-dotenv not installed. Using default settings.")
-        
-    # Force deployment update - timestamp: Sep 26, 2025 - EHGR DASHBOARD IMPLEMENTATION
-    # EHGR Dashboard - Complete implementation with satellite mapping - NAMIBIA DATA
 
     # Configuration - can be overridden by environment variables
     EARTHRANGER_SERVER = os.getenv('EARTHRANGER_SERVER', 'https://twiga.pamdas.org')
@@ -35,12 +60,11 @@ def main():
                 username=username,
                 password=password
             )
-            # Try a simple call to check credentials
             er.get_subjects(limit=1)
             return True
         except Exception:
             return False
-        
+
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
     if "username" not in st.session_state:
@@ -58,7 +82,7 @@ def main():
                 st.session_state["username"] = username
                 st.session_state["password"] = password
                 st.success("Login successful!")
-                st.rerun()  # Updated from deprecated st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid credentials. Please try again.")
         st.stop()
@@ -67,18 +91,23 @@ def main():
     username = st.session_state["username"]
     password = st.session_state["password"]
 
-
-
     # Initialise session state flags for on-demand sections
-    for _key in ("ehgr_patrols_loaded", "ehgr_camera_loaded", "ehgr_weather_loaded"):
+    for _key in (
+        "ehgr_patrols_loaded",
+        "ehgr_camera_loaded",
+        "ehgr_weather_loaded",
+    ):
         if _key not in st.session_state:
             st.session_state[_key] = False
+
+    #### EVENT DATA LOADING (shared across tabs) ##########################
+    GIRAFFE_EVENT_TYPES = ["giraffe_survey_encounter_nam", "giraffe_random_encounter_nam"]
 
     @st.cache_data(ttl=3600)
     def load_monitoring_events(er_username, er_password):
         """Fetch monitoring_nam events once and split into giraffe + priority species dataframes."""
         er = EarthRangerIO(
-            server="https://twiga.pamdas.org",
+            server=EARTHRANGER_SERVER,
             username=er_username,
             password=er_password
         )
@@ -99,7 +128,10 @@ def main():
             st.error(f"❌ Error loading monitoring data: {str(e)}")
             return pd.DataFrame(), pd.DataFrame()
 
-        giraffe_df = flat[flat["event_type"] == "giraffe_survey_encounter_nam"].copy()
+        giraffe_df = flat[flat["event_type"].isin(GIRAFFE_EVENT_TYPES)].copy()
+        if not giraffe_df.empty:
+            # Encounter type is just the underlying event_type name
+            giraffe_df["encounter_type"] = giraffe_df["event_type"]
 
         priority_types = {
             "Rhino": "rhino_encounter_nam",
@@ -125,7 +157,7 @@ def main():
         st.info("""
         **Possible issues:**
         1. Event category 'monitoring_nam' may not exist
-        2. Event type 'giraffe_survey_encounter_nam' may not exist
+        2. Event types 'giraffe_survey_encounter_nam' / 'giraffe_random_encounter_nam' may not exist
         3. No data in the specified date range
         """)
         st.stop()
@@ -163,23 +195,16 @@ def main():
     }
 
     df = df.rename(columns=rename_map)
-    df["evt_dttm"] = pd.to_datetime(df["evt_dttm"])
-    df = df.dropna(subset=["evt_dttm"])
-
-    #### DASHBOARD LAYOUT ###############################################
-
-    # Top row: Date filter - separate start and end dates
-    st.subheader("Filter Date Range")
-    # Clean evt_dttm and drop NaT values
     df["evt_dttm"] = pd.to_datetime(df["evt_dttm"], errors="coerce")
     df = df.dropna(subset=["evt_dttm"])
-    
-    # Calculate default dates: system date minus 1 month for start, system date for end
-    from datetime import timedelta
+
+    #### SHARED DATE FILTER (used by all tabs) ############################
+    st.subheader("Filter Date Range")
+
+    from datetime import timedelta as _td
     default_end_date = datetime.today().date()
-    default_start_date = (datetime.today() - timedelta(days=30)).date()
-    
-    # Get min/max from data if available
+    default_start_date = (datetime.today() - _td(days=30)).date()
+
     if df["evt_dttm"].notna().any():
         data_min_date = df["evt_dttm"].min().date()
         data_max_date = df["evt_dttm"].max().date()
@@ -194,30 +219,92 @@ def main():
         end_date = st.date_input("End date", value=default_end_date, help="End of date range")
 
     filtered_df = df[(df["evt_dttm"].dt.date >= start_date) & (df["evt_dttm"].dt.date <= end_date)]
-    
+
     # Filter for specific users
     target_users = ["Martina Kusters", "Katie Ahl", "Emma Wells", "Etosha Heights"]
     if "user_name" in filtered_df.columns:
         filtered_df = filtered_df[filtered_df["user_name"].isin(target_users)].copy()
-        if filtered_df.empty:
-            st.warning(f"⚠️ No giraffe sightings found for {', '.join(target_users)} in the selected date range")
     else:
         st.info("ℹ️ user_name column not found in data")
 
     st.markdown("---")
 
-    #### heading metrics
-    st.subheader("🦒 Giraffe Sightings")
-    # Simplified metrics without subject group dependencies
+    # Shared priority species prep (rhino + predators), filtered once for both tabs
+    filtered_priority_df = pd.DataFrame()
+    if not priority_species_df.empty:
+        priority_rename_map = {
+            "reported_by.id": "user_id",
+            "reported_by.name": "user_name",
+            "id": "event_id",
+            "event_type": "evt_type",
+            "event_category": "evt_category",
+            "serial_number": "evt_serial",
+            "url": "evt_url",
+            "time": "evt_dttm",
+            "location.latitude": "lat",
+            "location.longitude": "lon"
+        }
+        priority_species_df = priority_species_df.rename(columns=priority_rename_map)
+        priority_species_df["evt_dttm"] = pd.to_datetime(priority_species_df["evt_dttm"], errors="coerce")
+        priority_species_df = priority_species_df.dropna(subset=["evt_dttm"])
 
-    # Calculate basic metrics from filtered data
+        filtered_priority_df = priority_species_df[
+            (priority_species_df["evt_dttm"].dt.date >= start_date) &
+            (priority_species_df["evt_dttm"].dt.date <= end_date)
+        ]
+        if "user_name" in filtered_priority_df.columns:
+            filtered_priority_df = filtered_priority_df[filtered_priority_df["user_name"].isin(target_users)].copy()
+
+    rhino_df = filtered_priority_df[filtered_priority_df.get("species") == "Rhino"].copy() if not filtered_priority_df.empty else pd.DataFrame()
+    predator_df = filtered_priority_df[filtered_priority_df.get("species") != "Rhino"].copy() if not filtered_priority_df.empty else pd.DataFrame()
+
+    # Full (all-time, not date-filtered) rhino records — used for the individual history lookup
+    rhino_full_df = priority_species_df[priority_species_df.get("species") == "Rhino"].copy() if not priority_species_df.empty else pd.DataFrame()
+    if "user_name" in rhino_full_df.columns:
+        rhino_full_df = rhino_full_df[rhino_full_df["user_name"].isin(target_users)].copy()
+
+    #### TABS ##############################################################
+    tab_giraffe, tab_rhino, tab_predator, tab_camera, tab_weather = st.tabs([
+        "🦒 Giraffe", "🦏 Rhinos", "🦁 Predators", "📷 Camera Traps", "🌦️ Weather Stations"
+    ])
+
+    with tab_giraffe:
+        render_giraffe_tab(
+            filtered_df, start_date, end_date, username, password,
+            EARTHRANGER_SERVER, MAPBOX_TOKEN
+        )
+
+    with tab_rhino:
+        render_rhino_tab(rhino_df, rhino_full_df, start_date, end_date, username, password, EARTHRANGER_SERVER, MAPBOX_TOKEN)
+
+    with tab_predator:
+        render_predator_tab(predator_df, start_date, end_date, MAPBOX_TOKEN)
+
+    with tab_camera:
+        render_camera_tab(username, password, EARTHRANGER_SERVER)
+
+    with tab_weather:
+        render_weather_tab(username, password, EARTHRANGER_SERVER)
+
+    # Logout button
+    if st.sidebar.button("🔓 Logout"):
+        for key in ['authenticated', 'username', 'password']:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.rerun()
+
+
+#### GIRAFFE TAB #########################################################
+def render_giraffe_tab(filtered_df, start_date, end_date, username, password, EARTHRANGER_SERVER, MAPBOX_TOKEN):
+    st.subheader("🦒 Giraffe Sightings")
+    st.caption("Includes both survey encounters and random encounters")
+
     individuals_seen = filtered_df["evt_herdSize"].sum() if "evt_herdSize" in filtered_df.columns else 0
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Individuals seen", individuals_seen)
     with col2:
-        # Count unique encounters/herds (each row represents one herd encounter)
         herd_count = len(filtered_df) if not filtered_df.empty else 0
         st.metric("Herds seen", herd_count)
     with col3:
@@ -233,76 +320,44 @@ def main():
     st.subheader("📍 Sightings map")
     map_df = filtered_df.dropna(subset=["lat", "lon"])
     if not map_df.empty:
-        # Calculate appropriate zoom level based on data extent
-        lat_range = map_df["lat"].max() - map_df["lat"].min()
-        lon_range = map_df["lon"].max() - map_df["lon"].min()
-        max_range = max(lat_range, lon_range)
-        
-        # Estimate zoom level (approximate formula)
-        if max_range > 10:
-            zoom_level = 6
-        elif max_range > 5:
-            zoom_level = 7
-        elif max_range > 2:
-            zoom_level = 8
-        elif max_range > 1:
-            zoom_level = 9
-        elif max_range > 0.5:
-            zoom_level = 10
-        else:
-            zoom_level = 11
-        
-        # Create plotly map with dark satellite style and park boundaries
+        zoom_level = _zoom_for_extent(map_df)
+
+        encounter_color_map = {
+            "giraffe_survey_encounter_nam": "#DB580F",  # orange = survey
+            "giraffe_random_encounter_nam": "#000000",  # black = random
+        }
+
         fig_map = px.scatter_mapbox(
-            map_df, 
-            lat="lat", 
+            map_df,
+            lat="lat",
             lon="lon",
+            color="encounter_type" if "encounter_type" in map_df.columns else None,
+            color_discrete_map=encounter_color_map,
             hover_data=["evt_dttm", "evt_herdSize"] if "evt_herdSize" in map_df.columns else ["evt_dttm"],
             zoom=zoom_level,
             height=500,
             title="Giraffe Sightings"
         )
-        
-        # Set map style based on token availability
+
         if MAPBOX_TOKEN:
-            # Use satellite-streets for Google Maps-like experience with boundaries
             map_style = "satellite-streets"
             px.set_mapbox_access_token(MAPBOX_TOKEN)
         else:
-            # Fallback to open street map (free, no token required)
             map_style = "open-street-map"
-        
-        # Update layout for dark satellite style with boundaries
+
         fig_map.update_layout(
             mapbox_style=map_style,
             mapbox=dict(
-                center=dict(
-                    lat=map_df["lat"].mean(),
-                    lon=map_df["lon"].mean()
-                ),
+                center=dict(lat=map_df["lat"].mean(), lon=map_df["lon"].mean()),
                 zoom=zoom_level
             ),
-            margin={"r":0,"t":50,"l":0,"b":0},
+            margin={"r": 0, "t": 50, "l": 0, "b": 0},
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)"
         )
-        
-        # Update marker style for better visibility
-        if map_style == "satellite-streets":
-            # Yellow markers for satellite view
-            marker_color = "yellow"
-        else:
-            # Red markers for street map
-            marker_color = "red"
-        
-        fig_map.update_traces(
-            marker=dict(
-                size=12,
-                color=marker_color,
-                opacity=0.8
-            )
-        )
-        
+
+        fig_map.update_traces(marker=dict(size=12, opacity=0.8))
+
         st.plotly_chart(fig_map, use_container_width=True)
     else:
         st.info("No location data available for mapping")
@@ -310,19 +365,16 @@ def main():
     # Display giraffe sightings data table
     st.subheader("🦒 Giraffe sightings details")
     if not filtered_df.empty:
-        # Check if we need to explode herd data for individual giraffes
         if "event_details.Herd" in filtered_df.columns:
-            # Explode herd data to show individual giraffes
             display_sightings_df = filtered_df.explode("event_details.Herd").reset_index(drop=True)
-            
-            # Normalize the herd details if they exist
+
             if not display_sightings_df["event_details.Herd"].isna().all():
                 herd_details = json_normalize(display_sightings_df["event_details.Herd"])
                 display_sightings_df = pd.concat([display_sightings_df.drop(columns="event_details.Herd"), herd_details], axis=1)
-                
-                # Comprehensive column mapping including all event details
+
                 column_mapping = {
                     'evt_dttm': 'Date/Time',
+                    'encounter_type': 'Encounter Type',
                     'user_name': 'Observer',
                     'evt_serial': 'Serial Number',
                     'event_id': 'Event ID',
@@ -343,9 +395,9 @@ def main():
                     'evt_url': 'Event URL'
                 }
             else:
-                # Fallback if herd details are empty
                 column_mapping = {
                     'evt_dttm': 'Date/Time',
+                    'encounter_type': 'Encounter Type',
                     'user_name': 'Observer',
                     'evt_serial': 'Serial Number',
                     'event_id': 'Event ID',
@@ -360,10 +412,10 @@ def main():
                     'evt_url': 'Event URL'
                 }
         else:
-            # No herd data to explode, use event-level columns
             display_sightings_df = filtered_df.copy()
             column_mapping = {
                 'evt_dttm': 'Date/Time',
+                'encounter_type': 'Encounter Type',
                 'user_name': 'Observer',
                 'evt_serial': 'Serial Number',
                 'event_id': 'Event ID',
@@ -383,36 +435,21 @@ def main():
                 'lon': 'Longitude',
                 'evt_url': 'Event URL'
             }
-        
-        # Build display dataframe with available columns
+
         available_cols = [col for col in column_mapping.keys() if col in display_sightings_df.columns]
         display_sightings_df = display_sightings_df[available_cols]
-        
-        # Rename columns to friendly names
         display_sightings_df = display_sightings_df.rename(columns={k: v for k, v in column_mapping.items() if k in available_cols})
-        
-        # Format datetime if present
+
         if 'Date/Time' in display_sightings_df.columns:
             display_sightings_df['Date/Time'] = display_sightings_df['Date/Time'].dt.strftime('%Y-%m-%d %H:%M')
-        
-        # Format photo numbers to be at least 4 digits with leading zeros
-        def format_photo_number(x):
-            if pd.isna(x):
-                return x
-            try:
-                # Try to convert to int and then format with leading zeros
-                return str(int(float(x))).zfill(4)
-            except (ValueError, TypeError):
-                return x
-        
+
         for photo_col in ['Right Photo', 'Left Photo']:
             if photo_col in display_sightings_df.columns:
-                display_sightings_df[photo_col] = display_sightings_df[photo_col].apply(format_photo_number)
-        
-        # Sort by date descending
+                display_sightings_df[photo_col] = display_sightings_df[photo_col].apply(_format_photo_number)
+
         if 'Date/Time' in display_sightings_df.columns:
             display_sightings_df = display_sightings_df.sort_values('Date/Time', ascending=False)
-        
+
         st.dataframe(display_sightings_df, use_container_width=True, hide_index=True)
     else:
         st.info("No giraffe sightings to display")
@@ -420,16 +457,12 @@ def main():
     #### Age/sex breakdown bar chart
     st.subheader("🧬 Age / sex breakdown")
 
-    # For age/sex breakdown, we need individual giraffe data
-    # So we'll explode the herd data here if needed
-    if not filtered_df.empty and "event_details.Herd" in df.columns:
-        # Explode herd data for individual analysis
+    if not filtered_df.empty and "event_details.Herd" in filtered_df.columns:
         individual_df = filtered_df.explode("event_details.Herd").reset_index(drop=True)
         if not individual_df["event_details.Herd"].isna().all():
             herd_details = json_normalize(individual_df["event_details.Herd"])
             individual_df = pd.concat([individual_df.drop(columns="event_details.Herd"), herd_details], axis=1)
-            
-            # Map the individual giraffe columns
+
             if "giraffe_sex" in individual_df.columns and "giraffe_age" in individual_df.columns:
                 breakdown = (
                     individual_df.groupby(["giraffe_sex", "giraffe_age"])
@@ -444,7 +477,6 @@ def main():
         else:
             st.info("No herd detail data available for age/sex breakdown")
     elif not filtered_df.empty and "evt_girSex" in filtered_df.columns and "evt_girAge" in filtered_df.columns:
-        # Use direct event-level age/sex data if available
         breakdown = (
             filtered_df.groupby(["evt_girSex", "evt_girAge"])
             .size()
@@ -456,317 +488,37 @@ def main():
     else:
         st.info("No age/sex data available for breakdown chart")
 
-    #### OTHER PRIORITY SPECIES SECTION ###############################################
-    st.markdown("---")
-    st.subheader("🦁 Other Priority Species Sightings")
-    st.markdown("*Includes: Rhino, Lion, Cheetah, Leopard*")
-
-    if not priority_species_df.empty:
-        # Rename columns for priority species
-        priority_rename_map = {
-            "reported_by.id": "user_id",
-            "reported_by.name": "user_name",
-            "id": "event_id",
-            "event_type": "evt_type",
-            "event_category": "evt_category",
-            "serial_number": "evt_serial",
-            "url": "evt_url",
-            "time": "evt_dttm",
-            "location.latitude": "lat",
-            "location.longitude": "lon"
-        }
-        
-        priority_species_df = priority_species_df.rename(columns=priority_rename_map)
-        priority_species_df["evt_dttm"] = pd.to_datetime(priority_species_df["evt_dttm"])
-        priority_species_df = priority_species_df.dropna(subset=["evt_dttm"])
-        
-        # Filter by date range (using same dates as giraffe section)
-        filtered_priority_df = priority_species_df[
-            (priority_species_df["evt_dttm"].dt.date >= start_date) & 
-            (priority_species_df["evt_dttm"].dt.date <= end_date)
-        ]
-        
-        # Filter for specific users (same as giraffe section)
-        if "user_name" in filtered_priority_df.columns:
-            filtered_priority_df = filtered_priority_df[filtered_priority_df["user_name"].isin(target_users)].copy()
-        
-        if not filtered_priority_df.empty:
-            # Metrics
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total sightings", len(filtered_priority_df))
-            with col2:
-                species_count = filtered_priority_df["species"].nunique() if "species" in filtered_priority_df.columns else 0
-                st.metric("Species observed", species_count)
-            with col3:
-                if "species" in filtered_priority_df.columns:
-                    most_common = filtered_priority_df["species"].value_counts().index[0]
-                    st.metric("Most common", most_common)
-                else:
-                    st.metric("Most common", "N/A")
-            with col4:
-                st.metric("Date range", f"{(end_date - start_date).days} days")
-            
-            # Sightings map
-            st.subheader("📍 Priority species sightings map")
-            map_priority_df = filtered_priority_df.dropna(subset=["lat", "lon"])
-            if not map_priority_df.empty:
-                # Calculate appropriate zoom level
-                lat_range = map_priority_df["lat"].max() - map_priority_df["lat"].min()
-                lon_range = map_priority_df["lon"].max() - map_priority_df["lon"].min()
-                max_range = max(lat_range, lon_range)
-                
-                if max_range > 10:
-                    zoom_level = 6
-                elif max_range > 5:
-                    zoom_level = 7
-                elif max_range > 2:
-                    zoom_level = 8
-                elif max_range > 1:
-                    zoom_level = 9
-                elif max_range > 0.5:
-                    zoom_level = 10
-                else:
-                    zoom_level = 11
-                
-                # Create plotly map with species color coding
-                fig_priority = px.scatter_mapbox(
-                    map_priority_df, 
-                    lat="lat", 
-                    lon="lon",
-                    color="species" if "species" in map_priority_df.columns else None,
-                    hover_data=["evt_dttm", "species"] if "species" in map_priority_df.columns else ["evt_dttm"],
-                    zoom=zoom_level,
-                    height=500,
-                    title="Priority Species Sightings"
-                )
-                
-                # Set map style based on token availability
-                if MAPBOX_TOKEN:
-                    map_style = "satellite-streets"
-                    px.set_mapbox_access_token(MAPBOX_TOKEN)
-                else:
-                    map_style = "open-street-map"
-                
-                # Update layout
-                fig_priority.update_layout(
-                    mapbox_style=map_style,
-                    mapbox=dict(
-                        center=dict(
-                            lat=map_priority_df["lat"].mean(),
-                            lon=map_priority_df["lon"].mean()
-                        ),
-                        zoom=zoom_level
-                    ),
-                    margin={"r":0,"t":50,"l":0,"b":0},
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)"
-                )
-                
-                # Update marker style
-                fig_priority.update_traces(
-                    marker=dict(
-                        size=12,
-                        opacity=0.8
-                    )
-                )
-                
-                st.plotly_chart(fig_priority, use_container_width=True)
-            else:
-                st.info("No location data available for mapping")
-            
-            # Display priority species sightings data table
-            st.subheader("🦁 Priority species sightings details")
-            
-            # Check if we need to explode Group data for individual animals (like giraffe's Herd)
-            if "event_details.Group" in filtered_priority_df.columns:
-                # Explode Group data to show individual animals
-                display_priority_df = filtered_priority_df.explode("event_details.Group").reset_index(drop=True)
-                
-                # Normalize the group details if they exist
-                if not display_priority_df["event_details.Group"].isna().all():
-                    group_details = json_normalize(display_priority_df["event_details.Group"])
-                    display_priority_df = pd.concat([display_priority_df.drop(columns="event_details.Group"), group_details], axis=1)
-                    
-                    # Build comprehensive column mapping including individual animal details
-                    priority_column_mapping = {
-                        'evt_dttm': 'Date/Time',
-                        'species': 'Species',
-                        'user_name': 'Observer',
-                        'evt_serial': 'Serial Number',
-                        'event_id': 'Event ID',
-                        'event_details.image_prefix': 'Image Prefix',
-                        'event_details.group_size': 'Group Size',
-                        'event_details.herd_notes': 'Group Notes',
-                        'event_details.notes': 'Notes',
-                        # Rhino individual details
-                        'rhino_id': 'Rhino ID',
-                        'rhino_age': 'Rhino Age',
-                        'rhino_sex': 'Rhino Sex',
-                        'rhino_notes': 'Rhino Notes',
-                        'rhino_photo_left': 'Rhino Photo Left',
-                        'rhino_photo_right': 'Rhino Photo Right',
-                        'rhino_whisker_left': 'Rhino Whisker Left',
-                        'rhino_whisker_right': 'Rhino Whisker Right',
-                        'rhino_ear_left': 'Rhino Ear Left',
-                        'rhino_ear_right': 'Rhino Ear Right',
-                        # Lion individual details
-                        'lion_id': 'Lion ID',
-                        'lion_age': 'Lion Age',
-                        'lion_sex': 'Lion Sex',
-                        'lion_notes': 'Lion Notes',
-                        'lion_photo_left': 'Lion Photo Left',
-                        'lion_photo_right': 'Lion Photo Right',
-                        'lion_whisker_left': 'Lion Whisker Left',
-                        'lion_whisker_right': 'Lion Whisker Right',
-                        'lion_ear_left': 'Lion Ear Left',
-                        'lion_ear_right': 'Lion Ear Right',
-                        # Cheetah individual details
-                        'cheetah_id': 'Cheetah ID',
-                        'cheetah_age': 'Cheetah Age',
-                        'cheetah_sex': 'Cheetah Sex',
-                        'cheetah_notes': 'Cheetah Notes',
-                        'cheetah_photo_left': 'Cheetah Photo Left',
-                        'cheetah_photo_right': 'Cheetah Photo Right',
-                        'cheetah_whisker_left': 'Cheetah Whisker Left',
-                        'cheetah_whisker_right': 'Cheetah Whisker Right',
-                        # Leopard individual details
-                        'leopard_id': 'Leopard ID',
-                        'leopard_age': 'Leopard Age',
-                        'leopard_sex': 'Leopard Sex',
-                        'leopard_notes': 'Leopard Notes',
-                        'leopard_photo_left': 'Leopard Photo Left',
-                        'leopard_photo_right': 'Leopard Photo Right',
-                        'leopard_whisker_left': 'Leopard Whisker Left',
-                        'leopard_whisker_right': 'Leopard Whisker Right',
-                        'lat': 'Latitude',
-                        'lon': 'Longitude',
-                        'evt_url': 'Event URL'
-                    }
-                else:
-                    # Fallback if group details are empty
-                    display_priority_df = filtered_priority_df.copy()
-                    priority_column_mapping = {
-                        'evt_dttm': 'Date/Time',
-                        'species': 'Species',
-                        'user_name': 'Observer',
-                        'evt_serial': 'Serial Number',
-                        'event_id': 'Event ID',
-                        'event_details.image_prefix': 'Image Prefix',
-                        'event_details.group_size': 'Group Size',
-                        'event_details.notes': 'Notes',
-                        'lat': 'Latitude',
-                        'lon': 'Longitude',
-                        'evt_url': 'Event URL'
-                    }
-            else:
-                # No Group data to explode
-                display_priority_df = filtered_priority_df.copy()
-                priority_column_mapping = {
-                    'evt_dttm': 'Date/Time',
-                    'species': 'Species',
-                    'user_name': 'Observer',
-                    'evt_serial': 'Serial Number',
-                    'event_id': 'Event ID',
-                    'event_details.image_prefix': 'Image Prefix',
-                    'event_details.group_size': 'Group Size',
-                    'event_details.notes': 'Notes',
-                    'lat': 'Latitude',
-                    'lon': 'Longitude',
-                    'evt_url': 'Event URL'
-                }
-            
-            # Build display dataframe with available columns
-            available_cols = [col for col in priority_column_mapping.keys() if col in display_priority_df.columns]
-            display_priority_df = display_priority_df[available_cols]
-            
-            # Rename columns to friendly names
-            display_priority_df = display_priority_df.rename(columns={k: v for k, v in priority_column_mapping.items() if k in available_cols})
-            
-            # Format datetime
-            if 'Date/Time' in display_priority_df.columns:
-                display_priority_df['Date/Time'] = display_priority_df['Date/Time'].dt.strftime('%Y-%m-%d %H:%M')
-            
-            # Format photo numbers to be at least 4 digits with leading zeros
-            def format_photo_number(x):
-                if pd.isna(x):
-                    return x
-                try:
-                    # Try to convert to int and then format with leading zeros
-                    return str(int(float(x))).zfill(4)
-                except (ValueError, TypeError):
-                    return x
-            
-            # Apply photo number formatting to all photo columns
-            photo_columns = [col for col in display_priority_df.columns if 'Photo' in col or 'Whisker' in col or 'Ear' in col]
-            for photo_col in photo_columns:
-                if photo_col in display_priority_df.columns:
-                    display_priority_df[photo_col] = display_priority_df[photo_col].apply(format_photo_number)
-            
-            # Sort by date descending
-            if 'Date/Time' in display_priority_df.columns:
-                display_priority_df = display_priority_df.sort_values('Date/Time', ascending=False)
-            
-            st.dataframe(display_priority_df, use_container_width=True, hide_index=True)
-            
-            # Species breakdown bar chart
-            st.subheader("📊 Species breakdown")
-            if "species" in filtered_priority_df.columns:
-                species_counts = filtered_priority_df["species"].value_counts().reset_index()
-                species_counts.columns = ["Species", "Count"]
-                
-                fig_species = px.bar(
-                    species_counts, 
-                    x="Species", 
-                    y="Count",
-                    title="Sightings by Species",
-                    color="Species"
-                )
-                st.plotly_chart(fig_species, use_container_width=True)
-            else:
-                st.info("No species data available for breakdown")
-        else:
-            st.info(f"No priority species sightings found for {', '.join(target_users)} in the selected date range")
-    else:
-        st.info("No priority species data available")
-
-    #### PATROL MAP ###############################################
+    #### PATROL MAP (giraffe tab only) ####################################
     st.markdown("---")
     st.subheader("🚶 Patrol Tracks")
-    
-    # Allow user to edit patrol leader names
+
     patrol_names_input = st.text_area(
         "Patrol leader usernames (one per line)",
         value="Martina Kusters\nKatie Ahl\nEmma Wells\nEtosha Heights",
         height=80,
-        help="Enter patrol leader names to filter. From debug info, available leaders are shown."
+        help="Enter patrol leader names to filter. From debug info, available leaders are shown.",
+        key="ehgr_patrol_names_input"
     )
     patrol_usernames = [name.strip() for name in patrol_names_input.split('\n') if name.strip()]
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def load_patrol_data(start_date_input, end_date_input, patrol_usernames_list, er_username, er_password, _debug=True):
-        """Load patrol data filtered by specified usernames"""
         debug_info = []
         try:
             er = EarthRangerIO(
-                server="https://twiga.pamdas.org",
+                server=EARTHRANGER_SERVER,
                 username=er_username,
                 password=er_password
             )
-            
-            # Get patrols - fetch broader range and filter manually
-            # EarthRanger API filters by scheduled dates, but Emma Wells' patrols use actual start dates
+
             debug_info.append(f"📅 Requested date range: {start_date_input} to {end_date_input}")
             debug_info.append(f"👤 Looking for patrols by: {', '.join(patrol_usernames_list)}")
-            
-            # Fetch last 150 days of patrols (broader range) to catch patrols with missing scheduled dates
-            # Using 150 days to ensure we capture all recent patrols
+
             broader_since = (datetime.now() - timedelta(days=150)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            broader_until = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")  # Add 7 days buffer to future
-            
+            broader_until = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
             debug_info.append(f"🔍 Fetching patrols from {broader_since} to {broader_until}")
-            
-            # Get patrols
+
             try:
                 patrols_df = er.get_patrols(
                     since=broader_since,
@@ -774,53 +526,22 @@ def main():
                 )
             except Exception as patrol_err:
                 if 'timeout' in str(patrol_err).lower():
-                    debug_info.append(f"⏱️ Request timed out - try a shorter date range")
+                    debug_info.append("⏱️ Request timed out - try a shorter date range")
                     return None, f"Request timed out. Please try a shorter date range (currently {(end_date_input - start_date_input).days} days)", debug_info
                 else:
                     raise
-            
+
             debug_info.append(f"📊 Total patrols retrieved: {len(patrols_df)}")
-            
+
             if patrols_df.empty:
                 return None, "No patrols found for the specified date range", debug_info
-            
-            # Debug: Show highest serial numbers to check if we're getting recent patrols
+
             if 'serial_number' in patrols_df.columns:
                 max_serial = patrols_df['serial_number'].max()
                 min_serial = patrols_df['serial_number'].min()
                 debug_info.append(f"🔢 Serial number range: {min_serial} to {max_serial}")
-            
-            # Debug: Show raw patrol data structure for first few AND last few patrols
-            debug_info.append(f"🔍 Examining patrol data structure (first 3 and last 3):")
-            display_patrols = pd.concat([patrols_df.head(3), patrols_df.tail(3)])
-            for idx, row in display_patrols.iterrows():
-                patrol_id = row.get('id', 'unknown')
-                title = row.get('title', 'No title')
-                serial = row.get('serial_number', 'No serial')
-                debug_info.append(f"  Patrol: {title} (ID: {patrol_id}, Serial: {serial})")
-                
-                # Check multiple possible fields for patrol leader
-                if 'patrol_segments' in row:
-                    debug_info.append(f"    patrol_segments: {type(row['patrol_segments'])}")
-                    if isinstance(row['patrol_segments'], list) and len(row['patrol_segments']) > 0:
-                        segment = row['patrol_segments'][0]
-                        debug_info.append(f"    First segment keys: {segment.keys() if isinstance(segment, dict) else 'Not a dict'}")
-                        if isinstance(segment, dict):
-                            if 'leader' in segment:
-                                debug_info.append(f"    leader: {segment['leader']}")
-                            if 'tracked_subject' in segment:
-                                debug_info.append(f"    tracked_subject: {segment['tracked_subject']}")
-                
-                # Check other possible leader fields
-                if 'owner' in row:
-                    debug_info.append(f"    owner: {row['owner']}")
-                if 'created_by' in row:
-                    debug_info.append(f"    created_by: {row['created_by']}")
-            
-            # Extract patrol leader/subject from patrol_segments
+
             def get_patrol_subject(row):
-                # Try multiple possible fields
-                # 1. Check patrol_segments -> leader
                 if 'patrol_segments' in row and isinstance(row['patrol_segments'], list) and len(row['patrol_segments']) > 0:
                     segment = row['patrol_segments'][0]
                     if isinstance(segment, dict):
@@ -829,50 +550,40 @@ def main():
                             if isinstance(leader, dict):
                                 return leader.get('name', leader.get('username', leader.get('content_type', '')))
                             return str(leader) if leader else ''
-                        # Try tracked_subject as alternative
                         if 'tracked_subject' in segment:
                             subject = segment['tracked_subject']
                             if isinstance(subject, dict):
                                 return subject.get('name', subject.get('username', ''))
                             return str(subject) if subject else ''
-                
-                # 2. Check owner field
                 if 'owner' in row:
                     owner = row['owner']
                     if isinstance(owner, dict):
                         return owner.get('username', owner.get('name', ''))
                     return str(owner) if owner else ''
-                
-                # 3. Check created_by field
                 if 'created_by' in row:
                     creator = row['created_by']
                     if isinstance(creator, dict):
                         return creator.get('username', creator.get('name', ''))
                     return str(creator) if creator else ''
-                
                 return ''
-            
+
             patrols_df['patrol_leader'] = patrols_df.apply(get_patrol_subject, axis=1)
-            
-            # Get unique leaders for debugging
+
             unique_leaders = patrols_df['patrol_leader'].unique().tolist()
             unique_leaders_clean = [l for l in unique_leaders if l]
             debug_info.append(f"👥 Found {len(unique_leaders_clean)} unique patrol leaders in last 90 days:")
             for leader in sorted(unique_leaders_clean):
                 count = len(patrols_df[patrols_df['patrol_leader'] == leader])
                 debug_info.append(f"   - '{leader}': {count} patrol(s)")
-            
-            # Filter for specified username patrols only
+
             patrols_df = patrols_df[patrols_df['patrol_leader'].isin(patrol_usernames_list)].copy()
-            
+
             debug_info.append(f"✅ Patrols for target users (before date filter): {len(patrols_df)}")
-            
+
             if patrols_df.empty:
                 return None, f"No patrols found for {', '.join(patrol_usernames_list)}", debug_info
-            
-            # NOW filter by actual start date from time_range (not scheduled dates)
+
             def get_actual_start_date(row):
-                """Extract actual start date from patrol segments"""
                 if 'patrol_segments' in row and isinstance(row['patrol_segments'], list) and len(row['patrol_segments']) > 0:
                     segment = row['patrol_segments'][0]
                     if isinstance(segment, dict):
@@ -882,90 +593,80 @@ def main():
                             if start_time:
                                 try:
                                     return pd.to_datetime(start_time).date()
-                                except:
+                                except Exception:
                                     pass
                 return None
-            
+
             patrols_df['actual_start_date'] = patrols_df.apply(get_actual_start_date, axis=1)
-            
-            # Show all patrol dates for debugging
-            debug_info.append(f"📅 Patrol dates found:")
+
+            debug_info.append("📅 Patrol dates found:")
             for idx, row in patrols_df.iterrows():
                 patrol_leader = row.get('patrol_leader', 'Unknown')
                 serial = row.get('serial_number', 'N/A')
                 actual_date = row.get('actual_start_date', 'No date')
                 debug_info.append(f"   - Serial {serial} ({patrol_leader}): {actual_date}")
-            
-            # Filter by user's requested date range using actual dates
+
             patrols_df = patrols_df[
-                (patrols_df['actual_start_date'] >= start_date_input) & 
+                (patrols_df['actual_start_date'] >= start_date_input) &
                 (patrols_df['actual_start_date'] <= end_date_input)
             ].copy()
-            
+
             debug_info.append(f"✅ Patrols after date filtering ({start_date_input} to {end_date_input}): {len(patrols_df)}")
-            
+
             if patrols_df.empty:
                 return None, f"No patrols found for {', '.join(patrol_usernames_list)} in the specified date range", debug_info
-            
-            # Get patrol observations
-            debug_info.append(f"🔄 Fetching patrol observations...")
+
+            debug_info.append("🔄 Fetching patrol observations...")
             patrol_observations = er.get_patrol_observations(
                 patrols_df=patrols_df,
                 include_patrol_details=True
             )
-            
-            # Handle both Relocations object and GeoDataFrame
+
             if hasattr(patrol_observations, 'gdf'):
                 points_gdf = patrol_observations.gdf
             else:
                 points_gdf = patrol_observations
-            
+
             debug_info.append(f"📍 Total observation points: {len(points_gdf)}")
-            
+
             if points_gdf.empty:
                 return None, "No patrol tracks found", debug_info
-            
-            # Find time column for sorting
+
             time_col = None
             for col in ['extra__recorded_at', 'recorded_at', 'fixtime', 'time', 'timestamp']:
                 if col in points_gdf.columns:
                     time_col = col
                     break
-            
+
             debug_info.append(f"⏰ Time column used: {time_col if time_col else 'None found'}")
-            
-            # Convert points to LineStrings grouped by patrol_id
+
             lines = []
             group_col = 'patrol_id'
-            
+
             unique_patrol_ids = points_gdf[group_col].unique()
             debug_info.append(f"🆔 Unique patrol IDs: {len(unique_patrol_ids)}")
-            
+
             for group_id in unique_patrol_ids:
                 patrol_points = points_gdf[points_gdf[group_col] == group_id].copy()
-                
-                # Sort by time
+
                 if time_col and time_col in patrol_points.columns:
                     patrol_points = patrol_points.sort_values(time_col, ascending=True)
-                
+
                 if len(patrol_points) < 2:
                     debug_info.append(f"⚠️ Patrol {group_id}: Only {len(patrol_points)} point(s), skipping")
                     continue
-                
-                # Create LineString from points
+
                 coords = [(point.x, point.y) for point in patrol_points.geometry]
                 line = LineString(coords)
-                
-                # Get patrol metadata
+
                 first_point = patrol_points.iloc[0]
-                
-                # Get actual patrol leader name
+
                 patrol_leader_name = ''
                 if 'patrol_leader' in patrols_df.columns:
                     patrol_info = patrols_df[patrols_df['id'] == first_point.get('patrol_id')]
                     if not patrol_info.empty:
                         patrol_leader_name = patrol_info.iloc[0]['patrol_leader']
-                
+
                 line_data = {
                     'geometry': line,
                     'patrol_id': first_point['patrol_id'] if 'patrol_id' in first_point.index else group_id,
@@ -976,23 +677,21 @@ def main():
                     'num_points': len(patrol_points),
                     'distance_km': line.length * 111
                 }
-                
-                # Add time columns if available
+
                 if time_col:
                     line_data['start_time'] = str(patrol_points[time_col].min())
                     line_data['end_time'] = str(patrol_points[time_col].max())
-                
+
                 lines.append(line_data)
-            
+
             debug_info.append(f"✅ Successfully created {len(lines)} patrol track(s)")
-            
+
             if not lines:
                 return None, "No patrols with multiple points found (need at least 2 points per patrol)", debug_info
-            
-            # Create GeoDataFrame from lines
+
             lines_gdf = gpd.GeoDataFrame(lines, crs=4326)
             return lines_gdf, None, debug_info
-            
+
         except Exception as e:
             import traceback
             debug_info.append(f"❌ ERROR: {str(e)}")
@@ -1012,7 +711,6 @@ def main():
         with st.spinner(f"Loading patrol data for {', '.join(patrol_usernames)}... This may take a moment."):
             patrol_result = load_patrol_data(start_date, end_date, patrol_usernames, username, password)
 
-        # Unpack result (could be 2 or 3 items)
         if len(patrol_result) == 3:
             patrol_gdf, patrol_error, debug_info = patrol_result
             with st.expander("🔍 Debug Information", expanded=False):
@@ -1026,8 +724,7 @@ def main():
         st.warning(f"⚠️ {patrol_error}")
     elif patrol_gdf is not None and not patrol_gdf.empty:
         st.success(f"✅ Loaded {len(patrol_gdf)} patrol track(s)")
-        
-        # Display patrol summary metrics
+
         col_p1, col_p2, col_p3 = st.columns(3)
         with col_p1:
             st.metric("Total patrols", len(patrol_gdf))
@@ -1035,8 +732,7 @@ def main():
             st.metric("Total distance (km)", f"{patrol_gdf['distance_km'].sum():.2f}")
         with col_p3:
             st.metric("Total points", patrol_gdf['num_points'].sum())
-        
-        # Patrol type breakdown
+
         st.subheader("📋 Distance by patrol type")
         if 'patrol_type' in patrol_gdf.columns:
             patrol_type_summary = patrol_gdf.groupby('patrol_type')['distance_km'].agg(['sum', 'count']).reset_index()
@@ -1046,11 +742,9 @@ def main():
             st.dataframe(patrol_type_summary, use_container_width=True, hide_index=True)
         else:
             st.info("No patrol type data available")
-        
-        # Create patrol map
+
         st.subheader("📍 Patrol tracks map")
-        
-        # Extract coordinates from LineStrings for plotting
+
         patrol_plot_data = []
         for idx, row in patrol_gdf.iterrows():
             coords = list(row.geometry.coords)
@@ -1063,29 +757,12 @@ def main():
                     'patrol_type': row.get('patrol_type', 'N/A'),
                     'order': i
                 })
-        
+
         patrol_plot_df = pd.DataFrame(patrol_plot_data)
-        
+
         if not patrol_plot_df.empty:
-            # Calculate appropriate zoom level for patrol tracks
-            lat_range = patrol_plot_df["lat"].max() - patrol_plot_df["lat"].min()
-            lon_range = patrol_plot_df["lon"].max() - patrol_plot_df["lon"].min()
-            max_range = max(lat_range, lon_range)
-            
-            if max_range > 10:
-                patrol_zoom = 6
-            elif max_range > 5:
-                patrol_zoom = 7
-            elif max_range > 2:
-                patrol_zoom = 8
-            elif max_range > 1:
-                patrol_zoom = 9
-            elif max_range > 0.5:
-                patrol_zoom = 10
-            else:
-                patrol_zoom = 11
-            
-            # Create plotly line map
+            patrol_zoom = _zoom_for_extent(patrol_plot_df)
+
             fig_patrol = px.line_mapbox(
                 patrol_plot_df,
                 lat="lat",
@@ -1096,14 +773,13 @@ def main():
                 height=500,
                 title="Patrol Tracks"
             )
-            
-            # Set map style
+
             if MAPBOX_TOKEN:
                 map_style = "satellite-streets"
                 px.set_mapbox_access_token(MAPBOX_TOKEN)
             else:
                 map_style = "open-street-map"
-            
+
             fig_patrol.update_layout(
                 mapbox_style=map_style,
                 mapbox=dict(
@@ -1113,13 +789,12 @@ def main():
                     ),
                     zoom=patrol_zoom
                 ),
-                margin={"r":0,"t":50,"l":0,"b":0},
+                margin={"r": 0, "t": 50, "l": 0, "b": 0},
                 showlegend=True
             )
-            
+
             st.plotly_chart(fig_patrol, use_container_width=True)
-            
-            # Display patrol data table
+
             st.subheader("Patrol details")
             display_patrol_df = patrol_gdf.drop(columns=['geometry']).copy()
             st.dataframe(display_patrol_df)
@@ -1128,15 +803,434 @@ def main():
     else:
         st.info("No patrol data available for the selected date range")
 
-    #### CAMERA TRAP CHECK ###############################################
+
+#### RHINO TAB ############################################################
+def render_rhino_tab(rhino_df, rhino_full_df, start_date, end_date, username, password, EARTHRANGER_SERVER, MAPBOX_TOKEN):
+    st.subheader("🦏 Rhino Sightings")
+
+    if rhino_df.empty:
+        st.info(f"No rhino sightings found in the selected date range ({start_date} to {end_date})")
+        render_rhino_history_section(rhino_full_df)
+        return
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total sightings", len(rhino_df))
+    with col2:
+        st.metric("Date range", f"{(end_date - start_date).days} days")
+    with col3:
+        last_seen = rhino_df["evt_dttm"].max()
+        st.metric("Most recent sighting", last_seen.strftime("%Y-%m-%d") if pd.notna(last_seen) else "N/A")
+
+    #### Sighting map
+    st.subheader("📍 Rhino sightings map")
+    map_df = rhino_df.dropna(subset=["lat", "lon"])
+    if not map_df.empty:
+        zoom_level = _zoom_for_extent(map_df)
+        fig_map = px.scatter_mapbox(
+            map_df,
+            lat="lat",
+            lon="lon",
+            hover_data=["evt_dttm"],
+            zoom=zoom_level,
+            height=500,
+            title="Rhino Sightings"
+        )
+        if MAPBOX_TOKEN:
+            map_style = "satellite-streets"
+            px.set_mapbox_access_token(MAPBOX_TOKEN)
+        else:
+            map_style = "open-street-map"
+        fig_map.update_layout(
+            mapbox_style=map_style,
+            mapbox=dict(center=dict(lat=map_df["lat"].mean(), lon=map_df["lon"].mean()), zoom=zoom_level),
+            margin={"r": 0, "t": 50, "l": 0, "b": 0},
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
+        fig_map.update_traces(marker=dict(size=12, color="#4A4A4A", opacity=0.85))
+        st.plotly_chart(fig_map, use_container_width=True)
+    else:
+        st.info("No location data available for mapping")
+
+    #### Explode Group details (individual rhinos per sighting)
+    exploded_df = pd.DataFrame()
+    if "event_details.Group" in rhino_df.columns:
+        exploded_df = rhino_df.explode("event_details.Group").reset_index(drop=True)
+        if not exploded_df["event_details.Group"].isna().all():
+            group_details = json_normalize(exploded_df["event_details.Group"])
+            exploded_df = pd.concat([exploded_df.drop(columns="event_details.Group"), group_details], axis=1)
+        else:
+            exploded_df = pd.DataFrame()
+
+    #### Individual rhino summary
+    st.subheader("🆔 Individual rhino summary")
+    if not exploded_df.empty and "rhino_id" in exploded_df.columns:
+        valid = exploded_df.dropna(subset=["rhino_id"])
+        if not valid.empty:
+            summary = (
+                valid.groupby("rhino_id")["evt_dttm"]
+                .agg(["max", "min", "count"])
+                .reset_index()
+                .rename(columns={"rhino_id": "Rhino ID", "max": "Last Seen", "min": "First Seen", "count": "Sightings"})
+            )
+
+            agg_cols = {}
+            if "rhino_sex" in valid.columns:
+                agg_cols["rhino_sex"] = "last"
+            if "rhino_age" in valid.columns:
+                agg_cols["rhino_age"] = "last"
+
+            if agg_cols:
+                last_info = (
+                    valid.sort_values("evt_dttm")
+                    .groupby("rhino_id")
+                    .agg(agg_cols)
+                    .reset_index()
+                    .rename(columns={"rhino_id": "Rhino ID", "rhino_sex": "Sex", "rhino_age": "Age"})
+                )
+                summary = summary.merge(last_info, on="Rhino ID", how="left")
+
+            summary = summary.sort_values("Last Seen", ascending=False)
+            summary["Last Seen"] = summary["Last Seen"].dt.strftime("%Y-%m-%d")
+            summary["First Seen"] = summary["First Seen"].dt.strftime("%Y-%m-%d")
+
+            st.dataframe(summary, use_container_width=True, hide_index=True)
+        else:
+            st.info("No individual rhino ID data available in the selected date range")
+    else:
+        st.info("No individual rhino ID data available — check that rhino_id is recorded in the Group details")
+
+    #### Full sightings table + best-effort photo link
+    st.subheader("🦏 Rhino sightings details")
+    if not exploded_df.empty:
+        display_df = exploded_df.copy()
+    else:
+        display_df = rhino_df.copy()
+
+    column_mapping = {
+        'evt_dttm': 'Date/Time',
+        'user_name': 'Observer',
+        'evt_serial': 'Serial Number',
+        'event_id': 'Event ID',
+        'event_details.image_prefix': 'Image Prefix',
+        'event_details.group_size': 'Group Size',
+        'event_details.notes': 'Notes',
+        'rhino_id': 'Rhino ID',
+        'rhino_age': 'Rhino Age',
+        'rhino_sex': 'Rhino Sex',
+        'rhino_notes': 'Rhino Notes',
+        'rhino_photo_left': 'Photo Left',
+        'rhino_photo_right': 'Photo Right',
+        'rhino_whisker_left': 'Whisker Left',
+        'rhino_whisker_right': 'Whisker Right',
+        'rhino_ear_left': 'Ear Left',
+        'rhino_ear_right': 'Ear Right',
+        'lat': 'Latitude',
+        'lon': 'Longitude',
+        'evt_url': 'Event URL'
+    }
+    available_cols = [c for c in column_mapping if c in display_df.columns]
+    display_df = display_df[available_cols].rename(columns={k: v for k, v in column_mapping.items() if k in available_cols})
+
+    if 'Date/Time' in display_df.columns:
+        display_df['Date/Time'] = pd.to_datetime(display_df['Date/Time']).dt.strftime('%Y-%m-%d %H:%M')
+
+    photo_columns = [c for c in display_df.columns if 'Photo' in c or 'Whisker' in c or 'Ear' in c]
+    for photo_col in photo_columns:
+        display_df[photo_col] = display_df[photo_col].apply(_format_photo_number)
+
+    if 'Date/Time' in display_df.columns:
+        display_df = display_df.sort_values('Date/Time', ascending=False)
+
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Event URL": st.column_config.LinkColumn("Event URL", display_text="Open"),
+        }
+    )
+
+    render_rhino_history_section(rhino_full_df)
+
+
+def render_rhino_history_section(rhino_full_df):
+    """Standalone section: pick an individual rhino ID and see every sighting on record for it,
+    regardless of the date filter applied above (this looks at all-time data)."""
     st.markdown("---")
+    st.subheader("📜 Individual rhino history")
+
+    if rhino_full_df.empty or "event_details.Group" not in rhino_full_df.columns:
+        st.info("No individual rhino ID data available to build a history lookup")
+        return
+
+    history_exploded = rhino_full_df.explode("event_details.Group").reset_index(drop=True)
+    if history_exploded["event_details.Group"].isna().all():
+        st.info("No individual rhino ID data available to build a history lookup")
+        return
+
+    group_details = json_normalize(history_exploded["event_details.Group"])
+    history_exploded = pd.concat([history_exploded.drop(columns="event_details.Group"), group_details], axis=1)
+
+    if "rhino_id" not in history_exploded.columns:
+        st.info("No 'rhino_id' field found in the Group details — can't build an individual history lookup")
+        return
+
+    rhino_ids = sorted(history_exploded["rhino_id"].dropna().unique().tolist())
+    if not rhino_ids:
+        st.info("No individual rhino IDs recorded yet")
+        return
+
+    selected_id = st.selectbox("Select a rhino ID", rhino_ids, key="rhino_history_select")
+
+    individual_history = history_exploded[history_exploded["rhino_id"] == selected_id].copy()
+    individual_history = individual_history.sort_values("evt_dttm", ascending=False)
+
+    col_h1, col_h2, col_h3 = st.columns(3)
+    with col_h1:
+        st.metric("Total sightings", len(individual_history))
+    with col_h2:
+        st.metric("First seen", individual_history["evt_dttm"].min().strftime("%Y-%m-%d"))
+    with col_h3:
+        st.metric("Last seen", individual_history["evt_dttm"].max().strftime("%Y-%m-%d"))
+
+    history_column_mapping = {
+        'evt_dttm': 'Date/Time',
+        'user_name': 'Observer',
+        'event_id': 'Event ID',
+        'rhino_age': 'Age',
+        'rhino_sex': 'Sex',
+        'rhino_notes': 'Notes',
+        'rhino_photo_left': 'Photo Left',
+        'rhino_photo_right': 'Photo Right',
+        'lat': 'Latitude',
+        'lon': 'Longitude',
+        'evt_url': 'Event URL'
+    }
+    avail_h = [c for c in history_column_mapping if c in individual_history.columns]
+    history_display = individual_history[avail_h].rename(columns={k: v for k, v in history_column_mapping.items() if k in avail_h})
+
+    if 'Date/Time' in history_display.columns:
+        history_display['Date/Time'] = pd.to_datetime(history_display['Date/Time']).dt.strftime('%Y-%m-%d %H:%M')
+    for photo_col in ['Photo Left', 'Photo Right']:
+        if photo_col in history_display.columns:
+            history_display[photo_col] = history_display[photo_col].apply(_format_photo_number)
+
+    st.dataframe(
+        history_display,
+        use_container_width=True,
+        hide_index=True,
+        column_config={"Event URL": st.column_config.LinkColumn("Event URL", display_text="Open")}
+    )
+
+    # Map of this individual's sighting locations
+    history_map_df = individual_history.dropna(subset=["lat", "lon"])
+    if not history_map_df.empty:
+        zoom_level = _zoom_for_extent(history_map_df)
+        fig_history = px.scatter_mapbox(
+            history_map_df,
+            lat="lat",
+            lon="lon",
+            hover_data=["evt_dttm"],
+            zoom=zoom_level,
+            height=400,
+            title=f"Sighting locations — Rhino {selected_id}"
+        )
+        fig_history.update_layout(
+            mapbox_style="open-street-map",
+            mapbox=dict(center=dict(lat=history_map_df["lat"].mean(), lon=history_map_df["lon"].mean()), zoom=zoom_level),
+            margin={"r": 0, "t": 50, "l": 0, "b": 0}
+        )
+        fig_history.update_traces(marker=dict(size=12, color="#4A4A4A", opacity=0.85))
+        st.plotly_chart(fig_history, use_container_width=True)
+
+
+#### PREDATORS TAB ########################################################
+def render_predator_tab(predator_df, start_date, end_date, MAPBOX_TOKEN):
+    st.subheader("🦁 Predator Sightings")
+    st.markdown("*Includes: Lion, Cheetah, Leopard*")
+
+    if predator_df.empty:
+        st.info(f"No predator sightings found in the selected date range ({start_date} to {end_date})")
+        return
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total sightings", len(predator_df))
+    with col2:
+        species_count = predator_df["species"].nunique() if "species" in predator_df.columns else 0
+        st.metric("Species observed", species_count)
+    with col3:
+        if "species" in predator_df.columns and not predator_df.empty:
+            most_common = predator_df["species"].value_counts().index[0]
+            st.metric("Most common", most_common)
+        else:
+            st.metric("Most common", "N/A")
+    with col4:
+        st.metric("Date range", f"{(end_date - start_date).days} days")
+
+    st.subheader("📍 Predator sightings map")
+
+    PREDATOR_COLOR_MAP = {
+        "Lion": "#8B5A2B",      # brown
+        "Cheetah": "#F1C40F",   # yellow
+        "Leopard": "#D8C3A5",   # beige
+    }
+
+    map_df = predator_df.dropna(subset=["lat", "lon"])
+    if not map_df.empty:
+        zoom_level = _zoom_for_extent(map_df)
+        fig_predator = px.scatter_mapbox(
+            map_df,
+            lat="lat",
+            lon="lon",
+            color="species" if "species" in map_df.columns else None,
+            color_discrete_map=PREDATOR_COLOR_MAP,
+            hover_data=["evt_dttm", "species"] if "species" in map_df.columns else ["evt_dttm"],
+            zoom=zoom_level,
+            height=500,
+            title="Predator Sightings"
+        )
+        if MAPBOX_TOKEN:
+            map_style = "satellite-streets"
+            px.set_mapbox_access_token(MAPBOX_TOKEN)
+        else:
+            map_style = "open-street-map"
+        fig_predator.update_layout(
+            mapbox_style=map_style,
+            mapbox=dict(center=dict(lat=map_df["lat"].mean(), lon=map_df["lon"].mean()), zoom=zoom_level),
+            margin={"r": 0, "t": 50, "l": 0, "b": 0},
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
+        fig_predator.update_traces(marker=dict(size=12, opacity=0.8))
+        st.plotly_chart(fig_predator, use_container_width=True)
+    else:
+        st.info("No location data available for mapping")
+
+    st.subheader("🦁 Predator sightings details")
+
+    if "event_details.Group" in predator_df.columns:
+        display_priority_df = predator_df.explode("event_details.Group").reset_index(drop=True)
+
+        if not display_priority_df["event_details.Group"].isna().all():
+            group_details = json_normalize(display_priority_df["event_details.Group"])
+            display_priority_df = pd.concat([display_priority_df.drop(columns="event_details.Group"), group_details], axis=1)
+
+            priority_column_mapping = {
+                'evt_dttm': 'Date/Time',
+                'species': 'Species',
+                'user_name': 'Observer',
+                'evt_serial': 'Serial Number',
+                'event_id': 'Event ID',
+                'event_details.image_prefix': 'Image Prefix',
+                'event_details.group_size': 'Group Size',
+                'event_details.herd_notes': 'Group Notes',
+                'event_details.notes': 'Notes',
+                'lion_id': 'Lion ID',
+                'lion_age': 'Lion Age',
+                'lion_sex': 'Lion Sex',
+                'lion_notes': 'Lion Notes',
+                'lion_photo_left': 'Lion Photo Left',
+                'lion_photo_right': 'Lion Photo Right',
+                'lion_whisker_left': 'Lion Whisker Left',
+                'lion_whisker_right': 'Lion Whisker Right',
+                'lion_ear_left': 'Lion Ear Left',
+                'lion_ear_right': 'Lion Ear Right',
+                'cheetah_id': 'Cheetah ID',
+                'cheetah_age': 'Cheetah Age',
+                'cheetah_sex': 'Cheetah Sex',
+                'cheetah_notes': 'Cheetah Notes',
+                'cheetah_photo_left': 'Cheetah Photo Left',
+                'cheetah_photo_right': 'Cheetah Photo Right',
+                'cheetah_whisker_left': 'Cheetah Whisker Left',
+                'cheetah_whisker_right': 'Cheetah Whisker Right',
+                'leopard_id': 'Leopard ID',
+                'leopard_age': 'Leopard Age',
+                'leopard_sex': 'Leopard Sex',
+                'leopard_notes': 'Leopard Notes',
+                'leopard_photo_left': 'Leopard Photo Left',
+                'leopard_photo_right': 'Leopard Photo Right',
+                'leopard_whisker_left': 'Leopard Whisker Left',
+                'leopard_whisker_right': 'Leopard Whisker Right',
+                'lat': 'Latitude',
+                'lon': 'Longitude',
+                'evt_url': 'Event URL'
+            }
+        else:
+            display_priority_df = predator_df.copy()
+            priority_column_mapping = {
+                'evt_dttm': 'Date/Time',
+                'species': 'Species',
+                'user_name': 'Observer',
+                'evt_serial': 'Serial Number',
+                'event_id': 'Event ID',
+                'event_details.image_prefix': 'Image Prefix',
+                'event_details.group_size': 'Group Size',
+                'event_details.notes': 'Notes',
+                'lat': 'Latitude',
+                'lon': 'Longitude',
+                'evt_url': 'Event URL'
+            }
+    else:
+        display_priority_df = predator_df.copy()
+        priority_column_mapping = {
+            'evt_dttm': 'Date/Time',
+            'species': 'Species',
+            'user_name': 'Observer',
+            'evt_serial': 'Serial Number',
+            'event_id': 'Event ID',
+            'event_details.image_prefix': 'Image Prefix',
+            'event_details.group_size': 'Group Size',
+            'event_details.notes': 'Notes',
+            'lat': 'Latitude',
+            'lon': 'Longitude',
+            'evt_url': 'Event URL'
+        }
+
+    available_cols = [col for col in priority_column_mapping.keys() if col in display_priority_df.columns]
+    display_priority_df = display_priority_df[available_cols]
+    display_priority_df = display_priority_df.rename(columns={k: v for k, v in priority_column_mapping.items() if k in available_cols})
+
+    if 'Date/Time' in display_priority_df.columns:
+        display_priority_df['Date/Time'] = pd.to_datetime(display_priority_df['Date/Time']).dt.strftime('%Y-%m-%d %H:%M')
+
+    photo_columns = [col for col in display_priority_df.columns if 'Photo' in col or 'Whisker' in col or 'Ear' in col]
+    for photo_col in photo_columns:
+        display_priority_df[photo_col] = display_priority_df[photo_col].apply(_format_photo_number)
+
+    if 'Date/Time' in display_priority_df.columns:
+        display_priority_df = display_priority_df.sort_values('Date/Time', ascending=False)
+
+    st.dataframe(display_priority_df, use_container_width=True, hide_index=True)
+
+    st.subheader("📊 Species breakdown")
+    if "species" in predator_df.columns:
+        species_counts = predator_df["species"].value_counts().reset_index()
+        species_counts.columns = ["Species", "Count"]
+        fig_species = px.bar(
+            species_counts,
+            x="Species",
+            y="Count",
+            title="Sightings by Species",
+            color="Species",
+            color_discrete_map=PREDATOR_COLOR_MAP
+        )
+        st.plotly_chart(fig_species, use_container_width=True)
+    else:
+        st.info("No species data available for breakdown")
+
+
+#### CAMERA TRAPS TAB #####################################################
+def render_camera_tab(username, password, EARTHRANGER_SERVER):
     st.subheader("📷 Camera Trap Check")
     st.markdown("*Last check event per camera trap station*")
 
     @st.cache_data(ttl=3600)
     def load_camera_trap_events(er_username, er_password):
         er = EarthRangerIO(
-            server="https://twiga.pamdas.org",
+            server=EARTHRANGER_SERVER,
             username=er_username,
             password=er_password
         )
@@ -1167,119 +1261,90 @@ def main():
 
     if not st.session_state["ehgr_camera_loaded"]:
         st.info("Click **Load camera trap data** to fetch check records.")
-    else:
-        camera_df = load_camera_trap_events(username, password)
+        return
 
-    if st.session_state["ehgr_camera_loaded"] and not camera_df.empty:
-        camera_df["time"] = pd.to_datetime(camera_df.get("time", pd.Series(dtype="object")), errors="coerce")
-        camera_df = camera_df.dropna(subset=["time"])
+    camera_df = load_camera_trap_events(username, password)
 
-        # Camtrap site code → display name lookup
-        CAMTRAP_SITE_NAMES = {
-            "S001": "Gruisgat",
-            "S002": "Middlepos",
-            "S003": "Mopaniepos",
-            "S004": "Boesmanspoel",
-            "S005": "Mountain Lodge",
-            "S006": "Bergpos",
-            "S007": "Boma Rooipos",
-            "S008": "Nuwepos",
-            "S009": "Grootrante",
-            "S010": "Madala",
-            "S011": "Bergwater",
-            "S012": "Tankpos",
-            "S013": "Grenswag",
-            "S014": "Olifantspos",
-            "S015": "Witgat",
-            "S016": "Safarihoek",
-            "S017": "Flamingo Pan",
-            "S018": "Uitspuit Southern Boundary",
-            "S019": "Mopaniepan Corner",
-            "S020": "CT64",
-            "S021": "CT75",
-            "S022": "CT86",
-            "S023": "CT97",
-            "S024": "CT108",
-            "S025": "CT119",
-            "S026": "Oupos",
-            "S027": "Vlakwater",
-            "S028": "Leeuslootdam",
-            "S029": "Gronddam",
-            "S030": "Leeurante",
-            "S031": "Moesoemoeroep",
-            "S032": "Dadelpos",
-        }
-
-        # Identify columns
-        detail_cols = [c for c in camera_df.columns if c.startswith("event_details.")]
-        # Prefer the explicit camtrap_site field for grouping/display
-        site_col = "event_details.camtrap_site" if "event_details.camtrap_site" in camera_df.columns else None
-        # Fallback: detect station column from hints (excluding "camera" which picks up camera-ID fields)
-        station_col = site_col
-        if not station_col:
-            for hint in ["trap", "station", "site", "id"]:
-                matches = [c for c in detail_cols if hint.lower() in c.lower()]
-                if matches:
-                    station_col = matches[0]
-                    break
-
-        # Deduplicate to most recent event per station
-        camera_df_sorted = camera_df.sort_values("time", ascending=False)
-        if station_col:
-            summary_camera = camera_df_sorted.groupby(station_col, sort=False).first().reset_index()
-        else:
-            summary_camera = camera_df_sorted.copy()
-
-        # Add site name column from hardcoded lookup
-        if station_col and station_col in summary_camera.columns:
-            summary_camera["_camtrap_site_name"] = summary_camera[station_col].map(CAMTRAP_SITE_NAMES)
-
-        # Build display table
-        cam_display_cols = {}
-        if station_col:
-            cam_display_cols[station_col] = "Camtrap Site"
-        if "_camtrap_site_name" in summary_camera.columns:
-            cam_display_cols["_camtrap_site_name"] = "Camtrap Site Name"
-        cam_display_cols["time"] = "Last Checked"
-        if "reported_by.name" in summary_camera.columns:
-            cam_display_cols["reported_by.name"] = "Checked By"
-        if "serial_number" in summary_camera.columns:
-            cam_display_cols["serial_number"] = "Serial #"
-        for c in detail_cols:
-            if c == station_col:
-                continue
-            cam_display_cols[c] = c.replace("event_details.", "").replace("_", " ").title()
-        for notes_col in ["notes", "event_details.notes"]:
-            if notes_col in summary_camera.columns and notes_col not in cam_display_cols:
-                cam_display_cols[notes_col] = "Notes"
-
-        # Deduplicate display names — keep first occurrence only
-        seen_labels = set()
-        avail_cam = []
-        for c in cam_display_cols:
-            if c in summary_camera.columns and cam_display_cols[c] not in seen_labels:
-                avail_cam.append(c)
-                seen_labels.add(cam_display_cols[c])
-        out_cam = summary_camera[avail_cam].rename(columns={c: cam_display_cols[c] for c in avail_cam})
-        out_cam["Last Checked"] = pd.to_datetime(out_cam["Last Checked"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
-        station_label = cam_display_cols.get(station_col) if station_col else None
-        sort_col = station_label if station_label and station_label in out_cam.columns else "Last Checked"
-        out_cam = out_cam.sort_values(sort_col, ascending=True)
-
-        st.metric("Camera traps with check records", len(out_cam))
-        st.dataframe(out_cam, use_container_width=True, hide_index=True)
-    elif st.session_state["ehgr_camera_loaded"]:
+    if camera_df.empty:
         st.info("No camera trap check events found.")
+        return
 
-    #### WEATHER STATION CHECK ###############################################
-    st.markdown("---")
+    camera_df["time"] = pd.to_datetime(camera_df.get("time", pd.Series(dtype="object")), errors="coerce")
+    camera_df = camera_df.dropna(subset=["time"])
+
+    CAMTRAP_SITE_NAMES = {
+        "S001": "Gruisgat", "S002": "Middlepos", "S003": "Mopaniepos", "S004": "Boesmanspoel",
+        "S005": "Mountain Lodge", "S006": "Bergpos", "S007": "Boma Rooipos", "S008": "Nuwepos",
+        "S009": "Grootrante", "S010": "Madala", "S011": "Bergwater", "S012": "Tankpos",
+        "S013": "Grenswag", "S014": "Olifantspos", "S015": "Witgat", "S016": "Safarihoek",
+        "S017": "Flamingo Pan", "S018": "Uitspuit Southern Boundary", "S019": "Mopaniepan Corner",
+        "S020": "CT64", "S021": "CT75", "S022": "CT86", "S023": "CT97", "S024": "CT108",
+        "S025": "CT119", "S026": "Oupos", "S027": "Vlakwater", "S028": "Leeuslootdam",
+        "S029": "Gronddam", "S030": "Leeurante", "S031": "Moesoemoeroep", "S032": "Dadelpos",
+    }
+
+    detail_cols = [c for c in camera_df.columns if c.startswith("event_details.")]
+    site_col = "event_details.camtrap_site" if "event_details.camtrap_site" in camera_df.columns else None
+    station_col = site_col
+    if not station_col:
+        for hint in ["trap", "station", "site", "id"]:
+            matches = [c for c in detail_cols if hint.lower() in c.lower()]
+            if matches:
+                station_col = matches[0]
+                break
+
+    camera_df_sorted = camera_df.sort_values("time", ascending=False)
+    if station_col:
+        summary_camera = camera_df_sorted.groupby(station_col, sort=False).first().reset_index()
+    else:
+        summary_camera = camera_df_sorted.copy()
+
+    if station_col and station_col in summary_camera.columns:
+        summary_camera["_camtrap_site_name"] = summary_camera[station_col].map(CAMTRAP_SITE_NAMES)
+
+    cam_display_cols = {}
+    if station_col:
+        cam_display_cols[station_col] = "Camtrap Site"
+    if "_camtrap_site_name" in summary_camera.columns:
+        cam_display_cols["_camtrap_site_name"] = "Camtrap Site Name"
+    cam_display_cols["time"] = "Last Checked"
+    if "reported_by.name" in summary_camera.columns:
+        cam_display_cols["reported_by.name"] = "Checked By"
+    if "serial_number" in summary_camera.columns:
+        cam_display_cols["serial_number"] = "Serial #"
+    for c in detail_cols:
+        if c == station_col:
+            continue
+        cam_display_cols[c] = c.replace("event_details.", "").replace("_", " ").title()
+    for notes_col in ["notes", "event_details.notes"]:
+        if notes_col in summary_camera.columns and notes_col not in cam_display_cols:
+            cam_display_cols[notes_col] = "Notes"
+
+    seen_labels = set()
+    avail_cam = []
+    for c in cam_display_cols:
+        if c in summary_camera.columns and cam_display_cols[c] not in seen_labels:
+            avail_cam.append(c)
+            seen_labels.add(cam_display_cols[c])
+    out_cam = summary_camera[avail_cam].rename(columns={c: cam_display_cols[c] for c in avail_cam})
+    out_cam["Last Checked"] = pd.to_datetime(out_cam["Last Checked"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+    station_label = cam_display_cols.get(station_col) if station_col else None
+    sort_col = station_label if station_label and station_label in out_cam.columns else "Last Checked"
+    out_cam = out_cam.sort_values(sort_col, ascending=True)
+
+    st.metric("Camera traps with check records", len(out_cam))
+    st.dataframe(out_cam, use_container_width=True, hide_index=True)
+
+
+#### WEATHER STATIONS TAB #################################################
+def render_weather_tab(username, password, EARTHRANGER_SERVER):
     st.subheader("🌦️ Weather Station Check")
     st.markdown("*Last check event per weather station*")
 
     @st.cache_data(ttl=3600)
     def load_weather_station_events(er_username, er_password):
         er = EarthRangerIO(
-            server="https://twiga.pamdas.org",
+            server=EARTHRANGER_SERVER,
             username=er_username,
             password=er_password
         )
@@ -1310,72 +1375,62 @@ def main():
 
     if not st.session_state["ehgr_weather_loaded"]:
         st.info("Click **Load weather station data** to fetch check records.")
-    else:
-        weather_df = load_weather_station_events(username, password)
+        return
 
-    if st.session_state["ehgr_weather_loaded"] and not weather_df.empty:
-        weather_df["time"] = pd.to_datetime(weather_df.get("time", pd.Series(dtype="object")), errors="coerce")
-        weather_df = weather_df.dropna(subset=["time"])
+    weather_df = load_weather_station_events(username, password)
 
-        # Identify station column from event_details fields
-        detail_cols_ws = [c for c in weather_df.columns if c.startswith("event_details.")]
-        station_col_ws = None
-        for hint in ["name", "station", "weather", "id"]:
-            matches = [c for c in detail_cols_ws if hint.lower() in c.lower()]
-            if matches:
-                station_col_ws = matches[0]
-                break
-
-        # Deduplicate to most recent event per station
-        weather_df_sorted = weather_df.sort_values("time", ascending=False)
-        if station_col_ws:
-            summary_weather = weather_df_sorted.groupby(station_col_ws, sort=False).first().reset_index()
-        else:
-            summary_weather = weather_df_sorted.copy()
-
-        # Build display table
-        ws_display_cols = {}
-        if station_col_ws:
-            ws_display_cols[station_col_ws] = station_col_ws.replace("event_details.", "").replace("_", " ").title()
-        ws_display_cols["time"] = "Last Checked"
-        if "reported_by.name" in summary_weather.columns:
-            ws_display_cols["reported_by.name"] = "Checked By"
-        if "serial_number" in summary_weather.columns:
-            ws_display_cols["serial_number"] = "Serial #"
-        for c in detail_cols_ws:
-            if c == station_col_ws:
-                continue
-            ws_display_cols[c] = c.replace("event_details.", "").replace("_", " ").title()
-        for notes_col in ["notes", "event_details.notes"]:
-            if notes_col in summary_weather.columns and notes_col not in ws_display_cols:
-                ws_display_cols[notes_col] = "Notes"
-
-        # Deduplicate display names — keep first occurrence only
-        seen_labels_ws = set()
-        avail_ws = []
-        for c in ws_display_cols:
-            if c in summary_weather.columns and ws_display_cols[c] not in seen_labels_ws:
-                avail_ws.append(c)
-                seen_labels_ws.add(ws_display_cols[c])
-        out_ws = summary_weather[avail_ws].rename(columns={c: ws_display_cols[c] for c in avail_ws})
-        out_ws["Last Checked"] = pd.to_datetime(out_ws["Last Checked"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
-        station_label_ws = ws_display_cols.get(station_col_ws) if station_col_ws else None
-        sort_col_ws = station_label_ws if station_label_ws and station_label_ws in out_ws.columns else "Last Checked"
-        out_ws = out_ws.sort_values(sort_col_ws, ascending=True)
-
-        st.metric("Weather stations with check records", len(out_ws))
-        st.dataframe(out_ws, use_container_width=True, hide_index=True)
-    elif st.session_state["ehgr_weather_loaded"]:
+    if weather_df.empty:
         st.info("No weather station check events found.")
+        return
 
-    #### Simplified - AAG section removed as not applicable for EHGR
+    weather_df["time"] = pd.to_datetime(weather_df.get("time", pd.Series(dtype="object")), errors="coerce")
+    weather_df = weather_df.dropna(subset=["time"])
 
-    # Logout button
-    if st.sidebar.button("🔓 Logout"):
-        for key in ['authenticated', 'username', 'password']:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
+    detail_cols_ws = [c for c in weather_df.columns if c.startswith("event_details.")]
+    station_col_ws = None
+    for hint in ["name", "station", "weather", "id"]:
+        matches = [c for c in detail_cols_ws if hint.lower() in c.lower()]
+        if matches:
+            station_col_ws = matches[0]
+            break
+
+    weather_df_sorted = weather_df.sort_values("time", ascending=False)
+    if station_col_ws:
+        summary_weather = weather_df_sorted.groupby(station_col_ws, sort=False).first().reset_index()
+    else:
+        summary_weather = weather_df_sorted.copy()
+
+    ws_display_cols = {}
+    if station_col_ws:
+        ws_display_cols[station_col_ws] = station_col_ws.replace("event_details.", "").replace("_", " ").title()
+    ws_display_cols["time"] = "Last Checked"
+    if "reported_by.name" in summary_weather.columns:
+        ws_display_cols["reported_by.name"] = "Checked By"
+    if "serial_number" in summary_weather.columns:
+        ws_display_cols["serial_number"] = "Serial #"
+    for c in detail_cols_ws:
+        if c == station_col_ws:
+            continue
+        ws_display_cols[c] = c.replace("event_details.", "").replace("_", " ").title()
+    for notes_col in ["notes", "event_details.notes"]:
+        if notes_col in summary_weather.columns and notes_col not in ws_display_cols:
+            ws_display_cols[notes_col] = "Notes"
+
+    seen_labels_ws = set()
+    avail_ws = []
+    for c in ws_display_cols:
+        if c in summary_weather.columns and ws_display_cols[c] not in seen_labels_ws:
+            avail_ws.append(c)
+            seen_labels_ws.add(ws_display_cols[c])
+    out_ws = summary_weather[avail_ws].rename(columns={c: ws_display_cols[c] for c in avail_ws})
+    out_ws["Last Checked"] = pd.to_datetime(out_ws["Last Checked"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+    station_label_ws = ws_display_cols.get(station_col_ws) if station_col_ws else None
+    sort_col_ws = station_label_ws if station_label_ws and station_label_ws in out_ws.columns else "Last Checked"
+    out_ws = out_ws.sort_values(sort_col_ws, ascending=True)
+
+    st.metric("Weather stations with check records", len(out_ws))
+    st.dataframe(out_ws, use_container_width=True, hide_index=True)
+
 
 if __name__ == "__main__":
     main()
