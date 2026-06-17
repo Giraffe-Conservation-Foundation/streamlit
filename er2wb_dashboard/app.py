@@ -1,7 +1,8 @@
 """
-ER2WB: EarthRanger → GiraffeSpotter (WildBook) Bulk Import Formatter  v2.2 Python
-Uses ecoscope EarthRangerIO to fetch giraffe survey encounter events,
-formats them for GiraffeSpotter bulk import, and renames associated images.
+ER2WB: EarthRanger → Wildbook Bulk Import Formatter  v3.0 Python
+Uses ecoscope EarthRangerIO to fetch survey/encounter events, formats them
+for the selected Wildbook platform (GiraffeSpotter, Whiskerbook, or African
+Carnivore Wildbook), and renames associated images.
 """
 
 import io
@@ -149,6 +150,65 @@ COUNTRY_SPECIES = {
 AGE_MAP = {"ad": "adult", "sa": "juvenile", "ju": "calf", "ca": "calf", "u": "unknown"}
 SEX_MAP = {"f": "female", "m": "male", "u": "unknown"}
 
+# ─── Wildbook platforms ─────────────────────────────────────────────────────
+# All three platforms share the same EarthRanger event_details structure
+# (a list of per-individual records with id/age/sex/right/left/notes fields);
+# only the list key differs — "Herd" for giraffe/elephant, "Group" for predators.
+
+WILDBOOK_PLATFORMS = ["GiraffeSpotter", "Whiskerbook", "African Carnivore Wildbook"]
+
+PLATFORM_PREFIX = {
+    "GiraffeSpotter":             "GS",
+    "Whiskerbook":                "WB",
+    "African Carnivore Wildbook": "AC",
+}
+
+PLATFORM_LIST_KEY = {
+    "GiraffeSpotter":             "Herd",
+    "Whiskerbook":                "Herd",
+    "African Carnivore Wildbook": "Group",
+}
+
+# Elephants — always the same species, always Namibia/KAZA
+ELEPHANT_GENUS_EPITHET = ("Loxodonta", "africana")
+
+# Predator species is detected from the ER event type name/value
+PREDATOR_SPECIES_MAP = {
+    "lion":     ("Panthera",  "leo"),
+    "cheetah":  ("Acinonyx",  "jubatus"),
+    "leopard":  ("Panthera",  "pardus"),
+}
+
+# Event types worth showing in the dropdown — anything that looks like a
+# survey/encounter event, plus anything tagged for north-western Namibia ("nw")
+EVENT_TYPE_KEYWORDS = ("random", "survey", "encounter", "nw")
+
+
+def detect_predator_species(event_text: str):
+    """Detect (genus, epithet) from an ER event type label/value string.
+    Returns (None, None) if no known predator species is found."""
+    t = (event_text or "").lower()
+    for key, (genus, epithet) in PREDATOR_SPECIES_MAP.items():
+        if key in t:
+            return genus, epithet
+    if "wild" in t and "dog" in t:
+        return "Lycaon", "pictus"
+    return None, None
+
+
+def resolve_location_id(platform: str, event_text: str, site: str) -> str:
+    """GiraffeSpotter keeps the existing site-name lookup. Whiskerbook and
+    African Carnivore Wildbook use a fixed locationID based on whether the
+    event type name references KAZA or Namibia."""
+    if platform == "GiraffeSpotter":
+        return SITE_NAMES.get(site, site)
+    t = (event_text or "").lower()
+    if "kaza" in t:
+        return "KAZA TFCA"
+    if "nam" in t:
+        return "Namibia"
+    return SITE_NAMES.get(site, site)
+
 
 # ─── Session state ─────────────────────────────────────────────────────────────
 
@@ -158,7 +218,8 @@ def _init_session_state():
         # ── EarthRanger session ─────────────────────────────────────────────────
         "er_client":        None,
         "er_authenticated": False,
-        "er_event_types":   [],    # [{label, uuid, category}] fetched from ER after login
+        "er_event_types":   [],    # [{label, uuid, category}] fetched from ER after login, keyword-filtered
+        "er_event_types_all": [],  # same, but unfiltered — used to resolve manual UUID/value entries
         "er_et_debug":      {},    # raw debug info from _fetch_event_types
         "event_type_sel":   "",    # label of selected event type
         "event_type_uuid":  "",    # UUID of selected event type (empty = use category)
@@ -190,6 +251,7 @@ def _init_session_state():
         "site_sel":        None,
         "species_sel":     list(SPECIES_MAP.keys())[0],
         "subsp_sel":       None,
+        "wb_platform":     WILDBOOK_PLATFORMS[0],
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -214,6 +276,7 @@ def _disconnect_er():
     st.session_state.er_client        = None
     st.session_state.er_authenticated = False
     st.session_state.er_event_types   = []
+    st.session_state.er_event_types_all = []
     st.session_state.event_type_sel   = ""
     st.session_state.event_type_uuid  = ""
     _reset_results()
@@ -233,9 +296,13 @@ def _make_er_client(instance: str, username: str, password: str) -> EarthRangerI
 def _fetch_event_types(client: EarthRangerIO) -> tuple:
     """
     Fetch all event types from EarthRanger.
-    Returns (filtered_rows, debug_info) where:
-      filtered_rows = sorted list of dicts [{label, uuid, category, value}]
+    Returns (filtered_rows, debug_info, all_rows) where:
+      filtered_rows = sorted list of dicts [{label, uuid, category, value}],
+                      restricted to EVENT_TYPE_KEYWORDS — used for the dropdown
       debug_info    = dict with raw results per API version for diagnostics
+      all_rows      = full deduped list (no keyword filter) — used to resolve
+                      a manually-entered UUID/value back to its real label/value
+                      for species + locationID detection
     """
     all_rows  = []
     debug_info = {}
@@ -246,7 +313,20 @@ def _fetch_event_types(client: EarthRangerIO) -> tuple:
             if df is None or df.empty:
                 debug_info[api_ver] = {"status": "empty", "rows": 0}
                 continue
-            debug_info[api_ver] = {"status": "ok", "rows": len(df)}
+            # ── DEBUG (temporary) — capture raw shape so we can see field names ──
+            _kaza_uuid = "16847384-f16c-4a1c-aa57-6bba66fb7ed2"
+            _kaza_match = df[df["id"].astype(str) == _kaza_uuid] if "id" in df.columns else df.iloc[0:0]
+            _val_match = df[df["value"].astype(str).str.contains("kaza", case=False, na=False)] if "value" in df.columns else df.iloc[0:0]
+            debug_info[api_ver] = {
+                "status": "ok",
+                "rows": len(df),
+                "columns": list(df.columns),
+                "sample_row": df.iloc[0].to_dict(),
+                "all_ids_sample": df["id"].astype(str).tolist()[:5] if "id" in df.columns else [],
+                "kaza_uuid_present": not _kaza_match.empty,
+                "kaza_value_match": _val_match[["id", "value", "display"]].to_dict("records") if "value" in df.columns and "display" in df.columns else [],
+            }
+            n_before = len(all_rows)
             for _, row in df.iterrows():
                 value = str(row.get("value", "")).strip()
                 label = str(row.get("display", value)).strip()
@@ -257,24 +337,67 @@ def _fetch_event_types(client: EarthRangerIO) -> tuple:
                 if label and uuid:
                     all_rows.append({"label": label, "uuid": uuid,
                                      "category": cat, "value": value.lower()})
+            debug_info[api_ver]["rows_with_label_and_uuid"] = len(all_rows) - n_before
         except Exception as e:
             debug_info[api_ver] = {"status": f"error: {e}"}
             continue
 
+    # ── DEBUG (temporary) — probe the REAL v2 API surface via ecoscope's
+    # _use_v2_api() context manager, separately from the (no-op) api_version
+    # kwarg loop above, to confirm whether v2 actually returns different/
+    # additional event types before changing the real fetch logic.
+    try:
+        with client._use_v2_api():
+            v2_probe_df = client.get_event_types(include_inactive=True)
+        if v2_probe_df is None or v2_probe_df.empty:
+            debug_info["_v2_probe"] = {"status": "empty", "rows": 0}
+        else:
+            _existing_uuids = {r["uuid"] for r in all_rows}
+            _probe_ids = (
+                v2_probe_df["id"].astype(str).tolist()
+                if "id" in v2_probe_df.columns else []
+            )
+            _new_ids = [i for i in _probe_ids if i not in _existing_uuids]
+            debug_info["_v2_probe"] = {
+                "status": "ok",
+                "rows": len(v2_probe_df),
+                "columns": list(v2_probe_df.columns),
+                "sample_row": v2_probe_df.iloc[0].to_dict(),
+                "n_ids_not_in_v1_loop_above": len(_new_ids),
+                "new_ids_sample": _new_ids[:10],
+            }
+    except AttributeError as e:
+        debug_info["_v2_probe"] = {"status": f"no _use_v2_api on this client: {e}"}
+    except Exception as e:
+        debug_info["_v2_probe"] = {"status": f"error: {e}"}
+
     if not all_rows:
-        return [], debug_info
+        return [], debug_info, []
 
     seen = set()
-    rows = []
+    deduped = []
     for r in all_rows:
         if r["uuid"] not in seen:
             seen.add(r["uuid"])
-            rows.append(r)
+            deduped.append(r)
+    deduped.sort(key=lambda x: x["label"].lower())
 
-    rows = [r for r in rows if "giraffe" in r["label"].lower()
-            or "giraffe" in r["value"].lower()]
-    rows.sort(key=lambda x: x["label"].lower())
-    return rows, debug_info
+    debug_info["_total_before_keyword_filter"] = len(deduped)
+
+    # ── DEBUG (temporary) — show any event type mentioning lion/predator
+    # regardless of the keyword filter, so we can tell whether a missing
+    # dropdown entry is a permissions issue (absent here too) or a naming
+    # issue (present here, but its label/value doesn't match EVENT_TYPE_KEYWORDS).
+    debug_info["_lion_match"] = [
+        r for r in deduped
+        if "lion" in r["label"].lower() or "lion" in r["value"].lower()
+    ]
+
+    rows = [r for r in deduped if any(
+                kw in r["label"].lower() or kw in r["value"].lower()
+                for kw in EVENT_TYPE_KEYWORDS)]
+    debug_info["_total_after_keyword_filter"] = len(rows)
+    return rows, debug_info, deduped
 
 
 def _fetch_giraffe_id_mapping(client: EarthRangerIO, _event_type_uuid: str = "") -> dict:
@@ -429,14 +552,28 @@ def fetch_er_events(country: str,
             cat = "monitoring_zmb" if country == "ZMB" else f"monitoring_{country_lower}"
             kwargs["event_category"] = cat
 
+    # ── DEBUG (temporary) — capture exactly what was sent / got back ──────────
+    _debug = {"kwargs_sent": dict(kwargs)}
+
     try:
         gdf = er_client.get_events(**kwargs)
     except AssertionError:
         # ecoscope raises AssertionError when the query returns no events
+        _debug["result"] = "AssertionError (no events)"
+        st.session_state["_er2wb_fetch_debug"] = _debug
         return [], []
 
     if gdf is None or gdf.empty:
+        _debug["result"] = "empty"
+        st.session_state["_er2wb_fetch_debug"] = _debug
         return [], []
+
+    _debug["n_rows"] = len(gdf)
+    _debug["event_type_values_seen"] = (
+        sorted(gdf["event_type"].dropna().unique().tolist())
+        if "event_type" in gdf.columns else []
+    )
+    st.session_state["_er2wb_fetch_debug"] = _debug
 
     # Ensure id and serial_number are columns (ecoscope may set id as the index)
     if "id" not in gdf.columns:
@@ -520,10 +657,15 @@ def fetch_er_events(country: str,
 
 def process_er_data(raw_events: list, country: str, er_username: str,
                     date_start: date, date_end: date,
-                    giraffe_id_map: dict = None) -> pd.DataFrame:
+                    giraffe_id_map: dict = None,
+                    list_key: str = "Herd") -> pd.DataFrame:
     """
     Flatten raw ER event JSON into a tidy DataFrame.
-    One row per individual giraffe (Herd record), joined with event-level fields.
+    One row per individual record (list_key — "Herd" for giraffe/elephant,
+    "Group" for predators), joined with event-level fields. Field names
+    inside the list are the same across all platforms (giraffe_id,
+    giraffe_age, giraffe_sex, giraffe_right, giraffe_left, giraffe_notes) —
+    EarthRanger reuses the same form structure for every species.
     """
     country_lower = country.lower()
     herd_rows, evt_rows = [], []
@@ -566,7 +708,7 @@ def process_er_data(raw_events: list, country: str, er_username: str,
             "event_details_herd_dist":     det.get("herd_dist") or det.get("distance"),
         })
 
-        herd_list = det.get("Herd") or []
+        herd_list = det.get(list_key) or []
         if isinstance(herd_list, list) and herd_list:
             for giraffe in herd_list:
                 if not isinstance(giraffe, dict):
@@ -657,19 +799,23 @@ def process_er_data(raw_events: list, country: str, er_username: str,
     return final
 
 
-# ─── GiraffeSpotter formatting ─────────────────────────────────────────────────
+# ─── Wildbook formatting ────────────────────────────────────────────────────
 
 def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
                    gs_username: str, gs_org: str,
                    species_epithet: str, initials: str,
                    date_start: date = None,
-                   survey_vessel: str = "vehicle_based_photographic") -> pd.DataFrame:
-    """Convert processed ER DataFrame to GiraffeSpotter bulk import format."""
+                   survey_vessel: str = "vehicle_based_photographic",
+                   genus: str = "Giraffa",
+                   location_id: str = None) -> pd.DataFrame:
+    """Convert processed ER DataFrame to Wildbook bulk import format.
+    Works for any of the three platforms — genus/species_epithet/location_id
+    are resolved by the caller based on the selected Wildbook platform."""
     if final_df.empty:
         return pd.DataFrame()
 
     local_tz  = TIMEZONE_MAP.get(country, "UTC")
-    site_name = SITE_NAMES.get(site, site)
+    site_name = location_id if location_id else SITE_NAMES.get(site, site)
 
     df = final_df.copy()
 
@@ -769,7 +915,7 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
             lambda v: v.split("_")[0] if "_" in v else v),
         "Encounter.sex":                df["gir_giraffeSex"],
         "Encounter.lifeStage":          df["gir_giraffeAge"],
-        "Encounter.genus":              "Giraffa",
+        "Encounter.genus":              genus,
         "Encounter.specificEpithet":    species_epithet,
         "Encounter.occurrenceRemarks":  df.apply(
             lambda r: "; ".join(filter(None, [
@@ -1016,9 +1162,9 @@ def apply_exif_reprojection(processed_df: pd.DataFrame,
 
 
 def build_download_zip(renamed_files: dict, gs_data: pd.DataFrame,
-                       country: str, site: str) -> tuple:
+                       country: str, site: str, prefix: str = "GS") -> tuple:
     """
-    Build ZIP containing matched images + GiraffeSpotter Excel.
+    Build ZIP containing matched images + Wildbook bulk-import Excel.
     Returns (zip_bytes, n_matched_images).
     """
     gs_asset_names = set()
@@ -1036,7 +1182,7 @@ def build_download_zip(renamed_files: dict, gs_data: pd.DataFrame,
         for fname, fbytes in matched.items():
             zf.writestr(fname, fbytes)
 
-        xls_name = f"GS_bulkimport_{country}{site}_{date.today().strftime('%Y%m%d')}.xlsx"
+        xls_name = f"{prefix}_bulkimport_{country}{site}_{date.today().strftime('%Y%m%d')}.xlsx"
         zf.writestr(xls_name, _excel_bytes(gs_data))
 
     buf.seek(0)
@@ -1082,9 +1228,10 @@ def main():
                         st.session_state.er_client        = client
                         st.session_state.er_authenticated = True
                         # Fetch event types for the selector
-                        et_rows, et_debug = _fetch_event_types(client)
-                        st.session_state.er_event_types  = et_rows
-                        st.session_state.er_et_debug     = et_debug
+                        et_rows, et_debug, et_rows_all = _fetch_event_types(client)
+                        st.session_state.er_event_types     = et_rows
+                        st.session_state.er_et_debug        = et_debug
+                        st.session_state.er_event_types_all = et_rows_all
                         st.rerun()
                     except Exception as exc:
                         status = getattr(getattr(exc, "response", None), "status_code", None)
@@ -1122,7 +1269,7 @@ def main():
             st.rerun()
 
     # ══════════════════════════════════════════════════════════════════════════
-    # STEP 1 (cont.) — Survey & GiraffeSpotter settings
+    # STEP 1 (cont.) — Survey & Wildbook settings
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("---")
     st.subheader("⚙️ Step 1 (cont.): Settings")
@@ -1164,9 +1311,30 @@ def main():
 
     er_event_types = st.session_state.er_event_types   # [{label, uuid, category}]
 
+    # ── DEBUG (temporary) — show v1/v2 event-type fetch diagnostics ───────────
+    with st.expander("🔍 Debug: event type fetch (temporary)", expanded=True):
+        try:
+            import ecoscope as _ecoscope
+            _ecoscope_version = getattr(_ecoscope, "__version__", "unknown")
+        except Exception as _e:
+            _ecoscope_version = f"error: {_e}"
+        _client = st.session_state.get("er_client")
+        st.write("ecoscope version:", _ecoscope_version)
+        st.write("client.server:", getattr(_client, "server", "(not set)"))
+        st.write("client.service_root:", getattr(_client, "service_root", "(not set)"))
+        st.write("client has _use_v2_api:", hasattr(_client, "_use_v2_api"))
+        import inspect as _inspect
+        try:
+            _sig = str(_inspect.signature(_client.get_event_types))
+        except Exception as _e:
+            _sig = f"error: {_e}"
+        st.write("get_event_types signature:", _sig)
+        st.json(st.session_state.get("er_et_debug", {}))
+
     # Resolve selected event type UUID
     event_type_uuid  = ""
     event_type_label = ""
+    event_type_value = ""
 
     if er_event_types:
         et_labels = [et["label"] for et in er_event_types]
@@ -1177,7 +1345,8 @@ def main():
             "Encounter event type", et_labels, key="event_type_sel")
         matched = next((et for et in er_event_types
                         if et["label"] == event_type_label), None)
-        event_type_uuid = matched["uuid"] if matched else ""
+        event_type_uuid  = matched["uuid"]  if matched else ""
+        event_type_value = matched["value"] if matched else ""
     else:
         st.info("Could not fetch event types from this ER instance. "
                 "Enter the event type value or UUID manually below.")
@@ -1200,9 +1369,37 @@ def main():
         _UUID_RE = _re.compile(
             r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
             _re.IGNORECASE)
-        if not _UUID_RE.match(_manual):
+        _entered_uuid = _UUID_RE.match(_manual) is not None
+        if not _entered_uuid:
             _manual = EVENT_VALUE_TO_UUID.get(_manual.lower(), _manual)
         event_type_uuid = _manual
+
+        # The text used for species/locationID detection must be the event
+        # type's NAME (e.g. "lion_sighting"), not a UUID — if the user typed
+        # a UUID (or it got resolved to one above), look up its real
+        # label/value from the full unfiltered event-type list so detection
+        # still works. This fixes manually-entered types matching events
+        # but never resolving a species/location (UUID text has no "lion"
+        # or "kaza" substring for detect_predator_species/resolve_location_id
+        # to find).
+        if _UUID_RE.match(event_type_uuid):
+            _all_types = st.session_state.get("er_event_types_all", [])
+            _lookup = next((et for et in _all_types
+                            if et["uuid"].lower() == event_type_uuid.lower()), None)
+            if _lookup:
+                event_type_value = (_lookup.get("value") or _lookup.get("label") or "").lower()
+                event_type_label = _lookup.get("label", "")
+            else:
+                # UUID not found in the fetched list (e.g. restricted category that
+                # never came back from ER at all) — nothing to detect species/location
+                # from; user input itself isn't usable as detection text.
+                event_type_value = ""
+        else:
+            event_type_value = manual_et.strip().lower()
+
+    # Combined text used to infer species (predators) and locationID
+    # (Whiskerbook / African Carnivore Wildbook) from the chosen event type
+    event_type_text = (event_type_value or event_type_label or "").lower()
 
     # ── Observer filter ───────────────────────────────────────────────────────
     st.markdown("**Observer filter**")
@@ -1217,12 +1414,16 @@ def main():
 
     st.markdown("---")
 
-    # ── 1c: GiraffeSpotter ────────────────────────────────────────────────────
-    st.markdown("**GiraffeSpotter**")
+    # ── 1c: Wildbook platform & species ───────────────────────────────────────
+    st.markdown("**Wildbook platform**")
+    platform = st.selectbox(
+        "Which Wildbook is this data going to?",
+        WILDBOOK_PLATFORMS, key="wb_platform")
+
     gs_c1, gs_c2, gs_c3, gs_c4 = st.columns(4)
 
     with gs_c1:
-        gs_username = st.text_input("GiraffeSpotter username", key="gs_username")
+        gs_username = st.text_input("Wildbook username", key="gs_username")
         gs_org      = st.session_state.gs_org   # kept in state but not shown prominently
 
     with gs_c2:
@@ -1230,19 +1431,44 @@ def main():
             "Observer initials (e.g., CM)", key="er_initials",
             help="Used in renamed image filenames, e.g. CM → NAM_EHGR_20250101_CM_0001.JPG.")
 
-    with gs_c3:
-        # Persist species selection
-        species_keys = list(SPECIES_MAP.keys())
-        if st.session_state.species_sel not in species_keys:
-            st.session_state.species_sel = species_keys[0]
-        species_choice = st.selectbox("Species", species_keys, key="species_sel")
+    genus = None
+    species_epithet = None
 
-    with gs_c4:
-        subsp_options = list(SPECIES_MAP[species_choice].keys())
-        if st.session_state.subsp_sel not in subsp_options:
-            st.session_state.subsp_sel = subsp_options[0]
-        subsp_choice    = st.selectbox("Subspecies", subsp_options, key="subsp_sel")
-        species_epithet = SPECIES_MAP[species_choice][subsp_choice]
+    if platform == "GiraffeSpotter":
+        with gs_c3:
+            species_keys = list(SPECIES_MAP.keys())
+            if st.session_state.species_sel not in species_keys:
+                st.session_state.species_sel = species_keys[0]
+            species_choice = st.selectbox("Species", species_keys, key="species_sel")
+        with gs_c4:
+            subsp_options = list(SPECIES_MAP[species_choice].keys())
+            if st.session_state.subsp_sel not in subsp_options:
+                st.session_state.subsp_sel = subsp_options[0]
+            subsp_choice    = st.selectbox("Subspecies", subsp_options, key="subsp_sel")
+            genus           = "Giraffa"
+            species_epithet = SPECIES_MAP[species_choice][subsp_choice]
+
+    elif platform == "Whiskerbook":
+        genus, species_epithet = ELEPHANT_GENUS_EPITHET
+        with gs_c3:
+            st.text_input("Genus", value=genus, disabled=True)
+        with gs_c4:
+            st.text_input("Species", value=species_epithet, disabled=True)
+
+    else:  # African Carnivore Wildbook
+        genus, species_epithet = detect_predator_species(event_type_text)
+        with gs_c3:
+            st.text_input("Genus", value=genus or "(select event type)", disabled=True)
+        with gs_c4:
+            st.text_input("Species", value=species_epithet or "(select event type)", disabled=True)
+        if not genus:
+            st.warning(
+                "⚠️ Couldn't detect a predator species from the selected event type. "
+                "Pick an event type whose name includes lion, cheetah, leopard, or wild dog.")
+
+    location_id = resolve_location_id(platform, event_type_text, site)
+    prefix      = PLATFORM_PREFIX[platform]
+    list_key    = PLATFORM_LIST_KEY[platform]
 
     _SURVEY_VESSEL_OPTIONS = {
         "Road survey":        "vehicle_based_photographic",
@@ -1256,7 +1482,7 @@ def main():
         index=list(_SURVEY_VESSEL_OPTIONS.values()).index(
             st.session_state.get("survey_vessel", "vehicle_based_photographic")),
         key="_survey_vessel_label",
-        help="Sets the Survey.vessel field in the GiraffeSpotter output.",
+        help="Sets the Survey.vessel field in the Wildbook output.",
     )
     st.session_state["survey_vessel"] = _SURVEY_VESSEL_OPTIONS[_vessel_label]
 
@@ -1273,14 +1499,16 @@ def main():
         _reprocessed = process_er_data(
             st.session_state.raw_events, country, _obs_for_proc,
             date_start, date_end,
-            giraffe_id_map=st.session_state.get("giraffe_id_map", {}))
+            giraffe_id_map=st.session_state.get("giraffe_id_map", {}),
+            list_key=list_key)
         if not _reprocessed.empty:
             st.session_state.processed_df = _reprocessed
             st.session_state.gs_data = format_gs_data(
                 _reprocessed, country, site,
                 gs_username, gs_org, species_epithet, initials,
                 date_start=date_start,
-                survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"))
+                survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"),
+                genus=genus, location_id=location_id)
         st.rerun()
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -1288,7 +1516,7 @@ def main():
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("---")
     st.subheader("🔄 Step 2: Fetch my ER data")
-    st.caption("Fetches events from EarthRanger and formats them for GiraffeSpotter.")
+    st.caption("Fetches events from EarthRanger and formats them for the selected Wildbook platform.")
 
     if st.button("Fetch my ER data", type="primary"):
         with st.spinner("Fetching events from EarthRanger…"):
@@ -1296,6 +1524,13 @@ def main():
                 raw, _gdf_cols = fetch_er_events(country, date_start, date_end,
                                                st.session_state.er_client,
                                                event_type_uuid=event_type_uuid or None)
+
+                # ── DEBUG (temporary) ───────────────────────────────────────
+                with st.expander("🔍 Debug: last ER fetch (temporary)", expanded=True):
+                    st.write("Selected event type label:", event_type_label or "(manual/none)")
+                    st.write("Selected event type UUID:", event_type_uuid or "(none)")
+                    st.json(st.session_state.get("_er2wb_fetch_debug", {}))
+
                 if not raw:
                     st.warning(
                         "No events returned for this date range. "
@@ -1313,7 +1548,8 @@ def main():
 
                     # Unfiltered pass → populate observer dropdown
                     _all_proc = process_er_data(raw, country, "", date_start, date_end,
-                                                giraffe_id_map=giraffe_id_map)
+                                                giraffe_id_map=giraffe_id_map,
+                                                list_key=list_key)
                     _obs_names = sorted(
                         _all_proc["usr_name"].dropna()
                         .astype(str).str.strip()
@@ -1321,10 +1557,11 @@ def main():
                     ) if "usr_name" in _all_proc.columns else []
                     st.session_state.available_observers = _obs_names
 
-                    # Filtered pass → GS output
+                    # Filtered pass → Wildbook output
                     processed = process_er_data(raw, country, _obs_for_proc,
                                                 date_start, date_end,
-                                                giraffe_id_map=giraffe_id_map)
+                                                giraffe_id_map=giraffe_id_map,
+                                                list_key=list_key)
                     if processed.empty:
                         st.warning(
                             "No records found. Check your date range and event type selection.")
@@ -1332,7 +1569,8 @@ def main():
                         gs = format_gs_data(processed, country, site,
                                             gs_username, gs_org, species_epithet, initials,
                                             date_start=date_start,
-                                            survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"))
+                                            survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"),
+                                            genus=genus, location_id=location_id)
                         st.session_state.processed_df = processed
                         st.session_state.gs_data      = gs
                         st.rerun()   # rerun so observer filter renders with the new names
@@ -1363,11 +1601,11 @@ def main():
         ).sum()
         m1, m2, m3 = st.columns(3)
         m1.metric("Encounters",  n_enc)
-        m2.metric("Giraffes",    n_gir)
+        m2.metric("Individuals", n_gir)
         m3.metric("With photos", int(n_photos))
 
-        st.success(f"✅ Formatted **{n_gir}** individual giraffe records "
-                   f"from **{n_enc}** encounters.")
+        st.success(f"✅ Formatted **{n_gir}** individual records "
+                   f"from **{n_enc}** encounters for **{platform}**.")
 
         # ── Encounter map ──────────────────────────────────────────────────────
         _map_cols = ["evt_id", "evt_lat", "evt_lon", "evt_serial",
@@ -1418,7 +1656,7 @@ def main():
                 else:                   st.success(msg)
 
         # ── GS data preview ────────────────────────────────────────────────────
-        with st.expander("Preview GiraffeSpotter data (first 20 rows)"):
+        with st.expander("Preview Wildbook data (first 20 rows)"):
             st.dataframe(gs.head(20), hide_index=True)
 
     # ── Download buttons (always visible once data exists) ─────────────────────
@@ -1427,9 +1665,9 @@ def main():
         c1, c2 = st.columns(2)
         with c1:
             st.download_button(
-                "⬇️ Download GS data (no images)",
+                "⬇️ Download Wildbook data (no images)",
                 data=_excel_bytes(st.session_state.gs_data),
-                file_name=f"GS_bulkimport_{country}{site}_{today_str}.xlsx",
+                file_name=f"{prefix}_bulkimport_{country}{site}_{today_str}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         with c2:
@@ -1464,7 +1702,7 @@ def main():
             "**JPEG quality compression** — reduces file size by increasing lossy "
             "encoding of colour and fine detail. Image dimensions (pixels) are unchanged. "
             "85% quality is generally indistinguishable from the original and recommended "
-            "for GiraffeSpotter photo-ID. 75% gives the smallest files and is still "
+            "for Wildbook photo-ID. 75% gives the smallest files and is still "
             "suitable for pattern matching, but fine texture in close-ups may soften slightly. "
             "EXIF metadata (datetime, GPS) is preserved in all cases."
         ),
@@ -1476,7 +1714,7 @@ def main():
         if st.session_state.gs_data is None:
             st.error("Run Step 2 first so we know how to name the images.")
         elif not initials.strip():
-            st.error("No initials — enter your initials in the Step 1 GiraffeSpotter section.")
+            st.error("No initials — enter your initials in the Step 1 Wildbook platform section.")
         else:
             progress_bar = st.progress(0, text="Processing images…")
             try:
@@ -1508,10 +1746,11 @@ def main():
                         updated_df, country, site,
                         gs_username, gs_org, species_epithet, initials,
                         date_start=date_start,
-                        survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"))
+                        survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"),
+                        genus=genus, location_id=location_id)
                     st.session_state.gs_data = updated_gs
                     st.success("✅ Coordinates updated using EXIF GPS directions. "
-                               "GiraffeSpotter data has been refreshed.")
+                               "Wildbook data has been refreshed.")
 
             except Exception as exc:
                 progress_bar.empty()
@@ -1522,7 +1761,7 @@ def main():
     # STEP 4 — Download ZIP
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("---")
-    st.subheader("⬇️ Step 4: Download your GiraffeSpotter data packet")
+    st.subheader("⬇️ Step 4: Download your Wildbook data packet")
 
     can_build = (st.session_state.gs_data is not None
                  and bool(st.session_state.renamed_files))
@@ -1536,7 +1775,7 @@ def main():
                 zip_bytes, n = build_download_zip(
                     st.session_state.renamed_files,
                     st.session_state.gs_data,
-                    country, site)
+                    country, site, prefix=prefix)
                 st.session_state.download_zip = zip_bytes
                 st.session_state.n_matched    = n
 
@@ -1562,9 +1801,9 @@ def main():
         n = st.session_state.n_matched or 0
         today_str = date.today().strftime("%Y%m%d")
         st.download_button(
-            f"⬇️ Download ZIP ({n} images + GS Excel)",
+            f"⬇️ Download ZIP ({n} images + Wildbook Excel)",
             data=st.session_state.download_zip,
-            file_name=f"GS_bulkimport_{country}{site}_{today_str}.zip",
+            file_name=f"{prefix}_bulkimport_{country}{site}_{today_str}.zip",
             mime="application/zip",
         )
 
@@ -1574,8 +1813,8 @@ def main():
     if st.session_state.download_zip:
         st.markdown("---")
         st.subheader("✅ Done!")
-        st.markdown("""
-Use the files in your downloaded ZIP for the **GiraffeSpotter bulk import**:
+        st.markdown(f"""
+Use the files in your downloaded ZIP for the **{platform} bulk import**:
 - **Excel file** → upload as the bulk import spreadsheet
 - **Images** → upload as media assets
 
@@ -1596,6 +1835,11 @@ Check that your image prefix and photo numbers in EarthRanger match the actual f
 **Alphanumeric image filenames (e.g. 4D1A2407.JPG)?**
 These are handled automatically. The full stem is preserved and matched against
 the image prefix + photo number stored in EarthRanger (e.g. prefix `4D1A` + number `2407`).
+
+**Wrong species/genus detected for African Carnivore Wildbook?**
+The species is auto-detected from the selected ER event type name (must contain
+lion, cheetah, leopard, or wild dog). If nothing is detected, pick a different
+event type or rename it in EarthRanger.
 
 **Something else?**
 Contact courtney@giraffeconservation.org
