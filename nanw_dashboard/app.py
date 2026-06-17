@@ -76,7 +76,12 @@ def get_active_subjects(group_id, include_inactive=False):
         username=username,
         password=password
     )
-    subjects_df = er.get_subjects(subject_group_id=group_id, include_inactive=include_inactive)
+    try:
+        subjects_df = er.get_subjects(subject_group_id=group_id, include_inactive=include_inactive)
+    except AssertionError:
+        # ecoscope's get_subjects raises an AssertionError when the group has
+        # no subjects matching the filter (e.g. empty/new subject group).
+        return []
     subjects = subjects_df.to_dict('records')
     if not include_inactive:
         subjects = [s for s in subjects if s.get("is_active") is True]
