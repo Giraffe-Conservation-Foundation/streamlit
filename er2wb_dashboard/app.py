@@ -49,7 +49,7 @@ TIMEZONE_MAP = {
 }
 
 COUNTRY_SITES = {
-    "BWA":      ["CHNP", "CTGR", "MWNP", "NPNP", "NTGR"],
+    "BWA":      ["CHNP", "CTGR", "MWNP", "NG20", "NG29", "NPNP", "NTGR"],
     "CMR":      ["BNNP"],
     "KEN":      ["COCO", "EOCO", "IMRA", "ISCO", "LECO", "LOWC", "MBCO", "MMNR",
                  "MNWC", "MOCO", "MPRC", "MTCO", "MUWC", "MWNR", "NACO", "NAWC", "NIWC",
@@ -1310,26 +1310,6 @@ def main():
 
 
     er_event_types = st.session_state.er_event_types   # [{label, uuid, category}]
-
-    # ── DEBUG (temporary) — show v1/v2 event-type fetch diagnostics ───────────
-    with st.expander("🔍 Debug: event type fetch (temporary)", expanded=True):
-        try:
-            import ecoscope as _ecoscope
-            _ecoscope_version = getattr(_ecoscope, "__version__", "unknown")
-        except Exception as _e:
-            _ecoscope_version = f"error: {_e}"
-        _client = st.session_state.get("er_client")
-        st.write("ecoscope version:", _ecoscope_version)
-        st.write("client.server:", getattr(_client, "server", "(not set)"))
-        st.write("client.service_root:", getattr(_client, "service_root", "(not set)"))
-        st.write("client has _use_v2_api:", hasattr(_client, "_use_v2_api"))
-        import inspect as _inspect
-        try:
-            _sig = str(_inspect.signature(_client.get_event_types))
-        except Exception as _e:
-            _sig = f"error: {_e}"
-        st.write("get_event_types signature:", _sig)
-        st.json(st.session_state.get("er_et_debug", {}))
 
     # Resolve selected event type UUID
     event_type_uuid  = ""
