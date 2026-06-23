@@ -5,9 +5,13 @@ for the selected Wildbook platform (GiraffeSpotter, Whiskerbook, or African
 Carnivore Wildbook), and renames associated images.
 """
 
+import gc
 import io
 import math
+import os
+import shutil
 import sys
+import tempfile
 import zipfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -258,6 +262,42 @@ def _init_session_state():
             st.session_state[key] = val
 
 
+# ─── Disk-backed temp storage for renamed images ───────────────────────────
+# Renamed image bytes are written to a per-session temp directory on disk
+# instead of being held in st.session_state, since this app runs as one
+# shared process for all users — a single large ZIP held fully in memory
+# (raw bytes + decoded/renamed copies) can exceed the host's memory limit
+# and crash the app for everyone, not just the uploader.
+
+def _get_images_tmp_dir() -> str:
+    """Return (creating if needed) this session's temp dir for renamed images."""
+    d = st.session_state.get("images_tmp_dir")
+    if not d or not os.path.isdir(d):
+        d = tempfile.mkdtemp(prefix="er2wb_imgs_")
+        st.session_state["images_tmp_dir"] = d
+    return d
+
+
+def _clear_images_tmp_dir():
+    """Empty (but keep) the session's temp image dir before a fresh run."""
+    d = st.session_state.get("images_tmp_dir")
+    if d and os.path.isdir(d):
+        for fname in os.listdir(d):
+            try:
+                os.remove(os.path.join(d, fname))
+            except OSError:
+                pass
+
+
+def _cleanup_images_tmp_dir():
+    """Delete the session's temp image dir entirely (Start Over / Disconnect)."""
+    d = st.session_state.get("images_tmp_dir")
+    if d and os.path.isdir(d):
+        shutil.rmtree(d, ignore_errors=True)
+    st.session_state["images_tmp_dir"] = None
+    gc.collect()
+
+
 def _reset_results():
     """Clear processed data but keep all settings and observer list."""
     st.session_state.processed_df  = None
@@ -267,6 +307,7 @@ def _reset_results():
     st.session_state.n_matched     = None
     st.session_state.raw_events    = []
     st.session_state.giraffe_id_map = {}
+    _cleanup_images_tmp_dir()
     # available_observers intentionally NOT cleared — list is refreshed on
     # every fetch and should survive Start Over / date changes.
 
@@ -1024,29 +1065,40 @@ def compress_image(img_bytes: bytes, quality: int) -> bytes:
     return out.read()
 
 
-def process_images_zip(zip_bytes: bytes, country: str, site: str,
-                       initials: str,
+def process_images_zip(zip_path: str, country: str, site: str,
+                       initials: str, images_dir: str,
                        compress: bool = False, quality: int = 85,
                        on_progress=None) -> tuple:
     """
-    Extract ZIP, rename every JPEG using EXIF datetime.
-    For ZMB, also extracts GPSImgDirection from each image.
+    Extract ZIP (read from disk, one member at a time), rename every JPEG
+    using EXIF datetime, and write each renamed image straight to
+    `images_dir` on disk. For ZMB, also extracts GPSImgDirection.
+
+    Renamed images are NOT held in memory afterwards — only their on-disk
+    paths are returned — so a near-1GB ZIP of photos doesn't need a
+    near-1GB resident copy of decoded image bytes for the rest of the
+    session.
 
     Parameters
     ----------
+    zip_path : str
+        Path to the uploaded ZIP on disk (written there by the caller so the
+        full ZIP is never held as a single in-memory bytes blob).
+    images_dir : str
+        Directory to write renamed images into.
     on_progress : callable(float) | None
         Called after each image with a fraction 0.0–1.0.  Use to drive a
         st.progress bar.
 
     Returns
     -------
-    renamed_files : dict  {new_name: bytes}
+    renamed_paths : dict  {new_name: path_on_disk}
     rename_log    : pd.DataFrame  with Original / Renamed / Status columns
     gps_lookup    : dict  {full_image_stem: bearing_degrees}  (ZMB only)
     """
-    renamed, log_rows, gps_lookup = {}, [], {}
+    renamed_paths, log_rows, gps_lookup = {}, [], {}
 
-    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+    with zipfile.ZipFile(zip_path) as zf:
         jpg_names = [n for n in zf.namelist()
                      if n.lower().endswith((".jpg", ".jpeg"))
                      and not Path(n).name.startswith(".")]
@@ -1055,7 +1107,7 @@ def process_images_zip(zip_bytes: bytes, country: str, site: str,
 
         for idx, name in enumerate(jpg_names):
             try:
-                img_bytes = zf.read(name)
+                img_bytes = zf.read(name)   # one image at a time, not the whole zip
                 dttm      = get_exif_datetime(img_bytes)
                 date_str  = dttm.strftime("%Y%m%d")
 
@@ -1075,9 +1127,9 @@ def process_images_zip(zip_bytes: bytes, country: str, site: str,
                         compress_note = f" | compress failed: {ce}"
                 else:
                     compress_note = ""
-                renamed[new_name] = img_bytes
 
                 # ZMB: capture GPS bearing from EXIF for coordinate reprojection
+                # (must happen before img_bytes is written/dropped)
                 gps_dir  = None
                 gps_note = ""
                 if country == "ZMB":
@@ -1087,6 +1139,12 @@ def process_images_zip(zip_bytes: bytes, country: str, site: str,
                         full_img_stem = new_name.rsplit("_", 1)[-1].replace(".JPG", "")
                         gps_lookup[full_img_stem] = gps_dir
                         gps_note = f" | GPS dir: {gps_dir:.1f}°"
+
+                dest_path = os.path.join(images_dir, new_name)
+                with open(dest_path, "wb") as out_f:
+                    out_f.write(img_bytes)
+                renamed_paths[new_name] = dest_path
+                del img_bytes   # drop the decoded copy as soon as it's on disk
 
                 log_rows.append({
                     "Original": Path(name).name,
@@ -1101,7 +1159,14 @@ def process_images_zip(zip_bytes: bytes, country: str, site: str,
             if on_progress:
                 on_progress((idx + 1) / total)
 
-    return renamed, pd.DataFrame(log_rows), gps_lookup
+            # Periodic GC sweep so peak memory doesn't creep up over a large
+            # batch (mainly a safety net — refcounting already frees most
+            # objects immediately, but PIL/EXIF parsing can create cycles).
+            if (idx + 1) % 100 == 0:
+                gc.collect()
+
+    gc.collect()
+    return renamed_paths, pd.DataFrame(log_rows), gps_lookup
 
 
 def apply_exif_reprojection(processed_df: pd.DataFrame,
@@ -1161,10 +1226,12 @@ def apply_exif_reprojection(processed_df: pd.DataFrame,
     return df
 
 
-def build_download_zip(renamed_files: dict, gs_data: pd.DataFrame,
+def build_download_zip(renamed_paths: dict, gs_data: pd.DataFrame,
                        country: str, site: str, prefix: str = "GS") -> tuple:
     """
     Build ZIP containing matched images + Wildbook bulk-import Excel.
+    `renamed_paths` maps {new_name: path_on_disk} — images are streamed in
+    from disk one at a time rather than held in memory as a dict of bytes.
     Returns (zip_bytes, n_matched_images).
     """
     gs_asset_names = set()
@@ -1175,17 +1242,18 @@ def build_download_zip(renamed_files: dict, gs_data: pd.DataFrame,
                 if str(v) not in ("", "nan", "None")
             )
 
-    matched = {k: v for k, v in renamed_files.items() if k.upper() in gs_asset_names}
+    matched = {k: v for k, v in renamed_paths.items() if k.upper() in gs_asset_names}
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for fname, fbytes in matched.items():
-            zf.writestr(fname, fbytes)
+        for fname, fpath in matched.items():
+            zf.write(fpath, arcname=fname)   # streams from disk, not from a resident dict
 
         xls_name = f"{prefix}_bulkimport_{country}{site}_{date.today().strftime('%Y%m%d')}.xlsx"
         zf.writestr(xls_name, _excel_bytes(gs_data))
 
     buf.seek(0)
+    gc.collect()
     return buf.read(), len(matched)
 
 
@@ -1697,10 +1765,22 @@ def main():
             st.error("No initials — enter your initials in the Step 1 Wildbook platform section.")
         else:
             progress_bar = st.progress(0, text="Processing images…")
+            zip_tmp_path = None
             try:
-                renamed, log, gps_lookup = process_images_zip(
-                    uploaded_zip.read(),
-                    country, site, initials,
+                # Stream the upload straight to disk in chunks instead of
+                # reading it into a single in-memory bytes blob — for a
+                # ~1GB ZIP that avoids a ~1GB resident copy on top of
+                # whatever the decoded/renamed images need.
+                fd, zip_tmp_path = tempfile.mkstemp(suffix=".zip", prefix="er2wb_upload_")
+                with os.fdopen(fd, "wb") as out_f:
+                    shutil.copyfileobj(uploaded_zip, out_f)
+
+                images_dir = _get_images_tmp_dir()
+                _clear_images_tmp_dir()   # drop any images from a previous run this session
+
+                renamed_paths, log, gps_lookup = process_images_zip(
+                    zip_tmp_path,
+                    country, site, initials, images_dir,
                     compress=_do_compress,
                     quality=_compress_quality or 85,
                     on_progress=lambda p: progress_bar.progress(
@@ -1708,8 +1788,8 @@ def main():
                 )
                 progress_bar.empty()
 
-                st.session_state.renamed_files = renamed
-                st.success(f"✅ Renamed **{len(renamed)}** images.")
+                st.session_state.renamed_files = renamed_paths
+                st.success(f"✅ Renamed **{len(renamed_paths)}** images.")
                 st.dataframe(log)
 
                 # ZMB: apply EXIF GPS direction reprojection
@@ -1736,6 +1816,16 @@ def main():
                 progress_bar.empty()
                 st.error(f"❌ {exc}")
                 st.exception(exc)
+            finally:
+                # The uploaded ZIP itself is only needed transiently — the
+                # renamed images now live in images_dir, so drop the upload
+                # copy right away regardless of success/failure.
+                if zip_tmp_path and os.path.exists(zip_tmp_path):
+                    try:
+                        os.remove(zip_tmp_path)
+                    except OSError:
+                        pass
+                gc.collect()
 
     # ══════════════════════════════════════════════════════════════════════════
     # STEP 4 — Download ZIP
