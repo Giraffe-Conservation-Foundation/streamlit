@@ -224,7 +224,6 @@ def _init_session_state():
         "er_authenticated": False,
         "er_event_types":   [],    # [{label, uuid, category}] fetched from ER after login, keyword-filtered
         "er_event_types_all": [],  # same, but unfiltered — used to resolve manual UUID/value entries
-        "er_et_debug":      {},    # raw debug info from _fetch_event_types
         "event_type_sel":   "",    # label of selected event type
         "event_type_uuid":  "",    # UUID of selected event type (empty = use category)
         # ── Processed data (cleared by Reset) ──────────────────────────────────
@@ -337,37 +336,20 @@ def _make_er_client(instance: str, username: str, password: str) -> EarthRangerI
 def _fetch_event_types(client: EarthRangerIO) -> tuple:
     """
     Fetch all event types from EarthRanger.
-    Returns (filtered_rows, debug_info, all_rows) where:
+    Returns (filtered_rows, all_rows) where:
       filtered_rows = sorted list of dicts [{label, uuid, category, value}],
                       restricted to EVENT_TYPE_KEYWORDS — used for the dropdown
-      debug_info    = dict with raw results per API version for diagnostics
       all_rows      = full deduped list (no keyword filter) — used to resolve
                       a manually-entered UUID/value back to its real label/value
                       for species + locationID detection
     """
-    all_rows  = []
-    debug_info = {}
+    all_rows = []
 
     for api_ver in ("v1", "v2"):
         try:
             df = client.get_event_types(include_inactive=True, api_version=api_ver)
             if df is None or df.empty:
-                debug_info[api_ver] = {"status": "empty", "rows": 0}
                 continue
-            # ── DEBUG (temporary) — capture raw shape so we can see field names ──
-            _kaza_uuid = "16847384-f16c-4a1c-aa57-6bba66fb7ed2"
-            _kaza_match = df[df["id"].astype(str) == _kaza_uuid] if "id" in df.columns else df.iloc[0:0]
-            _val_match = df[df["value"].astype(str).str.contains("kaza", case=False, na=False)] if "value" in df.columns else df.iloc[0:0]
-            debug_info[api_ver] = {
-                "status": "ok",
-                "rows": len(df),
-                "columns": list(df.columns),
-                "sample_row": df.iloc[0].to_dict(),
-                "all_ids_sample": df["id"].astype(str).tolist()[:5] if "id" in df.columns else [],
-                "kaza_uuid_present": not _kaza_match.empty,
-                "kaza_value_match": _val_match[["id", "value", "display"]].to_dict("records") if "value" in df.columns and "display" in df.columns else [],
-            }
-            n_before = len(all_rows)
             for _, row in df.iterrows():
                 value = str(row.get("value", "")).strip()
                 label = str(row.get("display", value)).strip()
@@ -378,42 +360,11 @@ def _fetch_event_types(client: EarthRangerIO) -> tuple:
                 if label and uuid:
                     all_rows.append({"label": label, "uuid": uuid,
                                      "category": cat, "value": value.lower()})
-            debug_info[api_ver]["rows_with_label_and_uuid"] = len(all_rows) - n_before
-        except Exception as e:
-            debug_info[api_ver] = {"status": f"error: {e}"}
+        except Exception:
             continue
 
-    # ── DEBUG (temporary) — probe the REAL v2 API surface via ecoscope's
-    # _use_v2_api() context manager, separately from the (no-op) api_version
-    # kwarg loop above, to confirm whether v2 actually returns different/
-    # additional event types before changing the real fetch logic.
-    try:
-        with client._use_v2_api():
-            v2_probe_df = client.get_event_types(include_inactive=True)
-        if v2_probe_df is None or v2_probe_df.empty:
-            debug_info["_v2_probe"] = {"status": "empty", "rows": 0}
-        else:
-            _existing_uuids = {r["uuid"] for r in all_rows}
-            _probe_ids = (
-                v2_probe_df["id"].astype(str).tolist()
-                if "id" in v2_probe_df.columns else []
-            )
-            _new_ids = [i for i in _probe_ids if i not in _existing_uuids]
-            debug_info["_v2_probe"] = {
-                "status": "ok",
-                "rows": len(v2_probe_df),
-                "columns": list(v2_probe_df.columns),
-                "sample_row": v2_probe_df.iloc[0].to_dict(),
-                "n_ids_not_in_v1_loop_above": len(_new_ids),
-                "new_ids_sample": _new_ids[:10],
-            }
-    except AttributeError as e:
-        debug_info["_v2_probe"] = {"status": f"no _use_v2_api on this client: {e}"}
-    except Exception as e:
-        debug_info["_v2_probe"] = {"status": f"error: {e}"}
-
     if not all_rows:
-        return [], debug_info, []
+        return [], []
 
     seen = set()
     deduped = []
@@ -423,22 +374,10 @@ def _fetch_event_types(client: EarthRangerIO) -> tuple:
             deduped.append(r)
     deduped.sort(key=lambda x: x["label"].lower())
 
-    debug_info["_total_before_keyword_filter"] = len(deduped)
-
-    # ── DEBUG (temporary) — show any event type mentioning lion/predator
-    # regardless of the keyword filter, so we can tell whether a missing
-    # dropdown entry is a permissions issue (absent here too) or a naming
-    # issue (present here, but its label/value doesn't match EVENT_TYPE_KEYWORDS).
-    debug_info["_lion_match"] = [
-        r for r in deduped
-        if "lion" in r["label"].lower() or "lion" in r["value"].lower()
-    ]
-
     rows = [r for r in deduped if any(
                 kw in r["label"].lower() or kw in r["value"].lower()
                 for kw in EVENT_TYPE_KEYWORDS)]
-    debug_info["_total_after_keyword_filter"] = len(rows)
-    return rows, debug_info, deduped
+    return rows, deduped
 
 
 def _fetch_giraffe_id_mapping(client: EarthRangerIO, _event_type_uuid: str = "") -> dict:
@@ -593,34 +532,18 @@ def fetch_er_events(country: str,
             cat = "monitoring_zmb" if country == "ZMB" else f"monitoring_{country_lower}"
             kwargs["event_category"] = cat
 
-    # ── DEBUG (temporary) — capture exactly what was sent / got back ──────────
-    _debug = {"kwargs_sent": dict(kwargs)}
-
     try:
         gdf = er_client.get_events(**kwargs)
     except AssertionError:
         # ecoscope raises AssertionError when the query returns no events
-        _debug["result"] = "AssertionError (no events)"
-        st.session_state["_er2wb_fetch_debug"] = _debug
-        return [], []
+        return []
 
     if gdf is None or gdf.empty:
-        _debug["result"] = "empty"
-        st.session_state["_er2wb_fetch_debug"] = _debug
-        return [], []
-
-    _debug["n_rows"] = len(gdf)
-    _debug["event_type_values_seen"] = (
-        sorted(gdf["event_type"].dropna().unique().tolist())
-        if "event_type" in gdf.columns else []
-    )
-    st.session_state["_er2wb_fetch_debug"] = _debug
+        return []
 
     # Ensure id and serial_number are columns (ecoscope may set id as the index)
     if "id" not in gdf.columns:
         gdf = gdf.reset_index()
-
-    _gdf_cols = list(gdf.columns)   # exposed for debug
 
     # Pre-scan GDF columns for any reporter-name shaped column ecoscope may use
     _rb_name_col = next(
@@ -691,7 +614,7 @@ def fetch_er_events(country: str,
 
         results.append(rec)
 
-    return results, _gdf_cols
+    return results
 
 
 # ─── Data processing ───────────────────────────────────────────────────────────
@@ -1296,9 +1219,8 @@ def main():
                         st.session_state.er_client        = client
                         st.session_state.er_authenticated = True
                         # Fetch event types for the selector
-                        et_rows, et_debug, et_rows_all = _fetch_event_types(client)
+                        et_rows, et_rows_all = _fetch_event_types(client)
                         st.session_state.er_event_types     = et_rows
-                        st.session_state.er_et_debug        = et_debug
                         st.session_state.er_event_types_all = et_rows_all
                         st.rerun()
                     except Exception as exc:
@@ -1569,15 +1491,9 @@ def main():
     if st.button("Fetch my ER data", type="primary"):
         with st.spinner("Fetching events from EarthRanger…"):
             try:
-                raw, _gdf_cols = fetch_er_events(country, date_start, date_end,
-                                               st.session_state.er_client,
-                                               event_type_uuid=event_type_uuid or None)
-
-                # ── DEBUG (temporary) ───────────────────────────────────────
-                with st.expander("🔍 Debug: last ER fetch (temporary)", expanded=True):
-                    st.write("Selected event type label:", event_type_label or "(manual/none)")
-                    st.write("Selected event type UUID:", event_type_uuid or "(none)")
-                    st.json(st.session_state.get("_er2wb_fetch_debug", {}))
+                raw = fetch_er_events(country, date_start, date_end,
+                                      st.session_state.er_client,
+                                      event_type_uuid=event_type_uuid or None)
 
                 if not raw:
                     st.warning(
