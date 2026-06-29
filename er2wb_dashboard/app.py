@@ -65,7 +65,7 @@ COUNTRY_SITES = {
     "TZA":      ["MKNP", "SANP"],
     "UGA":      ["KVNP", "LMNP", "MFNP", "PUWR"],
     "ZAF":      ["TKGR"],
-    "ZMB":      ["LVNP", "LUNP"],
+    "ZMB":      ["LVNP", "LUNP", "SICC"],
     # ZCP_SMART and RWA_AKNP have non-standard data structures — handled separately
 }
 
@@ -125,6 +125,7 @@ SITE_NAMES = {
     "TKGR": "Tswalu Kalahari Reserve",
     # Zambia
     "LVNP": "Luangwa",                        "LUNP": "Luambe National Park",
+    "SICC": "Simalaha Community Conservancy",
 }
 
 SPECIES_MAP = {
