@@ -281,10 +281,10 @@ def main():
         render_predator_tab(predator_df, start_date, end_date, MAPBOX_TOKEN)
 
     with tab_camera:
-        render_camera_tab(username, password, EARTHRANGER_SERVER)
+        render_camera_tab(username, password, EARTHRANGER_SERVER, start_date, end_date)
 
     with tab_weather:
-        render_weather_tab(username, password, EARTHRANGER_SERVER)
+        render_weather_tab(username, password, EARTHRANGER_SERVER, start_date, end_date)
 
     # Logout button
     if st.sidebar.button("🔓 Logout"):
@@ -1223,7 +1223,7 @@ def render_predator_tab(predator_df, start_date, end_date, MAPBOX_TOKEN):
 
 
 #### CAMERA TRAPS TAB #####################################################
-def render_camera_tab(username, password, EARTHRANGER_SERVER):
+def render_camera_tab(username, password, EARTHRANGER_SERVER, start_date, end_date):
     st.subheader("📷 Camera Trap Check")
     st.markdown("*Last check event per camera trap station*")
 
@@ -1335,9 +1335,36 @@ def render_camera_tab(username, password, EARTHRANGER_SERVER):
     st.metric("Camera traps with check records", len(out_cam))
     st.dataframe(out_cam, use_container_width=True, hide_index=True)
 
+    #### All check events within the selected date range
+    st.markdown("---")
+    st.subheader("📋 All camera trap check events (selected date range)")
+
+    date_filtered_cam = camera_df[
+        (camera_df["time"].dt.date >= start_date) & (camera_df["time"].dt.date <= end_date)
+    ].copy()
+
+    if date_filtered_cam.empty:
+        st.info(f"No camera trap check events found between {start_date} and {end_date}")
+    else:
+        date_filtered_cam = date_filtered_cam.sort_values("time", ascending=False)
+        if station_col and station_col in date_filtered_cam.columns:
+            date_filtered_cam["_camtrap_site_name"] = date_filtered_cam[station_col].map(CAMTRAP_SITE_NAMES)
+
+        avail_cam_all = [c for c in avail_cam if c in date_filtered_cam.columns]
+        all_display_cols = dict(cam_display_cols)
+        all_display_cols["time"] = "Date/Time"
+
+        out_cam_all = date_filtered_cam[avail_cam_all].rename(
+            columns={c: all_display_cols[c] for c in avail_cam_all}
+        )
+        out_cam_all["Date/Time"] = pd.to_datetime(out_cam_all["Date/Time"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+
+        st.metric("Total check events in range", len(out_cam_all))
+        st.dataframe(out_cam_all, use_container_width=True, hide_index=True)
+
 
 #### WEATHER STATIONS TAB #################################################
-def render_weather_tab(username, password, EARTHRANGER_SERVER):
+def render_weather_tab(username, password, EARTHRANGER_SERVER, start_date, end_date):
     st.subheader("🌦️ Weather Station Check")
     st.markdown("*Last check event per weather station*")
 
@@ -1430,6 +1457,31 @@ def render_weather_tab(username, password, EARTHRANGER_SERVER):
 
     st.metric("Weather stations with check records", len(out_ws))
     st.dataframe(out_ws, use_container_width=True, hide_index=True)
+
+    #### All check events within the selected date range
+    st.markdown("---")
+    st.subheader("📋 All weather station check events (selected date range)")
+
+    date_filtered_ws = weather_df[
+        (weather_df["time"].dt.date >= start_date) & (weather_df["time"].dt.date <= end_date)
+    ].copy()
+
+    if date_filtered_ws.empty:
+        st.info(f"No weather station check events found between {start_date} and {end_date}")
+    else:
+        date_filtered_ws = date_filtered_ws.sort_values("time", ascending=False)
+
+        avail_ws_all = [c for c in avail_ws if c in date_filtered_ws.columns]
+        all_display_cols_ws = dict(ws_display_cols)
+        all_display_cols_ws["time"] = "Date/Time"
+
+        out_ws_all = date_filtered_ws[avail_ws_all].rename(
+            columns={c: all_display_cols_ws[c] for c in avail_ws_all}
+        )
+        out_ws_all["Date/Time"] = pd.to_datetime(out_ws_all["Date/Time"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+
+        st.metric("Total check events in range", len(out_ws_all))
+        st.dataframe(out_ws_all, use_container_width=True, hide_index=True)
 
 
 if __name__ == "__main__":
