@@ -63,63 +63,64 @@ SITE    = "EHGR"
 
 CAMERA_STATION_MAP = {
     # ── Waterhole cameras ─────────────────────────────────────────────────────
-    "Site1_Gruisgat_north":                   ("S001", "C001"),
-    "Site1_Gruisgat_south":                   ("S001", "C002"),
-    "Site2_Middlepos_Hide":                   ("S002", "C003"),
-    "Site3_Mopaniepos_Elephantpath":          ("S003", "C004"),
-    "Site3_Mopaniepos_Islandcamera":          ("S003", "C005"),
-    "Site3_Mopaniepos_Treecamera":            ("S003", "C006"),
-    "Site4_Boesmanspoel_Trough":              ("S004", "C007"),
-    "Site5_Mountain_Lodge_MLtrough":          ("S005", "C008"),
-    "Site6_Bergpos_Stump":                    ("S006", "C009"),
-    "Site7_Boma_Rooipos_hide":                ("S007", "C010"),
-    "Site7_Boma_Rooipos_mopane":              ("S007", "C011"),
-    "Site7_Boma_Rooipos_south":               ("S007", "C012"),
-    "Site8_Nuwepos_Tree":                     ("S008", "C013"),
-    "Site9_Grootrante":                       ("S009", "C014"),
-    "Site10_Madala_north":                    ("S010", "C015"),
-    "Site10_Madala_south":                    ("S010", "C016"),
-    "Site11_Bergwater_water":                 ("S011", "C017"),
-    "Site11_Bergwater_stump":                 ("S011", "C018"),
-    "Site12_Tankpos_tree":                    ("S012", "C019"),
-    "Site12_Tankpos_tank":                    ("S012", "C020"),
-    "Site13_Grenswag_northeast":              ("S013", "C021"),
-    "Site13_Grenswag_northwest":              ("S013", "C022"),
-    "Site14_Olifantspos_southfacing":         ("S014", "C023"),
-    "Site15_Oupos_Tree":                      ("S026", "C038"),
-    "Site15_Oupos_Pole":                      ("S026", "C039"),
-    "Site16_Vlakwater_Light":                 ("S027", "C040"),
-    "Site16_Vlakwater_Pump":                  ("S027", "C041"),
-    "Site17_Leeuslootdam":                    ("S028", "C042"),
-    "Site18_Gronddam_LR_Imberbe":             ("S029", "C043"),
-    "Site18_Gronddam_LR_Mopane":              ("S029", "C044"),
-    "Site19_Leeurante":                       ("S030", "C045"),
-    "Site20_Moesoemoeroep_Pole":              ("S031", "C046"),
-    "Site20_Moesoemoeroep_Tree":              ("S031", "C047"),
-    "Site21_Dadelpos_Stump":                  ("S032", "C048"),
-    "Site21_Dadelpos_Tree":                   ("S032", "C049"),
+    "Gruisgat_north":                         ("S001", "C001"),
+    "Gruisgat_south":                         ("S001", "C002"),
+    "Middlepos_Hide":                         ("S002", "C003"),
+    "Mopaniepos_Elephantpath":                ("S003", "C004"),
+    "Mopaniepos_Islandcamera":                ("S003", "C005"),
+    "Mopaniepos_Treecamera":                  ("S003", "C006"),
+    "Boesmanspoel_Trough":                    ("S004", "C007"),
+    "Mountain_Lodge_MLtrough":                ("S005", "C008"),
+    "Bergpos_Stump":                          ("S006", "C009"),
+    "Boma_Rooipos_hide":                      ("S007", "C010"),
+    "Boma_Rooipos_mopane":                    ("S007", "C011"),
+    "Boma_Rooipos_south":                     ("S007", "C012"),
+    "Nuwepos_Tree":                           ("S008", "C013"),
+    "Grootrante":                             ("S009", "C014"),
+    "Madala_north":                           ("S010", "C015"),
+    "Madala_south":                           ("S010", "C016"),
+    "Bergwater_water":                        ("S011", "C017"),
+    "Bergwater_stump":                        ("S011", "C018"),
+    "Tankpos_tree":                           ("S012", "C019"),
+    "Tankpos_tank":                           ("S012", "C020"),
+    "Grenswag_northeast":                     ("S013", "C021"),
+    "Grenswag_northwest":                     ("S013", "C022"),
+    "Olifantspos_southfacing":                ("S014", "C023"),
+    "Oupos_Tree":                             ("S026", "C038"),
+    "Oupos_Pole":                             ("S026", "C039"),
+    "Vlakwater_Light":                        ("S027", "C040"),
+    "Vlakwater_Pump":                         ("S027", "C041"),
+    "Leeuslootdam":                           ("S028", "C042"),
+    "Gronddam_LR_Imberbe":                    ("S029", "C043"),
+    "Gronddam_LR_Mopane":                     ("S029", "C044"),
+    "Leeurante":                              ("S030", "C045"),
+    "Moesoemoeroep_Pole":                     ("S031", "C046"),
+    "Moesoemoeroep_Tree":                     ("S031", "C047"),
+    "Dadelpos_Stump":                         ("S032", "C048"),
+    "Dadelpos_Tree":                          ("S032", "C049"),
     # ── Fence cameras ─────────────────────────────────────────────────────────
-    "Site15_WitgatEH001":                     ("S015", "C024"),
+    "WitgatEH001":                            ("S015", "C024"),
     "EH001 Witgat":                           ("S015", "C024"),  # alias
-    "Site16_SafarihoekEH003":                 ("S016", "C025"),
+    "SafarihoekEH003":                        ("S016", "C025"),
     "EH003 N of Safarihoek":                  ("S016", "C025"),  # alias
-    "Site17_FlamingoPanEH004":                ("S017", "C026"),
+    "FlamingoPanEH004":                       ("S017", "C026"),
     "EH004 Flamingo Pan":                     ("S017", "C026"),  # alias
-    "Site18_UitspuitSouthernBoundaryEH005":   ("S018", "C027"),
-    "Site19_MopaniepanCorner EH006":          ("S019", "C028"),
+    "UitspuitSouthernBoundaryEH005":          ("S018", "C027"),
+    "MopaniepanCorner EH006":                 ("S019", "C028"),
     # ── Greater Etosha grid cameras ───────────────────────────────────────────
-    "Site20_CT64":                            ("S020", "C029"),
-    "Site21_CT75":                            ("S021", "C030"),
-    "Site22_CT86":                            ("S022", "C031"),
-    "Site23_CT97":                            ("S023", "C032"),
-    "Site24_CT108":                           ("S024", "C033"),
-    "Site25_CT119":                           ("S025", "C034"),
+    "CT64":                                   ("S020", "C029"),
+    "CT75":                                   ("S021", "C030"),
+    "CT86":                                   ("S022", "C031"),
+    "CT97":                                   ("S023", "C032"),
+    "CT108":                                  ("S024", "C033"),
+    "CT119":                                  ("S025", "C034"),
 }
 
 # Camera ID replacements keyed by (original_camera_id, effective_from_date_str "YYYYMMDD").
 # Applied per image based on EXIF date, so a single folder can straddle a changeover date.
 CAMERA_ID_OVERRIDES: dict[tuple[str, str], str] = {
     ("C034", "20260520"): "C050",  # Site25_CT119: physical unit replaced 2026-05-20
+    ("C028", "20260623"): "C051",  # S019_MopaniepanCorner EH006: C028 stolen, replaced 2026-06-23
 }
 
 CAMERA_TYPES = {"camera_fence", "camera_water", "camera_grid"}
@@ -602,9 +603,9 @@ def main() -> None:
                 )
                 print(f"    {station_cam}:  {len(file_list)} photos  →  cloud")
                 result = subprocess.run(
-                    [_GSUTIL_BIN, "-m", "cp", "-n"]
-                    + [str(f) for f in file_list]
-                    + [gcs_dest],
+                    [_GSUTIL_BIN, "-m", "cp", "-n", "-I", gcs_dest],
+                    input="\n".join(str(f) for f in file_list),
+                    text=True,
                     shell=(sys.platform == "win32"),
                 )
                 if result.returncode == 0:
