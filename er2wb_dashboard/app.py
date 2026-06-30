@@ -60,12 +60,12 @@ COUNTRY_SITES = {
                  "OHCO", "OICO", "OLCO", "OKWC", "PACA", "RHNP", "RICO", "RUNP",
                  "SANR", "SICO", "TENP", "TWNP"],
     "NAM":      ["BACO", "BLCO", "BWNP", "DZCO", "EHGR", "GMCO", "KWCO", "MNCO",
-                 "MNNP", "MSCO", "MUNP", "MYCO", "NANW", "NJCO", "NLNP", "NNCO", "SACO",
+                 "MNNP", "MSCO", "MUNP", "MYCO", "NANW", "NJCO", "NKNP", "NNCO", "SACO",
                  "SBCO", "SKCO", "UIFA", "WUCO"],
     "TZA":      ["MKNP", "SANP"],
     "UGA":      ["KVNP", "LMNP", "MFNP", "PUWR"],
     "ZAF":      ["TKGR"],
-    "ZMB":      ["LVNP", "LUNP", "SICC"],
+    "ZMB":      ["LLVA", "LUNP", "NLNP", "SICC", "SLNP"],
     # ZCP_SMART and RWA_AKNP have non-standard data structures — handled separately
 }
 
@@ -90,7 +90,7 @@ SITE_NAMES = {
     # Namibia
     "BWNP": "Bwabwata National Park",         "EHGR": "Etosha Heights Private Reserve",
     "UIFA": "Uitkoms Farm",                   "MUNP": "Mudumu National Park",
-    "NLNP": "Nkasa Lupala National Park",     "MNNP": "Mangetti National Park",
+    "NKNP": "Nkasa Lupala National Park",     "MNNP": "Mangetti National Park",
     "GMCO": "George Mukoya Conservancy",      "MNCO": "Muduva Nyangana Conservancy",
     "NJCO": "Najagna Conservancy",            "NNCO": "Nyae Nyae Conservancy",
     "SACO": "Salambala Conservancy",          "MSCO": "Mashi Conservancy",
@@ -124,8 +124,9 @@ SITE_NAMES = {
     # South Africa
     "TKGR": "Tswalu Kalahari Reserve",
     # Zambia
-    "LVNP": "Luangwa",                        "LUNP": "Luambe National Park",
-    "SICC": "Simalaha Community Conservancy",
+    "LLVA": "Lower Luangwa Valley",            "LUNP": "Luambe National Park",
+    "SICC": "Simalaha Community Conservancy", "SLNP": "South Luangwa National Park",
+    "NLNP": "North Luangwa National Park",
 }
 
 SPECIES_MAP = {
