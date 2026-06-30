@@ -502,6 +502,15 @@ def main():
     # Filters
     st.subheader("Filters")
 
+    # Extralimital filter - default excludes extralimital records
+    include_extralimital = st.checkbox(
+        "Include extralimital records",
+        value=False,
+        help="Extralimital = outside the species' natural range (see 'Range' field). Unchecked by default."
+    )
+    if not include_extralimital and 'Range' in df.columns:
+        df = df[df['Range'] != 'Extralimital']
+
     # Create columns for filters
     col1, col2, col3, col4, col5 = st.columns(5)
 
