@@ -175,17 +175,24 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
     filtered['Region0'] = filtered['Region0'].fillna('')
     filtered['Region1'] = filtered['Region1'].fillna('')
     filtered['Site'] = filtered['Site'].fillna('')
-    
+
+    # Ensure Range exists and is grouped on separately, so Natural and
+    # Extralimital records for the same location are never summed together
+    if 'Range' not in filtered.columns:
+        filtered['Range'] = 'Natural'
+    else:
+        filtered['Range'] = filtered['Range'].fillna('Natural')
+
     # Get latest data per location
     latest_data = (filtered
                    .sort_values(['SCALE_RANK', 'TIME'])
-                   .groupby(['Species', 'Subspecies', 'Country', 'Region0', 'Region1', 'Site'])
+                   .groupby(['Species', 'Subspecies', 'Country', 'Region0', 'Region1', 'Site', 'Range'])
                    .first()
                    .reset_index())
-    
+
     # Summarize at site level
     site_data = (latest_data[latest_data['Site'].notna() & (latest_data['Site'] != '')]
-                 .groupby(['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Site'])
+                 .groupby(['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Site', 'Range'])
                  .agg({
                      'Estimate': 'sum',
                      'Lower': 'sum',
@@ -203,7 +210,7 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
     # Must have Region1 not null to be included here
     region1_data = (latest_data[(latest_data['Site'].isna() | (latest_data['Site'] == '')) &
                                 (latest_data['Region1'].notna() & (latest_data['Region1'] != ''))]
-                    .groupby(['Country', 'Species', 'Subspecies', 'Region0', 'Region1'])
+                    .groupby(['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Range'])
                     .agg({
                         'Estimate': 'sum',
                         'Lower': 'sum',
@@ -222,7 +229,7 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
     region0_data = (latest_data[(latest_data['Site'].isna() | (latest_data['Site'] == '')) & 
                                 (latest_data['Region1'].isna() | (latest_data['Region1'] == '')) &
                                 (latest_data['Region0'].notna() & (latest_data['Region0'] != ''))]
-                    .groupby(['Country', 'Species', 'Subspecies', 'Region0'])
+                    .groupby(['Country', 'Species', 'Subspecies', 'Region0', 'Range'])
                     .agg({
                         'Estimate': 'sum',
                         'Lower': 'sum',
@@ -250,28 +257,28 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
     # First: Remove site_data where we have a region1 summary for the same location
     if len(region1_data) > 0:
         site_data = site_data.merge(
-            region1_data[['Country', 'Species', 'Subspecies', 'Region0', 'Region1']],
-            on=['Country', 'Species', 'Subspecies', 'Region0', 'Region1'],
+            region1_data[['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Range']],
+            on=['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Range'],
             how='left',
             indicator=True
         )
         site_data = site_data[site_data['_merge'] == 'left_only'].drop('_merge', axis=1)
-    
+
     # Second: Remove site_data where we have a region0 summary for the same location
     if len(region0_data) > 0:
         site_data = site_data.merge(
-            region0_data[['Country', 'Species', 'Subspecies', 'Region0']],
-            on=['Country', 'Species', 'Subspecies', 'Region0'],
+            region0_data[['Country', 'Species', 'Subspecies', 'Region0', 'Range']],
+            on=['Country', 'Species', 'Subspecies', 'Region0', 'Range'],
             how='left',
             indicator=True
         )
         site_data = site_data[site_data['_merge'] == 'left_only'].drop('_merge', axis=1)
-    
+
     # Third: Remove region1_data where we have a region0 summary for the same location
     if len(region0_data) > 0:
         region1_data = region1_data.merge(
-            region0_data[['Country', 'Species', 'Subspecies', 'Region0']],
-            on=['Country', 'Species', 'Subspecies', 'Region0'],
+            region0_data[['Country', 'Species', 'Subspecies', 'Region0', 'Range']],
+            on=['Country', 'Species', 'Subspecies', 'Region0', 'Range'],
             how='left',
             indicator=True
         )
@@ -293,6 +300,7 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
             'Site': '',
             'Species': '',
             'Subspecies': '',
+            'Range': '',
             'Year': df['Year'].max(),
             'Estimate': combined['Estimate'].sum(),
             'Lower': combined['Lower'].sum(),
@@ -591,11 +599,11 @@ def main():
                 return ''
         
         # Select columns for display
-        display_cols = ['Country', 'Region0', 'Region1', 'Site', 'Species', 'Subspecies', 
+        display_cols = ['Country', 'Region0', 'Region1', 'Site', 'Species', 'Subspecies', 'Range',
                        'Year', 'Estimate', 'Lower', 'Upper', 'IQI', 'YearsSince', 'Reference']
-        
+
         # Fill NaN values with empty string for display
-        for col in ['Region1', 'Site', 'Reference']:
+        for col in ['Region1', 'Site', 'Reference', 'Range']:
             if col in display_df.columns:
                 display_df[col] = display_df[col].fillna('')
         
@@ -644,6 +652,21 @@ def main():
         with col4:
             avg_years = summary[summary['Country'] != 'Total']['YearsSince'].mean()
             st.metric("Avg Years Since Survey", f"{avg_years:.1f}")
+
+        # Natural vs Extralimital record counts per country
+        if include_extralimital:
+            st.subheader("Natural vs Extralimital Records by Country")
+            range_counts = (
+                summary[summary['Country'] != 'Total']
+                .groupby(['Country', 'Range'])
+                .size()
+                .unstack(fill_value=0)
+            )
+            for col in ['Natural', 'Extralimital']:
+                if col not in range_counts.columns:
+                    range_counts[col] = 0
+            range_counts = range_counts[['Natural', 'Extralimital']].reset_index()
+            st.dataframe(range_counts, use_container_width=True, hide_index=True)
 
     with tab2:
         st.header("Giraffe distribution (by species, population)")
