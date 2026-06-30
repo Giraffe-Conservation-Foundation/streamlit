@@ -290,31 +290,61 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
     # Calculate years since survey
     combined['YearsSince'] = datetime.now().year - combined['Year']
     
-    # Add total row
+    # Add total row(s)
     if len(combined) > 0:
-        # Create total row with same structure as combined
-        total_data = {
-            'Country': 'Total',
-            'Region0': 'Total',
-            'Region1': '',
-            'Site': '',
-            'Species': '',
-            'Subspecies': '',
-            'Range': '',
-            'Year': df['Year'].max(),
-            'Estimate': combined['Estimate'].sum(),
-            'Lower': combined['Lower'].sum(),
-            'Upper': combined['Upper'].sum(),
-            'IQI_RANK': combined['IQI_RANK'].mean(),
-            'YearsSince': combined['YearsSince'].mean(),
-            'Reference': ''
-        }
+        # If both Natural and Extralimital records are present, split the
+        # grand total into "Total Natural" / "Total Extralimital" rows so
+        # they're never blended into one number. Otherwise, a single Total row.
+        present_ranges = [r for r in combined['Range'].unique() if r not in (None, '')]
+        order = ['Natural', 'Extralimital']
+        ordered_ranges = [r for r in order if r in present_ranges] + \
+                          [r for r in present_ranges if r not in order]
+
+        total_rows = []
+        if len(ordered_ranges) > 1:
+            for rng in ordered_ranges:
+                subset = combined[combined['Range'] == rng]
+                total_rows.append({
+                    'Country': f'Total {rng}',
+                    'Region0': 'Total',
+                    'Region1': '',
+                    'Site': '',
+                    'Species': '',
+                    'Subspecies': '',
+                    'Range': rng,
+                    'Year': df['Year'].max(),
+                    'Estimate': subset['Estimate'].sum(),
+                    'Lower': subset['Lower'].sum(),
+                    'Upper': subset['Upper'].sum(),
+                    'IQI_RANK': subset['IQI_RANK'].mean(),
+                    'YearsSince': subset['YearsSince'].mean(),
+                    'Reference': ''
+                })
+        else:
+            total_rows.append({
+                'Country': 'Total',
+                'Region0': 'Total',
+                'Region1': '',
+                'Site': '',
+                'Species': '',
+                'Subspecies': '',
+                'Range': ordered_ranges[0] if ordered_ranges else '',
+                'Year': df['Year'].max(),
+                'Estimate': combined['Estimate'].sum(),
+                'Lower': combined['Lower'].sum(),
+                'Upper': combined['Upper'].sum(),
+                'IQI_RANK': combined['IQI_RANK'].mean(),
+                'YearsSince': combined['YearsSince'].mean(),
+                'Reference': ''
+            })
+
         # Add other columns that might exist
-        for col in combined.columns:
-            if col not in total_data:
-                total_data[col] = None
-        
-        total_row = pd.DataFrame([total_data])
+        for row in total_rows:
+            for col in combined.columns:
+                if col not in row:
+                    row[col] = None
+
+        total_row = pd.DataFrame(total_rows)
         # Ensure matching dtypes
         for col in combined.columns:
             if col in total_row.columns:
@@ -323,7 +353,7 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
                 except:
                     pass
         combined = pd.concat([total_row, combined], ignore_index=True)
-    
+
     return combined
 
 # ======== Visualization Functions ========
@@ -361,9 +391,9 @@ def create_map(data, color_by='subspecies'):
     # Create base map centered on Africa
     m = folium.Map(location=[0, 20], zoom_start=4, tiles='OpenStreetMap')
     
-    # Filter out total row and rows without coordinates
-    map_data = data[(data['Country'] != 'Total') & 
-                    (data['x'].notna()) & 
+    # Filter out total row(s) and rows without coordinates
+    map_data = data[(~data['Country'].str.startswith('Total')) &
+                    (data['x'].notna()) &
                     (data['y'].notna()) &
                     (data['Estimate'] > 0)]
     
@@ -637,36 +667,23 @@ def main():
         st.subheader("Summary Statistics")
         col1, col2, col3, col4 = st.columns(4)
         
-        with col1:
-            total_estimate = summary[summary['Country'] != 'Total']['Estimate'].sum()
-            st.metric("Total Population", f"{int(total_estimate):,}")
-        
-        with col2:
-            num_countries = summary[summary['Country'] != 'Total']['Country'].nunique()
-            st.metric("Countries", num_countries)
-        
-        with col3:
-            num_subspecies = summary[summary['Country'] != 'Total']['Subspecies'].nunique()
-            st.metric("Subspecies", num_subspecies)
-        
-        with col4:
-            avg_years = summary[summary['Country'] != 'Total']['YearsSince'].mean()
-            st.metric("Avg Years Since Survey", f"{avg_years:.1f}")
+        non_total = ~summary['Country'].str.startswith('Total')
 
-        # Natural vs Extralimital record counts per country
-        if include_extralimital:
-            st.subheader("Natural vs Extralimital Records by Country")
-            range_counts = (
-                summary[summary['Country'] != 'Total']
-                .groupby(['Country', 'Range'])
-                .size()
-                .unstack(fill_value=0)
-            )
-            for col in ['Natural', 'Extralimital']:
-                if col not in range_counts.columns:
-                    range_counts[col] = 0
-            range_counts = range_counts[['Natural', 'Extralimital']].reset_index()
-            st.dataframe(range_counts, use_container_width=True, hide_index=True)
+        with col1:
+            total_estimate = summary[non_total]['Estimate'].sum()
+            st.metric("Total Population", f"{int(total_estimate):,}")
+
+        with col2:
+            num_countries = summary[non_total]['Country'].nunique()
+            st.metric("Countries", num_countries)
+
+        with col3:
+            num_subspecies = summary[non_total]['Subspecies'].nunique()
+            st.metric("Subspecies", num_subspecies)
+
+        with col4:
+            avg_years = summary[non_total]['YearsSince'].mean()
+            st.metric("Avg Years Since Survey", f"{avg_years:.1f}")
 
     with tab2:
         st.header("Giraffe distribution (by species, population)")
