@@ -232,6 +232,7 @@ def _init_session_state():
         "processed_df":         None,
         "gs_data":              None,
         "renamed_files":        {},
+        "rename_log":           pd.DataFrame(),  # accumulates across multiple upload batches
         "download_zip":         None,
         "n_matched":            None,
         "raw_events":           [],
@@ -279,17 +280,6 @@ def _get_images_tmp_dir() -> str:
     return d
 
 
-def _clear_images_tmp_dir():
-    """Empty (but keep) the session's temp image dir before a fresh run."""
-    d = st.session_state.get("images_tmp_dir")
-    if d and os.path.isdir(d):
-        for fname in os.listdir(d):
-            try:
-                os.remove(os.path.join(d, fname))
-            except OSError:
-                pass
-
-
 def _cleanup_images_tmp_dir():
     """Delete the session's temp image dir entirely (Start Over / Disconnect)."""
     d = st.session_state.get("images_tmp_dir")
@@ -304,6 +294,7 @@ def _reset_results():
     st.session_state.processed_df  = None
     st.session_state.gs_data       = None
     st.session_state.renamed_files = {}
+    st.session_state.rename_log    = pd.DataFrame()
     st.session_state.download_zip  = None
     st.session_state.n_matched     = None
     st.session_state.raw_events    = []
@@ -1649,7 +1640,14 @@ def main():
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("---")
     st.subheader("📸 Step 3: Process my images")
-    st.caption("Upload a single flat ZIP of your survey JPEGs (max 1 GB, no subfolders needed).")
+    st.caption(
+        "Upload a flat ZIP of your survey JPEGs (no subfolders needed). "
+        "On a slow connection, a single large ZIP can time out before it "
+        "finishes uploading — if that happens, split your photos into "
+        "several smaller ZIPs (e.g. under 20 MB each) and upload/rename them "
+        "one at a time below; each batch adds to the results, it doesn't "
+        "replace them. Use **🔄 Start Over** above to clear everything and begin fresh."
+    )
 
     uploaded_zip = st.file_uploader("Upload image ZIP", type=["zip"])
 
@@ -1694,7 +1692,10 @@ def main():
                     shutil.copyfileobj(uploaded_zip, out_f)
 
                 images_dir = _get_images_tmp_dir()
-                _clear_images_tmp_dir()   # drop any images from a previous run this session
+                # NOTE: previously cleared images_dir here before every run, which
+                # meant uploading a second (smaller, e.g. workaround-for-timeout)
+                # batch silently wiped out the first batch's results. Batches now
+                # accumulate instead — use "Start Over" to clear everything.
 
                 renamed_paths, log, gps_lookup = process_images_zip(
                     zip_tmp_path,
@@ -1706,9 +1707,17 @@ def main():
                 )
                 progress_bar.empty()
 
-                st.session_state.renamed_files = renamed_paths
-                st.success(f"✅ Renamed **{len(renamed_paths)}** images.")
-                st.dataframe(log)
+                st.session_state.renamed_files.update(renamed_paths)
+                st.session_state.rename_log = pd.concat(
+                    [st.session_state.rename_log, log], ignore_index=True
+                ) if len(st.session_state.rename_log) else log
+
+                total_so_far = len(st.session_state.renamed_files)
+                st.success(
+                    f"✅ Renamed **{len(renamed_paths)}** images this batch "
+                    f"(**{total_so_far}** total so far)."
+                )
+                st.dataframe(st.session_state.rename_log)
 
                 # ZMB: apply EXIF GPS direction reprojection
                 if country == "ZMB" and gps_lookup:
