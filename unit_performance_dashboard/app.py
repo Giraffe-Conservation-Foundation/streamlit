@@ -325,7 +325,11 @@ def _extract_battery(obs_details, device_status, battery_unit):
     return None
 
 
-def _fetch_one_source_history(session, headers, source_id, since_iso, until_iso):
+def _fetch_one_source_history(session, headers, source_id, since_iso, until_iso, battery_unit):
+    # Extract the battery value immediately per-record rather than accumulating the
+    # full raw observation_details/device_status_properties payload for the whole
+    # history in memory — for a full multi-year fetch across hundreds of devices,
+    # keeping only the raw payloads is a significant, avoidable memory amplifier.
     records = []
     url = (
         f"{ER_SERVER}/api/v1.0/observations/"
@@ -346,22 +350,26 @@ def _fetch_one_source_history(session, headers, source_id, since_iso, until_iso)
         else:
             items, url = [], None
         for it in items:
+            battery = _extract_battery(it.get("observation_details"), it.get("device_status_properties"), battery_unit)
             records.append({
                 "source_id": source_id,
                 "obsDatetime": it.get("recorded_at"),
-                "obs_details": it.get("observation_details"),
-                "device_status": it.get("device_status_properties"),
+                "battery": battery,
             })
     return records
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
+# Bounds worst-case cache memory: without a cap, every distinct (manufacturer,
+# date-range) combination — including ad-hoc test windows from the date-range
+# override — accumulates its own full-history DataFrame for the whole TTL with
+# no eviction, which can add up fast for a report this data-heavy.
+@st.cache_data(ttl=1800, show_spinner=False, max_entries=8)
 def fetch_observation_history(_er, source_ids_tuple, since_iso, until_iso, battery_unit):
     headers = _er.auth_headers()
     all_records = []
     with ThreadPoolExecutor(max_workers=10) as pool:
         futures = {
-            pool.submit(_fetch_one_source_history, _er._http_session, headers, sid, since_iso, until_iso): sid
+            pool.submit(_fetch_one_source_history, _er._http_session, headers, sid, since_iso, until_iso, battery_unit): sid
             for sid in source_ids_tuple
         }
         for fut in as_completed(futures):
@@ -373,7 +381,6 @@ def fetch_observation_history(_er, source_ids_tuple, since_iso, until_iso, batte
         return pd.DataFrame(columns=["source_id", "obsDatetime", "battery"])
     df = pd.DataFrame(all_records)
     df["obsDatetime"] = pd.to_datetime(df["obsDatetime"], utc=True, errors="coerce")
-    df["battery"] = df.apply(lambda r: _extract_battery(r["obs_details"], r["device_status"], battery_unit), axis=1)
     df = df.dropna(subset=["obsDatetime"])
     return df[["source_id", "obsDatetime", "battery"]].reset_index(drop=True)
 
