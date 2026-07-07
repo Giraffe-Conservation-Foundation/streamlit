@@ -299,7 +299,12 @@ def render_giraffe_tab(filtered_df, start_date, end_date, username, password, EA
     st.subheader("🦒 Giraffe Sightings")
     st.caption("Includes both survey encounters and random encounters")
 
-    individuals_seen = filtered_df["evt_herdSize"].sum() if "evt_herdSize" in filtered_df.columns else 0
+    if "event_details.Herd" in filtered_df.columns:
+        _herd_lists = filtered_df["event_details.Herd"].dropna()
+        _n_recorded = int(_herd_lists.apply(lambda x: len(x) if isinstance(x, list) else 0).sum())
+        individuals_seen = _n_recorded if _n_recorded > 0 else (int(filtered_df["evt_herdSize"].fillna(0).sum()) if "evt_herdSize" in filtered_df.columns else 0)
+    else:
+        individuals_seen = int(filtered_df["evt_herdSize"].fillna(0).sum()) if "evt_herdSize" in filtered_df.columns else 0
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -318,22 +323,27 @@ def render_giraffe_tab(filtered_df, start_date, end_date, username, password, EA
 
     #### Sighting map
     st.subheader("📍 Sightings map")
-    map_df = filtered_df.dropna(subset=["lat", "lon"])
+    map_df = filtered_df.dropna(subset=["lat", "lon"]).copy()
     if not map_df.empty:
         zoom_level = _zoom_for_extent(map_df)
 
-        encounter_color_map = {
-            "giraffe_survey_encounter_nam": "#DB580F",  # orange = survey
-            "giraffe_random_encounter_nam": "#000000",  # black = random
-        }
+        # Colour by calendar month; order legend chronologically
+        _MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        map_df["Month"] = pd.Categorical(
+            map_df["evt_dttm"].dt.strftime("%b"),
+            categories=_MONTH_ORDER, ordered=True
+        )
+        _months_present = [m for m in _MONTH_ORDER if m in map_df["Month"].values]
 
         fig_map = px.scatter_mapbox(
             map_df,
             lat="lat",
             lon="lon",
-            color="encounter_type" if "encounter_type" in map_df.columns else None,
-            color_discrete_map=encounter_color_map,
-            hover_data=["evt_dttm", "evt_herdSize"] if "evt_herdSize" in map_df.columns else ["evt_dttm"],
+            color="Month",
+            color_discrete_sequence=px.colors.qualitative.Set2,
+            category_orders={"Month": _months_present},
+            hover_data=["evt_dttm", "evt_herdSize", "encounter_type"] if "evt_herdSize" in map_df.columns else ["evt_dttm", "encounter_type"],
             zoom=zoom_level,
             height=500,
             title="Giraffe Sightings"
