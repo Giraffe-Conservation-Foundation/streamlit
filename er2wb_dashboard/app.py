@@ -1642,11 +1642,19 @@ def main():
     st.subheader("📸 Step 3: Process my images")
     st.caption(
         "Upload a flat ZIP of your survey JPEGs (no subfolders needed). "
-        "On a slow connection, a single large ZIP can time out before it "
-        "finishes uploading — if that happens, split your photos into "
-        "several smaller ZIPs (e.g. under 20 MB each) and upload/rename them "
-        "one at a time below; each batch adds to the results, it doesn't "
-        "replace them. Use **🔄 Start Over** above to clear everything and begin fresh."
+        "**Keep each ZIP under ~40 MB.** Large uploads (hundreds of MB) are "
+        "unreliable here — the app buffers the whole file in a memory-limited "
+        "shared process, so a big ZIP can hang on the spinner or crash before "
+        "it finishes uploading. Split your photos into several small ZIPs and "
+        "upload/rename them one at a time below; **each batch adds to the "
+        "results, it doesn't replace them.** Use **🔄 Start Over** above to "
+        "clear everything and begin fresh."
+    )
+    st.caption(
+        "💡 To split a big photo folder into upload-sized ZIPs automatically, "
+        "run `scripts/split_images_for_er2wb.ps1` on your PC — e.g. "
+        "`.\\split_images_for_er2wb.ps1 -Source \"C:\\path\\to\\photos\"`. "
+        "It writes `batch_01.zip`, `batch_02.zip`, … each ≤ 40 MB."
     )
 
     uploaded_zip = st.file_uploader("Upload image ZIP", type=["zip"])
