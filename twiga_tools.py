@@ -87,6 +87,7 @@ pages = {
         st.Page("pages/1_🔋_GPS_unit_check.py",         title="GPS unit check",        icon="🔋"),
         st.Page("pages/2_🛰️_GPS_Data_Availability.py",  title="GPS Data Availability", icon="🛰️"),
         st.Page("pages/7_📍_Post-Tagging_Dashboard.py", title="Post-Tagging Dashboard", icon="📍"),
+        st.Page("pages/25_📡_Unit_Performance_Report.py", title="Unit Performance Report", icon="📡"),
     ],
     "Data upload": [
         st.Page("pages/5_🚗_Survey_data_backup.py",          title="Survey data backup",      icon="🚗"),
