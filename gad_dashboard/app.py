@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import requests
-import html
 from datetime import datetime
 import folium
 from streamlit_folium import st_folium
@@ -634,20 +633,11 @@ def main():
             if col in display_df.columns:
                 display_df[col] = display_df[col].fillna('')
 
-        # Turn Reference into a clickable link when a ref_url is available
-        def make_reference_link(row):
-            ref_text = html.escape(str(row['Reference'])) if row['Reference'] != '' else ''
-            ref_url = row['ref_url']
-            if ref_url:
-                label = ref_text if ref_text else ref_url
-                return f'<a href="{html.escape(ref_url)}" target="_blank">{label}</a>'
-            return ref_text
-
-        display_df['Reference'] = display_df.apply(make_reference_link, axis=1)
+        display_df = display_df.rename(columns={'ref_url': 'Reference URL'})
 
         # Select columns for display
         display_cols = ['Country', 'Region0', 'Region1', 'Site', 'Species', 'Subspecies', 'Range',
-                       'Year', 'Estimate', 'Lower', 'Upper', 'IQI', 'YearsSince', 'Reference']
+                       'Year', 'Estimate', 'Lower', 'Upper', 'IQI', 'YearsSince', 'Reference', 'Reference URL']
 
         display_df = display_df[display_cols]
 
@@ -671,12 +661,14 @@ def main():
                     pass
             return [color if col == 'YearsSince' else '' for col in row.index]
 
-        # Style and render as HTML so the Reference links stay clickable
-        # (st.dataframe escapes cell HTML, which would show the raw <a> tag)
-        styled_df = display_df.style.apply(highlight_years, axis=1).hide(axis='index')
-        st.markdown(
-            f'<div style="overflow-x:auto">{styled_df.to_html(escape=False)}</div>',
-            unsafe_allow_html=True
+        # Style and display all rows
+        styled_df = display_df.style.apply(highlight_years, axis=1)
+        st.dataframe(
+            styled_df,
+            use_container_width=True,
+            column_config={
+                'Reference URL': st.column_config.LinkColumn('Reference URL')
+            }
         )
         
         # Summary statistics
