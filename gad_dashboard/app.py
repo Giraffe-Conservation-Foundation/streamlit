@@ -85,30 +85,35 @@ def load_gad_data():
 # A rollup is dropped in favour of its more granular child records if it's
 # out of date (child data this many years newer, compared using `Period` -
 # Year plus a fractional survey month, so e.g. Dec 2015 vs Jan 2015 isn't
-# treated as an exact tie) OR poor quality (its own IQI_RANK this many
-# points worse than even the WORST-ranked child in the group) - either
-# condition alone is enough to knock it down, they don't need to co-occur.
-# Quality is judged against the worst child, not the average, so one or two
-# strong sibling sites can't drag a mixed-quality group's average down and
-# unfairly unseat the rollup on their behalf - the rollup should only lose
-# on quality grounds if every child site is meaningfully better than it.
+# treated as an exact tie) OR poor quality (its own IQI_RANK is at or above
+# this absolute floor - i.e. Guesstimate or blank/unrecognized method).
+# Either condition alone is enough to knock the rollup down, they don't
+# need to co-occur.
+#
+# Quality is judged as an absolute floor on the rollup's OWN method, not a
+# comparison against its child sites' methods. A legitimate survey method
+# (Observation, Ground/Aerial sample or total) is "good enough" regardless
+# of what method the child sites happen to use - e.g. a regional Aerial
+# sample should NOT lose to site-level Ground sample records just because
+# "Ground sample" ranks higher in the method table; that's a difference in
+# survey scope, not evidence the regional data is unreliable.
 RECENCY_THRESHOLD_YEARS = 2
-QUALITY_MARGIN = 1
+POOR_QUALITY_RANK_FLOOR = 4
 
 def apply_precedence(parent_df, child_df, keys,
                       recency_threshold=RECENCY_THRESHOLD_YEARS,
-                      quality_margin=QUALITY_MARGIN):
+                      poor_quality_rank_floor=POOR_QUALITY_RANK_FLOOR):
     """Decide, per group on `keys`, whether a rollup (parent_df) or its more
     granular records (child_df) should be shown.
 
     The parent rollup is the default choice, EXCEPT when it has a matching
-    child group that is either:
+    child group and either:
       - out of date: the child group's latest survey (by `Period`, i.e.
         year + survey month) is more than `recency_threshold` years newer
         than the rollup's own `Period`, or
-      - poor quality: the rollup's own IQI_RANK is more than `quality_margin`
-        points worse than the WORST (highest) IQI_RANK among that child
-        group - i.e. every single child site must be that much better.
+      - poor quality: the rollup's own IQI_RANK is >= `poor_quality_rank_floor`
+        (Guesstimate or blank/unrecognized method) - an absolute floor on
+        the rollup's own method, regardless of what the child sites used.
     Either condition alone drops the rollup for that group - recency and
     quality are checked independently, not just when they're both marginal.
     """
@@ -116,13 +121,13 @@ def apply_precedence(parent_df, child_df, keys,
         return parent_df, child_df
 
     child_summary = (child_df.groupby(keys)
-                      .agg(_child_period=('Period', 'max'), _child_iqi=('IQI_RANK', 'max'))
+                      .agg(_child_period=('Period', 'max'))
                       .reset_index())
 
     parent_merged = parent_df.merge(child_summary, on=keys, how='left')
     has_child = parent_merged['_child_period'].notna()
     out_of_date = has_child & (parent_merged['_child_period'] - parent_merged['Period'] > recency_threshold)
-    poor_quality = has_child & (parent_merged['IQI_RANK'] - parent_merged['_child_iqi'] > quality_margin)
+    poor_quality = has_child & (parent_merged['IQI_RANK'] >= poor_quality_rank_floor)
 
     parent_wins = (~has_child) | (~out_of_date & ~poor_quality)
 
