@@ -84,8 +84,13 @@ def load_gad_data():
 
 # A rollup is dropped in favour of its more granular child records if it's
 # out of date (child data this many years newer) OR poor quality (its own
-# IQI_RANK this many points worse than the child group's average) - either
-# condition alone is enough to knock it down, they don't need to co-occur.
+# IQI_RANK this many points worse than even the WORST-ranked child in the
+# group) - either condition alone is enough to knock it down, they don't
+# need to co-occur. Quality is judged against the worst child, not the
+# average, so one or two strong sibling sites can't drag a mixed-quality
+# group's average down and unfairly unseat the rollup on their behalf -
+# the rollup should only lose on quality grounds if every child site is
+# meaningfully better than it.
 RECENCY_THRESHOLD_YEARS = 2
 QUALITY_MARGIN = 1
 
@@ -100,7 +105,8 @@ def apply_precedence(parent_df, child_df, keys,
       - out of date: the child group's latest survey is more than
         `recency_threshold` years newer than the rollup, or
       - poor quality: the rollup's own IQI_RANK is more than `quality_margin`
-        points worse than the child group's average IQI_RANK.
+        points worse than the WORST (highest) IQI_RANK among that child
+        group - i.e. every single child site must be that much better.
     Either condition alone drops the rollup for that group - recency and
     quality are checked independently, not just when they're both marginal.
     """
@@ -108,7 +114,7 @@ def apply_precedence(parent_df, child_df, keys,
         return parent_df, child_df
 
     child_summary = (child_df.groupby(keys)
-                      .agg(_child_year=('Year', 'max'), _child_iqi=('IQI_RANK', 'mean'))
+                      .agg(_child_year=('Year', 'max'), _child_iqi=('IQI_RANK', 'max'))
                       .reset_index())
 
     parent_merged = parent_df.merge(child_summary, on=keys, how='left')
