@@ -136,22 +136,24 @@ def calculate_scale_rank(scale):
 
 def calculate_iqi_rank(method, std_err, ci_upper):
     """Calculate IQI ranking based on method and precision"""
-    # Handle NA values from arcgis
-    method_str = str(method) if pd.notna(method) else ""
-    
-    if method_str == "Observation":
+    # Handle NA values from arcgis, and tolerate case/whitespace variants
+    # from older or manually-entered records (e.g. "Aerial Total" vs
+    # "Aerial total") so they aren't silently misclassified as rank 5
+    method_str = str(method).strip().lower() if pd.notna(method) else ""
+
+    if method_str == "observation":
         return 1
-    elif method_str == "Ground sample" and (pd.notna(std_err) or pd.notna(ci_upper)):
+    elif method_str == "ground sample" and (pd.notna(std_err) or pd.notna(ci_upper)):
         return 1
-    elif method_str == "Ground sample" and (pd.isna(std_err) and pd.isna(ci_upper)):
+    elif method_str == "ground sample" and (pd.isna(std_err) and pd.isna(ci_upper)):
         return 2
-    elif method_str == "Aerial sample" and (pd.notna(std_err) or pd.notna(ci_upper)):
+    elif method_str == "aerial sample" and (pd.notna(std_err) or pd.notna(ci_upper)):
         return 2
-    elif method_str == "Aerial sample" and (pd.isna(std_err) and pd.isna(ci_upper)):
+    elif method_str == "aerial sample" and (pd.isna(std_err) and pd.isna(ci_upper)):
         return 3
-    elif method_str in ["Ground total", "Aerial total"]:
+    elif method_str in ["ground total", "aerial total"]:
         return 3
-    elif method_str == "Guesstimate":
+    elif method_str == "guesstimate":
         return 4
     else:
         return 5
