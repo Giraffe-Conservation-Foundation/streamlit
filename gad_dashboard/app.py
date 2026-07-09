@@ -73,7 +73,7 @@ def load_gad_data():
     df = df[df['SCALE'] != 'GOV']
     
     # Convert numeric columns
-    numeric_cols = ['Year', 'Estimate', 'Std_Err', 'CI_lower', 'CI_upper', 'x', 'y']
+    numeric_cols = ['Year', 'Month', 'Estimate', 'Std_Err', 'CI_lower', 'CI_upper', 'x', 'y']
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -83,14 +83,15 @@ def load_gad_data():
 # ======== Data Processing Functions ========
 
 # A rollup is dropped in favour of its more granular child records if it's
-# out of date (child data this many years newer) OR poor quality (its own
-# IQI_RANK this many points worse than even the WORST-ranked child in the
-# group) - either condition alone is enough to knock it down, they don't
-# need to co-occur. Quality is judged against the worst child, not the
-# average, so one or two strong sibling sites can't drag a mixed-quality
-# group's average down and unfairly unseat the rollup on their behalf -
-# the rollup should only lose on quality grounds if every child site is
-# meaningfully better than it.
+# out of date (child data this many years newer, compared using `Period` -
+# Year plus a fractional survey month, so e.g. Dec 2015 vs Jan 2015 isn't
+# treated as an exact tie) OR poor quality (its own IQI_RANK this many
+# points worse than even the WORST-ranked child in the group) - either
+# condition alone is enough to knock it down, they don't need to co-occur.
+# Quality is judged against the worst child, not the average, so one or two
+# strong sibling sites can't drag a mixed-quality group's average down and
+# unfairly unseat the rollup on their behalf - the rollup should only lose
+# on quality grounds if every child site is meaningfully better than it.
 RECENCY_THRESHOLD_YEARS = 2
 QUALITY_MARGIN = 1
 
@@ -102,8 +103,9 @@ def apply_precedence(parent_df, child_df, keys,
 
     The parent rollup is the default choice, EXCEPT when it has a matching
     child group that is either:
-      - out of date: the child group's latest survey is more than
-        `recency_threshold` years newer than the rollup, or
+      - out of date: the child group's latest survey (by `Period`, i.e.
+        year + survey month) is more than `recency_threshold` years newer
+        than the rollup's own `Period`, or
       - poor quality: the rollup's own IQI_RANK is more than `quality_margin`
         points worse than the WORST (highest) IQI_RANK among that child
         group - i.e. every single child site must be that much better.
@@ -114,12 +116,12 @@ def apply_precedence(parent_df, child_df, keys,
         return parent_df, child_df
 
     child_summary = (child_df.groupby(keys)
-                      .agg(_child_year=('Year', 'max'), _child_iqi=('IQI_RANK', 'max'))
+                      .agg(_child_period=('Period', 'max'), _child_iqi=('IQI_RANK', 'max'))
                       .reset_index())
 
     parent_merged = parent_df.merge(child_summary, on=keys, how='left')
-    has_child = parent_merged['_child_year'].notna()
-    out_of_date = has_child & (parent_merged['_child_year'] - parent_merged['Year'] > recency_threshold)
+    has_child = parent_merged['_child_period'].notna()
+    out_of_date = has_child & (parent_merged['_child_period'] - parent_merged['Period'] > recency_threshold)
     poor_quality = has_child & (parent_merged['IQI_RANK'] - parent_merged['_child_iqi'] > quality_margin)
 
     parent_wins = (~has_child) | (~out_of_date & ~poor_quality)
@@ -222,6 +224,14 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
     filtered['IQI_RANK'] = filtered.apply(lambda x: calculate_iqi_rank(x['Methods__field'], x['Std_Err'], x['CI_upper']), axis=1)
     filtered['TIME'] = datetime.now().year - filtered['Year']
     filtered['RANK'] = (filtered['SCALE_RANK'] * 2) + (filtered['IQI_RANK'] * 3) + (filtered['TIME'] * 1)
+
+    # Sub-year precision for recency comparisons (e.g. a Dec 2015 rollup vs.
+    # a Jan 2015 site shouldn't be treated as an exact tie). Missing month
+    # defaults to mid-year (6) so an unknown month isn't biased toward
+    # looking artificially older or newer than a dated record either side.
+    if 'Month' not in filtered.columns:
+        filtered['Month'] = None
+    filtered['Period'] = filtered['Year'] + (filtered['Month'].fillna(6) - 1) / 12
     
     # Calculate bounds
     filtered[['Lower', 'Upper']] = filtered.apply(calculate_bounds, axis=1)
@@ -253,6 +263,7 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
                      'Lower': 'sum',
                      'Upper': 'sum',
                      'Year': 'max',
+                     'Period': 'max',
                      'IQI_RANK': 'mean',
                      'Reference': 'first',
                      'ref_url': 'first',
@@ -271,6 +282,7 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
                         'Lower': 'sum',
                         'Upper': 'sum',
                         'Year': 'max',
+                        'Period': 'max',
                         'IQI_RANK': 'mean',
                         'Reference': 'first',
                         'ref_url': 'first',
@@ -290,6 +302,7 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
                         'Lower': 'sum',
                         'Upper': 'sum',
                         'Year': 'max',
+                        'Period': 'max',
                         'IQI_RANK': 'mean',
                         'Reference': 'first',
                         'ref_url': 'first',
