@@ -629,9 +629,13 @@ def main():
                 return ''
         
         # Fill NaN values with empty string for display
-        for col in ['Region1', 'Site', 'Reference', 'Range', 'ref_url']:
+        for col in ['Region1', 'Site', 'Reference', 'Range']:
             if col in display_df.columns:
                 display_df[col] = display_df[col].fillna('')
+
+        # Leave missing ref_url as a true null (not '') so LinkColumn renders
+        # an empty cell instead of a link with no destination
+        display_df['ref_url'] = display_df['ref_url'].replace('', None)
 
         display_df = display_df.rename(columns={'ref_url': 'Reference URL'})
 
