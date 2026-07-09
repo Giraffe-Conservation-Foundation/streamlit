@@ -82,46 +82,6 @@ def load_gad_data():
 
 # ======== Data Processing Functions ========
 
-# How many years apart counts as "close" enough that survey quality (not just
-# recency) should decide whether a rollup or its more granular child records win
-RECENCY_QUALITY_THRESHOLD_YEARS = 2
-
-def apply_precedence(parent_df, child_df, keys, threshold=RECENCY_QUALITY_THRESHOLD_YEARS):
-    """Decide, per group on `keys`, whether a rollup (parent_df) or its more
-    granular records (child_df) should be shown.
-
-    The parent rollup wins if it has no matching child group, if it's more
-    than `threshold` years newer than the child group's latest survey, or if
-    the two are within `threshold` years and the parent has same-or-better
-    survey quality (lower IQI_RANK). Otherwise the child group wins and the
-    parent rollup is dropped for that group.
-    """
-    if parent_df.empty or child_df.empty:
-        return parent_df, child_df
-
-    child_summary = (child_df.groupby(keys)
-                      .agg(_child_year=('Year', 'max'), _child_iqi=('IQI_RANK', 'mean'))
-                      .reset_index())
-
-    parent_merged = parent_df.merge(child_summary, on=keys, how='left')
-    has_child = parent_merged['_child_year'].notna()
-    year_diff = parent_merged['Year'] - parent_merged['_child_year']
-    close_years = year_diff.abs() <= threshold
-    parent_quality_ok = parent_merged['IQI_RANK'] <= parent_merged['_child_iqi']
-
-    parent_wins = (~has_child) | (year_diff > threshold) | (close_years & parent_quality_ok)
-
-    kept_parent = parent_df[parent_wins.to_numpy()].reset_index(drop=True)
-
-    drop_keys = parent_merged.loc[has_child & parent_wins, keys].drop_duplicates()
-    if len(drop_keys) > 0:
-        child_marked = child_df.merge(drop_keys, on=keys, how='left', indicator=True)
-        kept_child = child_df[child_marked['_merge'].to_numpy() == 'left_only'].reset_index(drop=True)
-    else:
-        kept_child = child_df
-
-    return kept_parent, kept_child
-
 def calculate_scale_rank(scale):
     """Calculate scale ranking"""
     scale_map = {'ISO': 1, 'REGION': 2, 'SUBREGION': 3, 'SITE': 4}
@@ -290,27 +250,39 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
     # Add Site column to region1_data so structure matches for combining
     region1_data['Site'] = ''
     
-    # Use most aggregated data available, UNLESS the more granular level is
-    # meaningfully more recent (or, when recency is close, of better survey
-    # quality) than the rollup above it. See apply_precedence().
+    # R anti_join logic: Use most aggregated data available
+    # If a region0 summary exists, don't include any region1 or site data for that region0
+    # If a region1 summary exists (but no region0), don't include site data for that region1
+    
+    # First: Remove site_data where we have a region1 summary for the same location
+    if len(region1_data) > 0:
+        site_data = site_data.merge(
+            region1_data[['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Range']],
+            on=['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Range'],
+            how='left',
+            indicator=True
+        )
+        site_data = site_data[site_data['_merge'] == 'left_only'].drop('_merge', axis=1)
 
-    # First: region1 rollup vs. its site-level records
-    region1_data, site_data = apply_precedence(
-        region1_data, site_data,
-        keys=['Country', 'Species', 'Subspecies', 'Region0', 'Region1', 'Range']
-    )
+    # Second: Remove site_data where we have a region0 summary for the same location
+    if len(region0_data) > 0:
+        site_data = site_data.merge(
+            region0_data[['Country', 'Species', 'Subspecies', 'Region0', 'Range']],
+            on=['Country', 'Species', 'Subspecies', 'Region0', 'Range'],
+            how='left',
+            indicator=True
+        )
+        site_data = site_data[site_data['_merge'] == 'left_only'].drop('_merge', axis=1)
 
-    # Second: region0 rollup vs. remaining site-level records
-    region0_data, site_data = apply_precedence(
-        region0_data, site_data,
-        keys=['Country', 'Species', 'Subspecies', 'Region0', 'Range']
-    )
-
-    # Third: region0 rollup vs. remaining region1-level records
-    region0_data, region1_data = apply_precedence(
-        region0_data, region1_data,
-        keys=['Country', 'Species', 'Subspecies', 'Region0', 'Range']
-    )
+    # Third: Remove region1_data where we have a region0 summary for the same location
+    if len(region0_data) > 0:
+        region1_data = region1_data.merge(
+            region0_data[['Country', 'Species', 'Subspecies', 'Region0', 'Range']],
+            on=['Country', 'Species', 'Subspecies', 'Region0', 'Range'],
+            how='left',
+            indicator=True
+        )
+        region1_data = region1_data[region1_data['_merge'] == 'left_only'].drop('_merge', axis=1)
     
     # Combine all data (R: bind_rows)
     combined = pd.concat([site_data, region1_data, region0_data], ignore_index=True)
