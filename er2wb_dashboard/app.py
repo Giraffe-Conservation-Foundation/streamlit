@@ -612,6 +612,25 @@ def fetch_er_events(country: str,
 
 # ─── Data processing ───────────────────────────────────────────────────────────
 
+# Per-individual fields inside the Herd/Group list are keyed under a
+# species-specific prefix in ER (giraffe_id/giraffe_age/... for GiraffeSpotter,
+# elephant_id/elephant_age/... for Whiskerbook, lion_id/cheetah_id/leopard_id/
+# wilddog_id/... for African Carnivore Wildbook), even though the form
+# structure is otherwise identical across platforms. Rather than hardcoding
+# every species name, find whichever prefix is actually present in the record.
+
+
+def _individual_field(rec: dict, field: str):
+    """Look up a per-individual field (id/age/sex/right/left/notes) by
+    matching the "*_{field}" key actually present in this record, regardless
+    of the species-specific prefix ER stored it under."""
+    suffix = f"_{field}"
+    for key in rec:
+        if key.endswith(suffix):
+            return rec.get(key)
+    return None
+
+
 def process_er_data(raw_events: list, country: str, er_username: str,
                     date_start: date, date_end: date,
                     giraffe_id_map: dict = None,
@@ -670,16 +689,16 @@ def process_er_data(raw_events: list, country: str, er_username: str,
             for giraffe in herd_list:
                 if not isinstance(giraffe, dict):
                     continue
-                gr = giraffe.get("giraffe_right")
-                gl = giraffe.get("giraffe_left")
+                gr = _individual_field(giraffe, "right")
+                gl = _individual_field(giraffe, "left")
                 herd_rows.append({
                     "id":            evt.get("id"),
-                    "giraffe_id":    giraffe.get("giraffe_id", ""),
-                    "giraffe_age":   giraffe.get("giraffe_age", ""),
-                    "giraffe_sex":   giraffe.get("giraffe_sex", ""),
+                    "giraffe_id":    _individual_field(giraffe, "id") or "",
+                    "giraffe_age":   _individual_field(giraffe, "age") or "",
+                    "giraffe_sex":   _individual_field(giraffe, "sex") or "",
                     "giraffe_right": str(int(gr)).zfill(4) if gr is not None else None,
                     "giraffe_left":  str(int(gl)).zfill(4) if gl is not None else None,
-                    "giraffe_notes": giraffe.get("giraffe_notes", ""),
+                    "giraffe_notes": _individual_field(giraffe, "notes") or "",
                 })
         else:
             herd_rows.append({
