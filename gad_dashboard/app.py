@@ -253,9 +253,12 @@ def process_data(df, species_filter=None, subspecies_filter=None, country_filter
     else:
         filtered['Range'] = filtered['Range'].fillna('Natural')
 
-    # Get latest data per location
+    # Get latest data per location. Ties on Period (e.g. two records from
+    # the same year with no distinguishing month) fall back to IQI_RANK, so
+    # a better-quality method wins over a merely earlier-in-the-query one
+    # rather than the choice being arbitrary row order.
     latest_data = (filtered
-                   .sort_values(['SCALE_RANK', 'TIME'])
+                   .sort_values(['SCALE_RANK', 'Period', 'IQI_RANK'], ascending=[True, False, True])
                    .groupby(['Species', 'Subspecies', 'Country', 'Region0', 'Region1', 'Site', 'Range'])
                    .first()
                    .reset_index())
