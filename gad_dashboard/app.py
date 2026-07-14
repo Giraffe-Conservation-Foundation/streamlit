@@ -460,7 +460,12 @@ def create_map(data, color_by='subspecies'):
                     (data['x'].notna()) &
                     (data['y'].notna()) &
                     (data['Estimate'] > 0)]
-    
+
+    # Cluster markers instead of adding ~thousands of raw CircleMarkers
+    # straight to the map - keeps memory/DOM load manageable as the
+    # summary table grows (more Subspecies values means more rows).
+    cluster = MarkerCluster().add_to(m)
+
     # Add markers
     for _, row in map_data.iterrows():
         location_name = row['Site'] if pd.notna(row['Site']) and row['Site'] != '' else \
@@ -495,8 +500,8 @@ def create_map(data, color_by='subspecies'):
             fillColor=marker_color,
             fillOpacity=0.7,
             weight=2
-        ).add_to(m)
-    
+        ).add_to(cluster)
+
     return m
 
 # ======== Data Submission Functions ========
