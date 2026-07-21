@@ -165,8 +165,8 @@ def build_rename_map(species):
     }
 
 @st.cache_data(ttl=3600)
-def load_species_data(event_type, since, until):
-    """Fetch monitoring_nanw events for a given event_type and explode the Herd details."""
+def load_species_data(event_type, since, until, event_category="monitoring_nanw"):
+    """Fetch events of a given event_category for a given event_type and explode the Herd details."""
     er = EarthRangerIO(
         server=EARTHRANGER_SERVER,
         username=username,
@@ -174,7 +174,7 @@ def load_species_data(event_type, since, until):
     )
 
     events = er.get_events(
-        event_category="monitoring_nanw",
+        event_category=event_category,
         since=since,
         until=until,
         include_details=True,
@@ -216,6 +216,12 @@ UNTIL = "2030-12-31T23:59:59Z"
 
 df_gir_raw, herd_gir_raw = load_species_data("giraffe_nw_monitoring", SINCE, UNTIL)
 df_ele_raw, herd_ele_raw = load_species_data("elephant_nw_monitoring", SINCE, UNTIL)
+df_ele_ns_raw, herd_ele_ns_raw = load_species_data(
+    "elephant_nw_monitoring_ns", SINCE, UNTIL, event_category="monitoring_ns"
+)
+
+df_ele_raw = pd.concat([df_ele_raw, df_ele_ns_raw], ignore_index=True)
+herd_ele_raw = pd.concat([herd_ele_raw, herd_ele_ns_raw], ignore_index=True)
 
 df_gir = prep_species_df(df_gir_raw, "giraffe")
 df_ele = prep_species_df(df_ele_raw, "elephant")
@@ -505,6 +511,8 @@ def render_species_tab(
     show_aag=False,
     show_movement=False,
     marker_color="red",
+    color_by_event_type=False,
+    event_type_colors=None,
 ):
     if full_df.empty:
         st.info(f"No {species_label.lower()} monitoring data available yet.")
@@ -560,8 +568,9 @@ def render_species_tab(
         else:
             map_style = "open-street-map"
 
-        fig_map = px.scatter_mapbox(
-            map_df,
+        use_event_type_color = color_by_event_type and "evt_type" in map_df.columns
+
+        map_kwargs = dict(
             lat="lat",
             lon="lon",
             hover_data=["evt_dttm", "evt_herdSize"] if "evt_herdSize" in map_df.columns else ["evt_dttm"],
@@ -569,6 +578,12 @@ def render_species_tab(
             height=500,
             title=f"{species_label} Sightings"
         )
+        if use_event_type_color:
+            map_kwargs["color"] = "evt_type"
+            if event_type_colors:
+                map_kwargs["color_discrete_map"] = event_type_colors
+
+        fig_map = px.scatter_mapbox(map_df, **map_kwargs)
 
         fig_map.update_layout(
             mapbox_style=map_style,
@@ -581,7 +596,10 @@ def render_species_tab(
             plot_bgcolor="rgba(0,0,0,0)"
         )
 
-        fig_map.update_traces(marker=dict(size=12, color=marker_color, opacity=0.8))
+        if use_event_type_color:
+            fig_map.update_traces(marker=dict(size=12, opacity=0.8))
+        else:
+            fig_map.update_traces(marker=dict(size=12, color=marker_color, opacity=0.8))
 
         st.plotly_chart(fig_map, use_container_width=True)
     else:
@@ -716,4 +734,9 @@ with tab_elephant:
         show_aag=False,
         show_movement=False,
         marker_color="#4A4A4A",
+        color_by_event_type=True,
+        event_type_colors={
+            "elephant_nw_monitoring": "#4A4A4A",
+            "elephant_nw_monitoring_ns": "#2E86DE",
+        },
     )
