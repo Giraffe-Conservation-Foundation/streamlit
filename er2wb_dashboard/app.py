@@ -55,10 +55,10 @@ TIMEZONE_MAP = {
 COUNTRY_SITES = {
     "BWA":      ["CHNP", "CTGR", "MWNP", "NG20", "NG29", "NPNP", "NTGR"],
     "CMR":      ["BNNP"],
-    "KEN":      ["COCO", "EOCO", "IMRA", "ISCO", "LECO", "LOWC", "MBCO", "MMNR",
-                 "MNWC", "MOCO", "MPRC", "MTCO", "MUWC", "MWNR", "NACO", "NAWC", "NIWC",
-                 "OHCO", "OICO", "OLCO", "OKWC", "PACA", "RHNP", "RICO", "RUNP",
-                 "SANR", "SICO", "TENP", "TWNP"],
+    "KEN":      ["BINR", "COCO", "EOCO", "IMRA", "ISCO", "KONP", "LECO", "LOWC", "MBCO",
+                 "MENP", "MMNR", "MNWC", "MOCO", "MPRC", "MTCO", "MUWC", "MWNR", "NACO",
+                 "NAWC", "NIWC", "OHCO", "OICO", "OLCO", "OKWC", "PACA", "RHNP", "RICO",
+                 "RUNP", "SANR", "SICO", "TENP", "TWNP"],
     "NAM":      ["BACO", "BLCO", "BWNP", "DZCO", "EHGR", "GMCO", "KWCO", "MNCO",
                  "MNNP", "MSCO", "MUNP", "MYCO", "NANW", "NJCO", "NKNP", "NNCO", "SACO",
                  "SBCO", "SKCO", "UIFA", "WUCO"],
@@ -116,6 +116,8 @@ SITE_NAMES = {
     "MPRC": "Mpala",                          "MUWC": "Mugie",
     "MWNR": "Mwea National Reserve",          "NIWC": "Naibunga",
     "SANR": "Samburu National Reserve",
+    "MENP": "Meru National Park",             "KONP": "Kora National Park",
+    "BINR": "Bisanadi National Reserve",
     # Tanzania
     "MKNP": "Mkomazi National Park",       "SANP": "Serengeti National Park",
     # Uganda
