@@ -1,18 +1,100 @@
 import streamlit as st
 import pandas as pd
+import requests as _requests
 from datetime import datetime, timedelta, date
 import plotly.express as px
 import plotly.graph_objects as go
 import os
 from pathlib import Path
 
-# Ecoscope imports for EarthRanger integration
+# Ecoscope kept for optional debug mode only — main data path uses requests directly
 try:
     from ecoscope.io.earthranger import EarthRangerIO
     ECOSCOPE_AVAILABLE = True
 except ImportError:
     ECOSCOPE_AVAILABLE = False
-    st.warning("⚠️ Ecoscope package not available. Please install ecoscope to use this dashboard.")
+
+_ER_BASE   = "https://twiga.pamdas.org"
+_AUTH_TIMEOUT = 15   # seconds — login request
+_DATA_TIMEOUT = 45   # seconds — event data request
+
+
+def _get_token(username, password):
+    """Authenticate and return an access token. Raises on failure."""
+    r = _requests.post(
+        f"{_ER_BASE}/api/v1.0/auth/token/",
+        json={"username": username, "password": password},
+        timeout=_AUTH_TIMEOUT,
+    )
+    r.raise_for_status()
+    return r.json()["access_token"]
+
+
+def _fetch_events(token, event_type_value, since=None, until=None):
+    """
+    Fetch events from the ER REST API filtered to a single event_type value.
+    Resolves the type to a UUID first (fast, ~1 s) so the events query only
+    returns the records we actually want.  Falls back to event_category filter
+    if the UUID lookup fails.
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # ── resolve event type value → UUID ───────────────────────────────────────
+    event_type_id = None
+    try:
+        et_r = _requests.get(
+            f"{_ER_BASE}/api/v1.0/activity/events/eventtypes/",
+            headers=headers,
+            timeout=_AUTH_TIMEOUT,
+        )
+        if et_r.ok:
+            items = et_r.json()
+            if not isinstance(items, list):
+                items = items.get("results", items.get("data", []))
+            for item in items:
+                if item.get("value") == event_type_value:
+                    event_type_id = item.get("id")
+                    break
+    except Exception:
+        pass
+
+    # ── build query params ────────────────────────────────────────────────────
+    params = {
+        "include_details": "true",
+        "include_notes":   "true",
+        "page_size":       100,
+    }
+    if event_type_id:
+        params["event_type"] = event_type_id
+    else:
+        # fallback: fetch by category and filter client-side
+        params["event_category"] = "veterinary"
+
+    if since:
+        params["since"] = since
+    if until:
+        params["until"] = until
+
+    # ── paginate ──────────────────────────────────────────────────────────────
+    results = []
+    url = f"{_ER_BASE}/api/v1.0/events/"
+    req_params = params
+
+    while url and len(results) < 500:
+        r = _requests.get(url, headers=headers, params=req_params, timeout=_DATA_TIMEOUT)
+        r.raise_for_status()
+        req_params = None          # subsequent pages use the `next` URL directly
+        data = r.json()
+
+        if isinstance(data, list):
+            results.extend(data)
+            break
+
+        batch = data.get("results", data.get("data", []))
+        results.extend(batch)
+        url = data.get("next")
+
+    return results
 
 # Location area data for range calculations (in km²)
 LOCATION_AREAS = {
@@ -24,16 +106,11 @@ LOCATION_AREAS = {
     'Pian Upe Wildlife Reserve': 2275,
     'Ongongo': 501,
     'Mnjoli Game Reserve': 4,
+    'Bicuar National Park': 7900,
     # Add more locations and their areas as needed
 }
 
-# Make main available at module level for import
-def main():
-    """Main application entry point - delegates to _main_implementation"""
-    return _main_implementation()
-
-# Custom CSS for better styling
-st.markdown("""
+_CSS = """
 <style>
     .logo-title {
         color: #DB580F;
@@ -64,7 +141,11 @@ st.markdown("""
         border-left: 4px solid #007bff;
     }
 </style>
-""", unsafe_allow_html=True)
+"""
+
+def main():
+    """Main application entry point - delegates to _main_implementation"""
+    return _main_implementation()
 
 def init_session_state():
     """Initialize session state variables"""
@@ -78,248 +159,130 @@ def init_session_state():
         st.session_state.server_url = "https://twiga.pamdas.org"
 
 def authenticate_earthranger():
-    """Handle EarthRanger authentication using ecoscope"""
-    if not ECOSCOPE_AVAILABLE:
-        st.error("❌ Ecoscope package is required but not available. Please install ecoscope.")
-        return
-        
+    """Handle EarthRanger authentication."""
     st.header("🔐 EarthRanger Authentication")
-    
-    st.write("Enter your EarthRanger credentials to access the translocation dashboard:")
-    
-    # Fixed server URL
     st.info("**Server:** https://twiga.pamdas.org")
-    
-    # Username and password inputs
-    username = st.text_input(
-        "Username",
-        help="Your EarthRanger username"
-    )
-    
-    password = st.text_input(
-        "Password",
-        type="password",
-        help="Your EarthRanger password"
-    )
-    
+
+    username = st.text_input("Username", help="Your EarthRanger username")
+    password = st.text_input("Password", type="password", help="Your EarthRanger password")
+
     if st.button("🔌 Connect to EarthRanger", type="primary"):
         if not username or not password:
             st.error("❌ Both username and password are required")
             return
-        
+
         try:
-            with st.spinner("🔐 Authenticating with EarthRanger..."):
-                # Test the connection by creating EarthRangerIO - this validates credentials
-                er_io = EarthRangerIO(
-                    server=st.session_state.server_url,
-                    username=username,
-                    password=password
-                )
-                
-                # Just test the connection without fetching data for faster authentication
-                # The EarthRangerIO initialization already validates the connection
-                
-                st.success("✅ Successfully authenticated with EarthRanger!")
-                st.session_state.authenticated = True
-                st.session_state.username = username
-                st.session_state.password = password
-                
-                st.rerun()
-                
+            with st.spinner("🔐 Authenticating…"):
+                _get_token(username, password)   # raises if credentials wrong
+
+            st.success("✅ Connected to EarthRanger!")
+            st.session_state.authenticated = True
+            st.session_state.username = username
+            st.session_state.password = password
+            st.rerun()
+
+        except _requests.exceptions.Timeout:
+            st.error("⏱️ Connection timed out (15 s). EarthRanger may be slow — try again.")
+        except _requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code in (400, 401, 403):
+                st.error("❌ Incorrect username or password.")
+            else:
+                st.error(f"❌ Server error: {e}")
         except Exception as e:
-            st.error(f"❌ Authentication failed: {str(e)}")
-            st.info("💡 Please check your username and password")
+            st.error(f"❌ Authentication failed: {e}")
 
-@st.cache_data(ttl=1800, show_spinner=False)  # Cache for 30 minutes
+@st.cache_data(ttl=1800, show_spinner=False)
 def get_mortality_events(start_date=None, end_date=None, username=None, _password=None, _debug=False):
-    """Fetch mortality events from EarthRanger using ecoscope"""
-    if not ECOSCOPE_AVAILABLE:
-        st.error("❌ Ecoscope package is required but not available.")
-        return pd.DataFrame()
-
+    """Fetch giraffe_mortality events from EarthRanger."""
     if not username or not _password:
         return pd.DataFrame()
-
     try:
-        # Create EarthRanger connection using stored credentials
-        er_io = EarthRangerIO(
-            server="https://twiga.pamdas.org",
-            username=username,
-            password=_password
-        )
-        
-        # Build parameters for ecoscope get_events
-        kwargs = {
-            'event_category': 'veterinary',
-            'include_details': True,
-            'include_notes': True,
-            'max_results': 1000,
-            'drop_null_geometry': False
-        }
-        
-        # Add date filters if provided
-        if start_date:
-            if isinstance(start_date, date):
-                since_str = start_date.strftime('%Y-%m-%dT00:00:00Z')
-            else:
-                since_str = str(start_date)
-            kwargs['since'] = since_str
-            if _debug:
-                st.write(f"Debug: since = {since_str}")
-                
-        if end_date:
-            if isinstance(end_date, date):
-                until_str = end_date.strftime('%Y-%m-%dT23:59:59Z')
-            else:
-                until_str = str(end_date)
-            kwargs['until'] = until_str
-            if _debug:
-                st.write(f"Debug: until = {until_str}")
-        
-        # Get events using ecoscope (all veterinary events)
-        gdf_events = er_io.get_events(**kwargs)
-        
-        if gdf_events.empty:
+        token = _get_token(username, _password)
+        since = start_date.strftime('%Y-%m-%dT00:00:00Z') if isinstance(start_date, date) and start_date else None
+        until = end_date.strftime('%Y-%m-%dT23:59:59Z')   if isinstance(end_date,   date) and end_date   else None
+
+        events = _fetch_events(token, "giraffe_mortality", since=since, until=until)
+        if not events:
             return pd.DataFrame()
-        
-        # Convert GeoDataFrame to regular DataFrame
-        df = pd.DataFrame(gdf_events.drop(columns='geometry', errors='ignore'))
-        
-        # Filter by event_type for mortality events
+
+        df = pd.DataFrame(events)
+
+        # Client-side safety filter
         if 'event_type' in df.columns:
             df = df[df['event_type'] == 'giraffe_mortality']
-        
         if df.empty:
             return pd.DataFrame()
-        
-        # Process the data
+
         if 'time' in df.columns:
             df['time'] = pd.to_datetime(df['time'])
             df['date'] = df['time'].dt.date
             df['year'] = df['time'].dt.year
             df['month'] = df['time'].dt.month
             df['month_name'] = df['time'].dt.strftime('%B')
-            
-            # Apply client-side date filtering
-            if start_date is not None:
+            if start_date:
                 df = df[df['date'] >= start_date]
-            if end_date is not None:
+            if end_date:
                 df = df[df['date'] <= end_date]
-            
-            if _debug and not df.empty:
-                st.write(f"Debug: After date filtering, {len(df)} events remain")
-                st.write(f"Debug: Date range in data: {df['date'].min()} to {df['date'].max()}")
-        
-        # Add location information if geometry was available
-        if not gdf_events.empty and 'geometry' in gdf_events.columns:
-            gdf_events['latitude'] = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
-            gdf_events['longitude'] = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
-            df['latitude'] = gdf_events['latitude']
-            df['longitude'] = gdf_events['longitude']
-        
+
+        # Coordinates from REST API location field
+        if 'location' in df.columns:
+            df['latitude']  = df['location'].apply(lambda x: x.get('latitude')  if isinstance(x, dict) else None)
+            df['longitude'] = df['location'].apply(lambda x: x.get('longitude') if isinstance(x, dict) else None)
+
         return df
-        
+
+    except _requests.exceptions.Timeout:
+        st.error("⏱️ EarthRanger request timed out fetching mortality data. Try again.")
+        return pd.DataFrame()
     except Exception as e:
-        st.error(f"Error fetching mortality events: {str(e)}")
+        st.error(f"Error fetching mortality events: {e}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=1800, show_spinner=False)  # Cache for 30 minutes
+@st.cache_data(ttl=1800, show_spinner=False)
 def get_translocation_events(start_date=None, end_date=None, username=None, _password=None, _debug=False):
-    """Fetch translocation events from EarthRanger using ecoscope"""
-    if not ECOSCOPE_AVAILABLE:
-        st.error("❌ Ecoscope package is required but not available.")
-        return pd.DataFrame()
-
+    """Fetch giraffe_translocation_3 events from EarthRanger."""
     if not username or not _password:
         return pd.DataFrame()
-
     try:
-        # Create EarthRanger connection using stored credentials
-        er_io = EarthRangerIO(
-            server="https://twiga.pamdas.org",
-            username=username,
-            password=_password
-        )
-        
-        # Build parameters for ecoscope get_events
-        # Note: Don't pass event_type to get_events as it expects UUIDs, 
-        # we'll filter by event_type string after getting the data
-        kwargs = {
-            'event_category': 'veterinary',
-            'include_details': True,
-            'include_notes': True,
-            'max_results': 1000,
-            'drop_null_geometry': False  # Keep events without geometry for now
-        }
-        
-        # Add date filters if provided - convert date objects to ISO format strings
-        if start_date:
-            # Ensure start_date is a date object and convert to string
-            if isinstance(start_date, date):
-                since_str = start_date.strftime('%Y-%m-%dT00:00:00Z')
-            else:
-                since_str = str(start_date)
-            kwargs['since'] = since_str
-            if _debug:
-                st.write(f"Debug: since = {since_str}")
-                
-        if end_date:
-            # Ensure end_date is a date object and convert to string
-            if isinstance(end_date, date):
-                until_str = end_date.strftime('%Y-%m-%dT23:59:59Z')
-            else:
-                until_str = str(end_date)
-            kwargs['until'] = until_str
-            if _debug:
-                st.write(f"Debug: until = {until_str}")
-        
-        # Get events using ecoscope (all veterinary events)
-        gdf_events = er_io.get_events(**kwargs)
-        
-        if gdf_events.empty:
+        token = _get_token(username, _password)
+        since = start_date.strftime('%Y-%m-%dT00:00:00Z') if isinstance(start_date, date) and start_date else None
+        until = end_date.strftime('%Y-%m-%dT23:59:59Z')   if isinstance(end_date,   date) and end_date   else None
+
+        events = _fetch_events(token, "giraffe_translocation_3", since=since, until=until)
+        if not events:
             return pd.DataFrame()
-        
-        # Convert GeoDataFrame to regular DataFrame for easier handling in Streamlit
-        df = pd.DataFrame(gdf_events.drop(columns='geometry', errors='ignore'))
-        
-        # Filter by event_type after getting the data (avoiding UUID requirement)
-        # Only include giraffe_translocation_3 (exclude giraffe_translocation_2 and other variants)
+
+        df = pd.DataFrame(events)
+
+        # Client-side safety filter
         if 'event_type' in df.columns:
             df = df[df['event_type'] == 'giraffe_translocation_3']
-        
         if df.empty:
             return pd.DataFrame()
-        
-        # Process the data
+
         if 'time' in df.columns:
             df['time'] = pd.to_datetime(df['time'])
             df['date'] = df['time'].dt.date
             df['year'] = df['time'].dt.year
             df['month'] = df['time'].dt.month
             df['month_name'] = df['time'].dt.strftime('%B')
-            
-            # Apply client-side date filtering as backup (in case API filter didn't work)
-            if start_date is not None:
+            if start_date:
                 df = df[df['date'] >= start_date]
-            if end_date is not None:
+            if end_date:
                 df = df[df['date'] <= end_date]
-            
-            if _debug and not df.empty:
-                st.write(f"Debug: After date filtering, {len(df)} events remain")
-                st.write(f"Debug: Date range in data: {df['date'].min()} to {df['date'].max()}")
-        
-        # Add location information if geometry was available
-        if not gdf_events.empty and 'geometry' in gdf_events.columns:
-            # Extract coordinates from geometry
-            gdf_events['latitude'] = gdf_events.geometry.apply(lambda x: x.y if x and hasattr(x, 'y') else None)
-            gdf_events['longitude'] = gdf_events.geometry.apply(lambda x: x.x if x and hasattr(x, 'x') else None)
-            df['latitude'] = gdf_events['latitude']
-            df['longitude'] = gdf_events['longitude']
-        
+
+        # Coordinates from REST API location field
+        if 'location' in df.columns:
+            df['latitude']  = df['location'].apply(lambda x: x.get('latitude')  if isinstance(x, dict) else None)
+            df['longitude'] = df['location'].apply(lambda x: x.get('longitude') if isinstance(x, dict) else None)
+
         return df
-        
+
+    except _requests.exceptions.Timeout:
+        st.error("⏱️ EarthRanger request timed out. The server may be slow — try again.")
+        return pd.DataFrame()
     except Exception as e:
-        st.error(f"Error fetching translocation events: {str(e)}")
+        st.error(f"Error fetching translocation events: {e}")
         return pd.DataFrame()
 
 def mortality_dashboard():
@@ -1520,7 +1483,7 @@ def translocation_dashboard():
                         elif not isinstance(dest_location, str):
                             dest_location = str(dest_location)  # Convert to string
                         
-                        # Hard-code Iona National Park and Cuatir detection
+                        # Hard-code Iona National Park, Cuatir and Bicuar National Park detection
                         area_km2 = 0
                         if dest_location and 'iona' in dest_location.lower():
                             area_km2 = 15200
@@ -1528,6 +1491,9 @@ def translocation_dashboard():
                         elif dest_location and 'cuatir' in dest_location.lower():
                             area_km2 = 400
                             dest_location = "Cuatir"  # Standardize the name
+                        elif dest_location and 'bicuar' in dest_location.lower():
+                            area_km2 = 7900
+                            dest_location = "Bicuar National Park"  # Standardize the name
                         else:
                             # Look up the area for this location in the dictionary
                             area_km2 = LOCATION_AREAS.get(dest_location, 0)
@@ -1841,7 +1807,7 @@ def translocation_dashboard():
     st.markdown("---")
     with st.spinner("🔄 Loading mortality data for success tracking..."):
         mortality_df = get_mortality_events(
-            start_date, None,
+            start_date, end_date,
             username=st.session_state.username,
             _password=st.session_state.password
         )
@@ -1850,6 +1816,7 @@ def translocation_dashboard():
 
 def _main_implementation():
     """Main application logic"""
+    st.markdown(_CSS, unsafe_allow_html=True)
     init_session_state()
     
     # Initialize page selection in session state
