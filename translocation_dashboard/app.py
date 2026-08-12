@@ -106,7 +106,6 @@ LOCATION_AREAS = {
     'Pian Upe Wildlife Reserve': 2275,
     'Ongongo': 501,
     'Mnjoli Game Reserve': 4,
-    'Bicuar National Park': 7900,
     # Add more locations and their areas as needed
 }
 
@@ -1483,7 +1482,7 @@ def translocation_dashboard():
                         elif not isinstance(dest_location, str):
                             dest_location = str(dest_location)  # Convert to string
                         
-                        # Hard-code Iona National Park, Cuatir and Bicuar National Park detection
+                        # Hard-code Iona National Park and Cuatir detection
                         area_km2 = 0
                         if dest_location and 'iona' in dest_location.lower():
                             area_km2 = 15200
@@ -1491,9 +1490,6 @@ def translocation_dashboard():
                         elif dest_location and 'cuatir' in dest_location.lower():
                             area_km2 = 400
                             dest_location = "Cuatir"  # Standardize the name
-                        elif dest_location and 'bicuar' in dest_location.lower():
-                            area_km2 = 7900
-                            dest_location = "Bicuar National Park"  # Standardize the name
                         else:
                             # Look up the area for this location in the dictionary
                             area_km2 = LOCATION_AREAS.get(dest_location, 0)
