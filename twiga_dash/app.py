@@ -56,6 +56,20 @@ SPECIES_LABELS = {
 # Keep old name as alias so internal references don't break during transition
 SUBSPECIES_LABELS = SPECIES_LABELS
 
+# ─── Project Sites (derived live from EarthRanger subject groups) ────────────
+# subject_group names follow a COUNTRY_SITE convention (e.g. 'KEN_MaraNorth',
+# 'NAM_Damaraland'). We parse the 2-3 letter ISO-ish country prefix off the
+# front of the group name to build a live per-site/per-country rollup —
+# no external sheet, so it self-updates whenever ER data changes.
+COUNTRY_NAMES = {
+    "AGO": "Angola", "BWA": "Botswana", "CAF": "Central African Republic",
+    "CMR": "Cameroon", "COD": "DR Congo", "ETH": "Ethiopia", "KEN": "Kenya",
+    "MAR": "Morocco", "MOZ": "Mozambique", "MWI": "Malawi", "NAM": "Namibia",
+    "NER": "Niger", "NGA": "Nigeria", "RWA": "Rwanda", "SSD": "South Sudan",
+    "SWZ": "Eswatini", "TCD": "Chad", "TZA": "Tanzania", "UGA": "Uganda",
+    "ZAF": "South Africa", "ZMB": "Zambia", "ZWE": "Zimbabwe",
+}
+
 # ─── CSS & Styling ─────────────────────────────────────────────────────────────
 DASHBOARD_CSS = """
 <style>
@@ -629,6 +643,84 @@ def build_summary_df(raw: pd.DataFrame) -> tuple:
     return pd.DataFrame(rows), debug
 
 
+def build_project_sites_df(summary: pd.DataFrame) -> pd.DataFrame:
+    """Live per-site/per-country rollup, derived entirely from the already-
+    fetched ER subject summary — no external sheet, so it self-updates.
+
+    Groups subjects by 'subject_group' (attached in fetch_subjects from ER's
+    subjectgroups/ endpoint, which follow a COUNTRY_SITE naming convention),
+    parses the country prefix, and computes per-site deployment stats.
+    """
+    if summary.empty:
+        return pd.DataFrame()
+
+    df = summary.copy()
+    df["subject_group"] = df["subject_group"].replace("", "— No group —")
+
+    # A subject can belong to multiple groups (comma-separated) — explode so
+    # each site/group it's tagged with gets counted.
+    df["_group"] = df["subject_group"].str.split(", ")
+    df = df.explode("_group")
+    df["_group"] = df["_group"].str.strip()
+    df = df[df["_group"] != "— No group —"]
+
+    if df.empty:
+        return pd.DataFrame()
+
+    df["country_code"] = df["_group"].str.extract(r'^([A-Z]{2,3})_')[0]
+    df["country"] = df["country_code"].map(COUNTRY_NAMES).fillna("Other / Unassigned")
+
+    rows = []
+    for grp_name, g in df.groupby("_group"):
+        subspecies_list = sorted(
+            g["subspecies"].map(SPECIES_LABELS).fillna(g["subspecies"]).unique()
+        )
+        starts = g["start_dt"].dropna()
+        avg_track = g.loc[g["tracking_days"] > 0, "tracking_days"].mean()
+
+        rows.append({
+            "Country":                    g["country"].iloc[0],
+            "Site / Group":               grp_name,
+            "Species":                    ", ".join(subspecies_list) or "—",
+            "Subjects":                   len(g),
+            "Active":                     int(g["is_active"].sum()),
+            "First Deployment":           starts.min() if len(starts) else pd.NaT,
+            "Most Recent Fix (days ago)": round(g["days_since"].min(), 1) if g["days_since"].notna().any() else None,
+            "Avg Tracking (days)":        round(avg_track, 1) if pd.notna(avg_track) else None,
+            "Total Tracking (days)":      round(g["tracking_days"].sum(), 0),
+        })
+
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out = out.sort_values(["Country", "Site / Group"]).reset_index(drop=True)
+    return out
+
+
+def chart_sites_bar(sites_df: pd.DataFrame) -> go.Figure:
+    """Horizontal bar: subjects per site, top 25 by subject count."""
+    plot_df = sites_df.nlargest(25, "Subjects").sort_values("Subjects", ascending=True)
+    fig = go.Figure(go.Bar(
+        x=plot_df["Subjects"],
+        y=plot_df["Site / Group"],
+        orientation="h",
+        marker_color="#DB580F",
+        text=plot_df["Subjects"],
+        textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Subjects: %{x}<extra></extra>",
+    ))
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#cbd5e1"),
+        margin=dict(l=10, r=40, t=10, b=10),
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, tickfont=dict(size=11)),
+        height=max(260, len(plot_df) * 26),
+        bargap=0.3,
+    )
+    return fig
+
+
 # ─── Chart helpers ─────────────────────────────────────────────────────────────
 
 def _card(col, label: str, value: str, sub: str = "", accent: str = "#DB580F"):
@@ -1011,9 +1103,10 @@ def render_dashboard():
     st.markdown("---")
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
-    tab_map, tab_subjects = st.tabs([
+    tab_map, tab_subjects, tab_sites = st.tabs([
         "🗺️ Map & Overview",
         "📋 Subject Table",
+        "📍 Project Sites",
     ])
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -1226,6 +1319,66 @@ def render_dashboard():
             file_name=f"twiga_dash_subjects_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
         )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    with tab_sites:
+        st.markdown("""
+        <div class="section-header">
+            <h3>📍 Projects / Sites — live from EarthRanger</h3>
+            <p style="color:#94a3b8;font-size:0.85rem;margin:0">
+                Rolled up from subject groups (COUNTRY_SITE naming convention) — updates automatically
+                whenever subjects or their group membership change in ER. No external sheet involved.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        sites_df = build_project_sites_df(summary)
+
+        if sites_df.empty:
+            st.info("No subject-group data available to build a site rollup.")
+        else:
+            n_sites     = len(sites_df)
+            n_countries = sites_df["Country"].nunique()
+            n_subjects  = int(sites_df["Subjects"].sum())
+            n_active    = int(sites_df["Active"].sum())
+
+            sc1, sc2, sc3, sc4 = st.columns(4)
+            _card(sc1, "Sites / Projects", str(n_sites), "distinct subject groups", "#DB580F")
+            _card(sc2, "Countries",        str(n_countries), "represented",          "#216DCC")
+            _card(sc3, "Subjects Tracked", str(n_subjects), "across all sites",      "#F0884B")
+            _card(sc4, "Active",           str(n_active),  "currently transmitting", "#22c55e")
+
+            st.markdown("---")
+
+            country_opts = ["All"] + sorted(sites_df["Country"].unique().tolist())
+            sel_country = st.selectbox("Filter by country", country_opts, key="sites_country_filter")
+            disp_sites = sites_df if sel_country == "All" else sites_df[sites_df["Country"] == sel_country]
+
+            st.plotly_chart(chart_sites_bar(disp_sites), use_container_width=True)
+
+            table_out = disp_sites.copy()
+            table_out["First Deployment"] = pd.to_datetime(
+                table_out["First Deployment"], errors="coerce", utc=True
+            ).dt.strftime("%Y-%m-%d").fillna("—")
+            table_out["Most Recent Fix (days ago)"] = table_out["Most Recent Fix (days ago)"].apply(
+                lambda x: f"{x:.0f}d ago" if pd.notna(x) else "—"
+            )
+            table_out["Avg Tracking (days)"] = table_out["Avg Tracking (days)"].apply(
+                lambda x: f"{x:,.0f}" if pd.notna(x) else "—"
+            )
+            table_out["Total Tracking (days)"] = table_out["Total Tracking (days)"].apply(
+                lambda x: f"{x:,.0f}" if pd.notna(x) else "—"
+            )
+
+            st.dataframe(table_out, use_container_width=True, hide_index=True)
+
+            st.download_button(
+                "⬇️ Download CSV",
+                data=disp_sites.to_csv(index=False),
+                file_name=f"twiga_dash_project_sites_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                key="sites_download",
+            )
 
 
 # ─── Entry point ───────────────────────────────────────────────────────────────
