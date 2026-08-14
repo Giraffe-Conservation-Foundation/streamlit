@@ -35,10 +35,28 @@ COUNTRY_EVENT_UUIDS = {
     "zmb":      "cb2eedf0-38c7-4b8c-a76c-9cc3b90b01ae",
 }
 
-# Value string → UUID for event types not returned by the API due to permissions
-EVENT_VALUE_TO_UUID = {
-    "giraffe_survey_kaza": "16847384-f16c-4a1c-aa57-6bba66fb7ed2",
-}
+# Event types that are real, queryable-by-UUID EarthRanger event types, but are
+# excluded from the v1/v2 "list event types" API response — a separate, more
+# restrictive permission layer (report-category / permission-set visibility)
+# than raw event read access, so they never appear via _fetch_event_types()
+# no matter how permissive the connecting account is otherwise.
+#
+# Add entries here to make a known-hidden type appear in the dropdown every
+# session instead of needing manual UUID entry each time.
+KNOWN_HIDDEN_EVENT_TYPES = [
+    {"label": "Giraffe survey encounter KAZA", "value": "giraffe_survey_kaza",
+     "uuid": "16847384-f16c-4a1c-aa57-6bba66fb7ed2", "category": "monitoring_kaza (hidden from list API)"},
+    {"label": "Elephant NW monitoring", "value": "elephant_nw_monitoring",
+     "uuid": "c10f581a-d666-45bc-8e57-4a0bdcf0c780", "category": "monitoring (hidden from list API)"},
+    {"label": "Elephant NW monitoring NS", "value": "elephant_nw_monitoring_ns",
+     "uuid": "de82f1d2-09ba-4ba2-b32c-3a1fb58f3bff", "category": "monitoring (hidden from list API)"},
+    {"label": "Elephant random encounter KAZA", "value": "elephant_random_kaza",
+     "uuid": "9385dd69-0b02-43fa-afcb-822d18fa153d", "category": "monitoring_kaza (hidden from list API)"},
+]
+
+# Value string → UUID, derived from KNOWN_HIDDEN_EVENT_TYPES — used by the
+# manual-entry field to resolve a typed value to its real UUID.
+EVENT_VALUE_TO_UUID = {t["value"]: t["uuid"] for t in KNOWN_HIDDEN_EVENT_TYPES}
 
 TIMEZONE_MAP = {
     "BWA": "Africa/Gaborone",
@@ -357,6 +375,13 @@ def _fetch_event_types(client: EarthRangerIO) -> tuple:
                                      "category": cat, "value": value.lower()})
         except Exception:
             continue
+
+    # Merge in known-hidden types — event types that are real and queryable by
+    # UUID, but excluded from the v1/v2 list API entirely by ER's report-
+    # category/permission-set visibility rules. See KNOWN_HIDDEN_EVENT_TYPES.
+    # Deduped below by uuid, so if ER ever starts listing one of these
+    # normally, the real API row wins.
+    all_rows.extend(KNOWN_HIDDEN_EVENT_TYPES)
 
     if not all_rows:
         return [], []
@@ -1313,6 +1338,11 @@ def main():
     st.markdown("**EarthRanger event type**")
     st.caption("Select the giraffe survey encounter event type to fetch from EarthRanger.")
 
+    if st.button("🔄 Refresh list", help="Re-fetch event types (v1 + v2) from EarthRanger"):
+        et_rows, et_rows_all = _fetch_event_types(st.session_state.er_client)
+        st.session_state.er_event_types     = et_rows
+        st.session_state.er_event_types_all = et_rows_all
+        st.rerun()
 
     er_event_types = st.session_state.er_event_types   # [{label, uuid, category}]
 
