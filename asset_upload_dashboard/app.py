@@ -7,15 +7,15 @@ the GCF Asset Register (GCF_assets) ArcGIS Online feature layer.
 Mirrors the GAD "➕ Submit Data" tab's UX (see gad_dashboard/app.py):
 plain form -> validate -> arcgis.features.FeatureLayer.edit_features() ->
 success/error message. Dropdown options for country/programme, assigned-to,
-and asset category are pulled live from the layer's own existing records
-(cached 10 min) rather than hardcoded, so they stay in sync automatically.
-Each asset's point location is derived from its country's existing-asset
-centroid — no manual map/pin step. Asset ID is auto-generated as a single
-running "GCF-####" sequence.
+asset category, and the category->type filter are pulled live from the
+layer's own existing records (cached 10 min) rather than hardcoded, so they
+stay in sync automatically. Each asset's point location is derived from its
+country's existing-asset centroid — no manual map/pin step. Asset ID is
+auto-generated as a "GCF-" + base36 (0-9, A-Z) running code.
 """
 
 import os
-import re
+import string
 import sys
 import tempfile
 from datetime import date, datetime, timezone
@@ -39,8 +39,16 @@ AGOL_URL = "https://services1.arcgis.com/uMBFfFIXcCOpjlID/arcgis/rest/services/G
 # country/programme area has no existing assets yet to derive a centroid from.
 DEFAULT_CENTER = (-22.5609, 17.0658)
 
+# "GCF-" + base36 (digits 0-9, letters A-Z) running code, e.g. GCF-00A3F.
+# Base36 keeps IDs short while covering far more values than plain digits
+# (36^5 ≈ 60 million) — chosen over plain numeric since Courtney's existing
+# ~900 legacy asset_id values are numeric-only; a longer alphanumeric code
+# reads as clearly distinct from those at a glance. Purely-numeric suffixes
+# still decode fine under base36 (digits mean the same thing), so this picks
+# up cleanly from any numeric IDs this app already generated before this change.
 ASSET_ID_PREFIX = "GCF-"
-ASSET_ID_PAD = 4  # GCF-0001, GCF-0002, ...
+ASSET_ID_WIDTH = 5
+_BASE36_ALPHABET = string.digits + string.ascii_uppercase
 
 # Get token safely - won't crash if secrets.toml doesn't exist locally.
 # Uses a dedicated `asset_token` (separate API key, scoped to the GCF_assets
@@ -54,11 +62,11 @@ try:
 except Exception:
     TOKEN = None  # For local development without secrets
 
-# Coded value domains, pulled from the live layer schema (2026-08-25).
-# label -> stored code. Keep in sync if the domains change in ArcGIS Online.
-# These are true ArcGIS domain fields (fixed lists enforced by the layer),
-# so — unlike country/assigned/category below — they don't get an "Other"
-# free-text fallback: a typed value wouldn't match the domain and would fail.
+# Coded value domain, pulled from the live layer schema (2026-08-25).
+# label -> stored code. Keep in sync if the domain changes in ArcGIS Online.
+# This is a true ArcGIS domain field (a fixed list enforced by the layer), so
+# — unlike country/assigned/category — it doesn't get a free-text fallback:
+# a typed value wouldn't match the domain and would fail to save.
 ASSET_TYPE_CHOICES = [
     ("IT/tech", "it_tech"),
     ("Digital", "digital"),
@@ -69,6 +77,8 @@ ASSET_TYPE_CHOICES = [
     ("Appliance", "appliance"),
     ("Solar", "solar"),
 ]
+_TYPE_LABEL_TO_CODE = dict(ASSET_TYPE_CHOICES)
+_TYPE_CODE_TO_LABEL = {code: label for label, code in ASSET_TYPE_CHOICES}
 ASSET_STATUS_CHOICES = ["Available", "Checked Out", "In Repair", "Lost", "Retired"]
 ASSET_CONDITION_CHOICES = ["Excellent", "Good", "Fair", "Poor", "Damaged"]
 
@@ -77,7 +87,19 @@ _PLACEHOLDER_STATUS = "Select a status"
 _PLACEHOLDER_CONDITION = "Select a condition"
 _PLACEHOLDER_CATEGORY = "Select a category"
 _PLACEHOLDER_COUNTRY = "Select a country / programme area"
-_OTHER = "Other (type in)"
+
+
+# ======== ID helpers ========
+
+def _to_base36(n: int, width: int = ASSET_ID_WIDTH) -> str:
+    if n <= 0:
+        digits = "0"
+    else:
+        digits = ""
+        while n > 0:
+            n, r = divmod(n, 36)
+            digits = _BASE36_ALPHABET[r] + digits
+    return digits.rjust(width, "0")
 
 
 # ======== Date helpers ========
@@ -131,29 +153,36 @@ def _get_layer_context():
 
 @st.cache_data(ttl=600, show_spinner=False)
 def _load_dropdown_options():
-    """Pull distinct country/assigned/category values, and a default
-    lat/lon centroid per country, live from the layer's existing records.
+    """Pull distinct country/assigned/category values, a default lat/lon
+    centroid per country, and which asset types have historically been used
+    with each category — all live from the layer's existing records.
 
-    Returns (countries: list[str], assigned: list[str], categories: list[str],
-             country_centroids: dict[str, tuple[float, float]])
-    Returns empty results (never raises) if the query fails — the form
-    still works, just with empty dropdowns plus the "Other" fallback.
+    Returns (countries, assigned, categories, country_centroids, category_type_map)
+    - countries, assigned, categories: sorted list[str]
+    - country_centroids: dict[str, tuple[float, float]]
+    - category_type_map: dict[str, list[str]] — asset type LABELS seen for
+      each category, used to narrow the Asset type dropdown once a category
+      is picked. A category with no history yet isn't in this dict — the
+      form falls back to showing all asset types for it.
+    Returns empty results (never raises) if the query fails — the form still
+    works, just with empty dropdowns.
     """
     if not TOKEN:
-        return [], [], [], {}
+        return [], [], [], {}, {}
     try:
         gis = _get_gis()
         feature_layer = FeatureLayer(AGOL_URL, gis=gis)
         result = feature_layer.query(
             where="1=1",
-            out_fields="country_code,asset_assigned,asset_category",
+            out_fields="country_code,asset_assigned,asset_category,asset_type",
             return_geometry=True,
         )
     except Exception:
-        return [], [], [], {}
+        return [], [], [], {}, {}
 
     countries, assigned, categories = set(), set(), set()
     country_points: dict[str, list[tuple[float, float]]] = {}
+    category_types: dict[str, set[str]] = {}
 
     for f in result.features:
         attrs = f.attributes or {}
@@ -161,6 +190,8 @@ def _load_dropdown_options():
         c = (attrs.get("country_code") or "").strip()
         a = (attrs.get("asset_assigned") or "").strip()
         cat = (attrs.get("asset_category") or "").strip()
+        t_code = (attrs.get("asset_type") or "").strip()
+
         if c:
             countries.add(c)
             x, y = geom.get("x"), geom.get("y")
@@ -170,18 +201,22 @@ def _load_dropdown_options():
             assigned.add(a)
         if cat:
             categories.add(cat)
+        if cat and t_code:
+            t_label = _TYPE_CODE_TO_LABEL.get(t_code, t_code)
+            category_types.setdefault(cat, set()).add(t_label)
 
     country_centroids = {
         c: (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
         for c, pts in country_points.items()
         if pts
     }
+    category_type_map = {c: sorted(types) for c, types in category_types.items()}
 
-    return sorted(countries), sorted(assigned), sorted(categories), country_centroids
+    return sorted(countries), sorted(assigned), sorted(categories), country_centroids, category_type_map
 
 
 def _next_asset_id(feature_layer) -> str:
-    """Next 'GCF-####' running number, based on the highest existing one."""
+    """Next 'GCF-' + base36 running code, based on the highest existing one."""
     try:
         result = feature_layer.query(
             where=f"asset_id LIKE '{ASSET_ID_PREFIX}%'",
@@ -189,14 +224,17 @@ def _next_asset_id(feature_layer) -> str:
             return_geometry=False,
         )
         max_n = 0
-        pattern = re.compile(rf"^{re.escape(ASSET_ID_PREFIX)}(\d+)$")
         for f in result.features:
-            m = pattern.match((f.attributes.get("asset_id") or "").strip())
-            if m:
-                max_n = max(max_n, int(m.group(1)))
-        return f"{ASSET_ID_PREFIX}{max_n + 1:0{ASSET_ID_PAD}d}"
+            raw = (f.attributes.get("asset_id") or "").strip()
+            if raw.startswith(ASSET_ID_PREFIX):
+                suffix = raw[len(ASSET_ID_PREFIX):]
+                try:
+                    max_n = max(max_n, int(suffix, 36))
+                except ValueError:
+                    pass
+        return f"{ASSET_ID_PREFIX}{_to_base36(max_n + 1)}"
     except Exception:
-        return f"{ASSET_ID_PREFIX}{1:0{ASSET_ID_PAD}d}"
+        return f"{ASSET_ID_PREFIX}{_to_base36(1)}"
 
 
 def submit_asset_to_agol(attributes: dict, lat: float, lon: float, pdf_file=None):
@@ -291,53 +329,62 @@ def main():
     if feature_layer is None:
         return
 
-    countries, assigned_people, categories, country_centroids = _load_dropdown_options()
+    countries, assigned_people, categories, country_centroids, category_type_map = _load_dropdown_options()
     next_id = _next_asset_id(feature_layer)
     st.info(f"🆔 Next Asset ID: **{next_id}** (generated automatically)")
 
+    # -- Group 1: category / type / country / assigned --------------------------
+    # These live OUTSIDE the form (not inside st.form) so that picking a
+    # category can immediately narrow the Asset type options below it —
+    # widgets inside a form only update on submit, which would break that.
+    st.subheader("Asset details")
+
+    asset_name = st.text_input("Asset name *", placeholder="e.g. Dell Latitude laptop")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        category_choice = st.selectbox(
+            "Asset category *", [_PLACEHOLDER_CATEGORY] + categories, key="asset_category_select"
+        )
+        type_options = category_type_map.get(category_choice) or [label for label, _ in ASSET_TYPE_CHOICES]
+        asset_type_label = st.selectbox(
+            "Asset type *", [_PLACEHOLDER_TYPE] + type_options, key="asset_type_select"
+        )
+    with col2:
+        country_choice = st.selectbox(
+            "Country / Programme area *", [_PLACEHOLDER_COUNTRY] + countries, key="asset_country_select"
+        )
+        assigned_choice = st.selectbox(
+            "Assigned to", ["Unassigned"] + assigned_people, key="asset_assigned_select"
+        )
+
+    st.markdown("---")
+
     with st.form("asset_submission_form", clear_on_submit=False):
-        st.subheader("Asset details")
-
-        asset_name = st.text_input("Asset name *", placeholder="e.g. Dell Latitude laptop")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            category_choice = st.selectbox(
-                "Asset category *", [_PLACEHOLDER_CATEGORY] + categories + [_OTHER]
-            )
-            category_other = st.text_input(
-                "If \"Other\", type the category", key="asset_category_other"
-            )
-            asset_type_label = st.selectbox(
-                "Asset type *", [_PLACEHOLDER_TYPE] + [label for label, _ in ASSET_TYPE_CHOICES]
-            )
-            asset_status = st.selectbox("Asset status *", [_PLACEHOLDER_STATUS] + ASSET_STATUS_CHOICES)
+        # -- Group 2: item identification ----------------------------------
+        c1, c2 = st.columns(2)
+        with c1:
+            manufacturer = st.text_input("Manufacturer")
+            asset_serial = st.text_input("Serial number")
+        with c2:
+            model = st.text_input("Model / description")
             asset_condition = st.selectbox(
                 "Asset condition *", [_PLACEHOLDER_CONDITION] + ASSET_CONDITION_CHOICES
             )
-        with col2:
-            assigned_choice = st.selectbox(
-                "Assigned to", ["Unassigned"] + assigned_people + [_OTHER]
-            )
-            assigned_other = st.text_input(
-                "If \"Other\", type the name", key="asset_assigned_other"
-            )
-            country_choice = st.selectbox(
-                "Country / Programme area *", [_PLACEHOLDER_COUNTRY] + countries
-            )
-            asset_serial = st.text_input("Serial number")
-            manufacturer = st.text_input("Manufacturer")
+        asset_status = st.selectbox("Asset status *", [_PLACEHOLDER_STATUS] + ASSET_STATUS_CHOICES)
 
-        model = st.text_input("Model / description")
-        grant_name = st.text_input("Grant name")
+        st.markdown("---")
 
-        c1, c2 = st.columns(2)
-        purchase_date = c1.date_input("Purchase date", value=None)
-        acquisition_date = c2.date_input("Acquisition date", value=None)
-        acquisition_cost = st.number_input(
-            "Acquisition cost (N$)", min_value=0.0, value=0.0, step=1.0
-        )
+        # -- Group 3: funding / cost -----------------------------------------
+        grant_name = st.text_input("Grant name (if applicable)")
+        c3, c4 = st.columns(2)
+        purchase_date = c3.date_input("Purchase date", value=None)
+        acquisition_date = c4.date_input("Acquisition date", value=None)
+        acquisition_cost = st.number_input("Cost (N$)", min_value=0.0, value=0.0, step=1.0)
 
+        st.markdown("---")
+
+        # -- Group 4: notes ---------------------------------------------------
         notes = st.text_area("Notes")
 
         st.markdown("---")
@@ -360,16 +407,12 @@ def main():
                 errors.append("Asset name is required.")
             if category_choice == _PLACEHOLDER_CATEGORY:
                 errors.append("Please select an asset category.")
-            elif category_choice == _OTHER and not category_other.strip():
-                errors.append("Please type the asset category.")
             if asset_type_label == _PLACEHOLDER_TYPE:
                 errors.append("Please select an asset type.")
             if asset_status == _PLACEHOLDER_STATUS:
                 errors.append("Please select an asset status.")
             if asset_condition == _PLACEHOLDER_CONDITION:
                 errors.append("Please select an asset condition.")
-            if assigned_choice == _OTHER and not assigned_other.strip():
-                errors.append("Please type who this asset is assigned to.")
             if country_choice == _PLACEHOLDER_COUNTRY:
                 errors.append("Please select a country / programme area.")
 
@@ -378,30 +421,23 @@ def main():
                 for e in errors:
                     st.error(f"- {e}")
             else:
-                asset_type_code = dict(ASSET_TYPE_CHOICES)[asset_type_label]
-                final_category = (
-                    category_other.strip() if category_choice == _OTHER else category_choice
-                )
-                final_assigned = (
-                    assigned_other.strip()
-                    if assigned_choice == _OTHER
-                    else (None if assigned_choice == "Unassigned" else assigned_choice)
-                )
+                asset_type_code = _TYPE_LABEL_TO_CODE.get(asset_type_label, asset_type_label)
+                final_assigned = None if assigned_choice == "Unassigned" else assigned_choice
                 lat, lon = country_centroids.get(country_choice, DEFAULT_CENTER)
                 asset_id = _next_asset_id(feature_layer)  # re-check right before submit
 
                 attributes = {
                     "asset_id": asset_id,
                     "asset_name": asset_name,
-                    "asset_category": final_category,
+                    "asset_category": category_choice,
                     "asset_type": asset_type_code,
-                    "asset_status": asset_status,
-                    "asset_condition": asset_condition,
-                    "asset_assigned": final_assigned,
                     "country_code": country_choice,
-                    "asset_serial": asset_serial or None,
+                    "asset_assigned": final_assigned,
                     "manufacturer": manufacturer or None,
                     "model": model or None,
+                    "asset_serial": asset_serial or None,
+                    "asset_condition": asset_condition,
+                    "asset_status": asset_status,
                     "grant_name": grant_name or None,
                     "purchase_date": _date_to_epoch_ms(purchase_date),
                     "acquisition_date": _date_only_str(acquisition_date),
