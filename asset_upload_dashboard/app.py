@@ -37,9 +37,15 @@ AGOL_URL = "https://services1.arcgis.com/uMBFfFIXcCOpjlID/arcgis/rest/services/G
 # change this if GCF HQ isn't the sensible default for most assets.
 DEFAULT_CENTER = (-22.5609, 17.0658)
 
-# Get token safely - won't crash if secrets.toml doesn't exist locally
+# Get token safely - won't crash if secrets.toml doesn't exist locally.
+# Uses a dedicated `asset_token` (separate API key, scoped to the GCF_assets
+# layer only) rather than the shared `token` GAD uses, so the two modules'
+# ArcGIS credentials can be rotated/scoped independently. Falls back to the
+# shared token if `asset_token` isn't set, so this doesn't hard-fail if
+# secrets haven't been updated yet.
 try:
-    TOKEN = st.secrets.get("arcgis", {}).get("token", None)
+    _arcgis_secrets = st.secrets.get("arcgis", {})
+    TOKEN = _arcgis_secrets.get("asset_token") or _arcgis_secrets.get("token")
 except Exception:
     TOKEN = None  # For local development without secrets
 
