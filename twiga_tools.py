@@ -39,7 +39,7 @@ This integrated platform provides essential tools for giraffe conservation resea
 
 Use the grouped sidebar to access:
 
-- **Home** — overview dashboards: Our Impact, Twiga Dash, Life History, Publications, Preferred Suppliers
+- **Home** — overview dashboards: Our Impact, Twiga Dash, Life History, Publications, Preferred Suppliers, Site Overview
 - **Survey dashboards** — country-level survey encounter dashboards (EHGR, NANW, ZAF, ZMB) and Patrol shapefile download
 - **Technical** — GPS unit health and deployment tools
 - **Data upload** — survey and camera trap image ingestion
@@ -73,11 +73,11 @@ pages = {
         st.Page("pages/16_📜_Life_History.py",         title="Life History",        icon="📜"),
         st.Page("pages/15_📚_Publications.py",         title="Publications",        icon="📚"),
         st.Page("pages/2_🔧_Preferred_Suppliers.py",   title="Preferred Suppliers", icon="🔧"),
-        # Site Overview temporarily disabled (2026-08-25): pages/26_🗺️_Site_Overview.py and its
-        # site_overview_dashboard module were never committed/pushed to GitHub, so this line was
-        # crashing the whole app in production (StreamlitAPIException: file not found). Re-enable
-        # once the module's files are actually committed and pushed.
-        # st.Page("pages/26_🗺️_Site_Overview.py",        title="Site Overview",       icon="🗺️"),
+        # Re-enabled 2026-08-25: was disabled after an earlier push left this line live on
+        # `main` while the module's own files hadn't been pushed yet, crashing the app
+        # (StreamlitAPIException: file not found). This time the module + this line are
+        # being committed together — see site_overview_dashboard/README.md before pushing.
+        st.Page("pages/26_🗺️_Site_Overview.py",        title="Site Overview",       icon="🗺️"),
     ],
     "Survey dashboards": [
         st.Page("pages/4_🦒_Survey_dashboard_(EHGR).py", title="Survey dashboard (EHGR)", icon="🦒"),
