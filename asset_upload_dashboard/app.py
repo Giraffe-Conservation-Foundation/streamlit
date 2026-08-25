@@ -22,6 +22,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 from arcgis.features import FeatureLayer
 from arcgis.gis import GIS
 
@@ -49,6 +50,10 @@ DEFAULT_CENTER = (-22.5609, 17.0658)
 ASSET_ID_PREFIX = "GCF-"
 ASSET_ID_WIDTH = 5
 _BASE36_ALPHABET = string.digits + string.ascii_uppercase
+
+# Master Asset Registry dashboard (ArcGIS Online), embedded read-only in the
+# second tab — same embedding pattern as the KEEP dashboard (pages/22_KEEP.py).
+DASHBOARD_URL = "https://giraffecf.maps.arcgis.com/apps/dashboards/6890c9e6ba3846caa78e01ae085cd640"
 
 # Get token safely - won't crash if secrets.toml doesn't exist locally.
 # Uses a dedicated `asset_token` (separate API key, scoped to the GCF_assets
@@ -305,13 +310,7 @@ def submit_asset_to_agol(attributes: dict, lat: float, lon: float, pdf_file=None
 
 # ======== Main application ========
 
-def main():
-    require_gcf_login(page_label="Asset Upload")
-
-    st.title("📦 Asset Upload")
-    st.caption("Add a new asset record to the GCF Asset Register")
-    st.markdown("---")
-
+def _render_add_asset_tab(feature_layer, has_attachments):
     with st.expander("ℹ️ How this works", expanded=False):
         st.markdown(
             """
@@ -324,10 +323,6 @@ def main():
 - Contact Courtney if you need to edit or remove a record submitted in error.
             """
         )
-
-    feature_layer, has_attachments = _get_layer_context()
-    if feature_layer is None:
-        return
 
     countries, assigned_people, categories, country_centroids, category_type_map = _load_dropdown_options()
     next_id = _next_asset_id(feature_layer)
@@ -463,6 +458,31 @@ def main():
                 else:
                     st.error(f"❌ {message}")
                     st.info("Please check your AGOL token has write permissions and try again.")
+
+
+def _render_dashboard_tab():
+    st.caption("Live view of the Master Asset Registry (read-only).")
+    components.iframe(DASHBOARD_URL, height=1000, scrolling=True)
+
+
+def main():
+    require_gcf_login(page_label="Asset Upload")
+
+    st.title("📦 Asset Upload")
+    st.caption("Add a new asset record to the GCF Asset Register")
+    st.markdown("---")
+
+    feature_layer, has_attachments = _get_layer_context()
+    if feature_layer is None:
+        return
+
+    tab_add, tab_dashboard = st.tabs(["➕ Add Asset", "📊 Registry Dashboard"])
+
+    with tab_add:
+        _render_add_asset_tab(feature_layer, has_attachments)
+
+    with tab_dashboard:
+        _render_dashboard_tab()
 
 
 if __name__ == "__main__":
