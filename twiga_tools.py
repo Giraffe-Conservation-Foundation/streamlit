@@ -46,7 +46,7 @@ Use the grouped sidebar to access:
 - **GiraffeSpotter** — converters and ID book generator for Wildbook
 - **GAD** — Giraffe Africa Database, mortality, and genetic sample tracking
 - **Translocations** — translocation events and priority assessment
-- **Other** — CITES trade data and SECR population analysis
+- **Other** — CITES trade data, SECR population analysis, and Asset Upload
 
 ### 🚀 Getting started
 
@@ -73,6 +73,7 @@ pages = {
         st.Page("pages/16_📜_Life_History.py",         title="Life History",        icon="📜"),
         st.Page("pages/15_📚_Publications.py",         title="Publications",        icon="📚"),
         st.Page("pages/2_🔧_Preferred_Suppliers.py",   title="Preferred Suppliers", icon="🔧"),
+        st.Page("pages/26_🗺️_Site_Overview.py",        title="Site Overview",       icon="🗺️"),
     ],
     "Survey dashboards": [
         st.Page("pages/4_🦒_Survey_dashboard_(EHGR).py", title="Survey dashboard (EHGR)", icon="🦒"),
@@ -90,8 +91,6 @@ pages = {
         st.Page("pages/25_📡_Unit_Performance_Report.py", title="Unit Performance Report", icon="📡"),
     ],
     "Data upload": [
-        st.Page("pages/5_🚗_Survey_data_backup.py",          title="Survey data backup",      icon="🚗"),
-        st.Page("pages/6_📷_Camera_trap_data_backup.py",     title="Camera trap data backup", icon="📷"),
         st.Page("pages/23_☁️_Google_Cloud_Buckets.py",       title="Google Cloud Buckets",    icon="☁️"),
     ],
     "GiraffeSpotter": [
@@ -112,6 +111,7 @@ pages = {
     "Other": [
         st.Page("pages/12_📋_CITES_Trade_Database.py",      title="CITES Trade Database",      icon="📋"),
         st.Page("pages/14_📊_SECR_Population_Analysis.py", title="SECR Population Analysis", icon="📊"),
+        st.Page("pages/27_📦_Asset_Upload.py",              title="Asset Upload",              icon="📦"),
     ],
 }
 
