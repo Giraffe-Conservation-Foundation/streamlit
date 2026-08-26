@@ -8,6 +8,8 @@ Tab 2: Subject movement tracks for ZMB_Luangwa_giraffe subject group
 import streamlit as st
 import pandas as pd
 import math
+import os
+import json
 import plotly.express as px
 import plotly.graph_objects as go
 import folium
@@ -18,6 +20,10 @@ from ecoscope.io.earthranger import EarthRangerIO
 
 ER_SERVER = "https://twiga.pamdas.org"
 SUBJECT_GROUP = "ZMB_Luangwa_giraffe"
+
+# Park boundary overlay (toggle-able on both maps)
+BOUNDARY_PATH = os.path.join(os.path.dirname(__file__), "data", "Luangwa_Park.geojson")
+BOUNDARY_COLOUR = "#2E7D32"  # dark green
 
 # Colour palette for subject tracks (cycles if >12 subjects)
 TRACK_COLOURS = [
@@ -127,6 +133,64 @@ def load_subject_tracks(er_username: str, er_password: str,
     return tracks, err_msg
 
 
+# ─── Park boundary overlay ─────────────────────────────────────────────────────
+
+@st.cache_data(ttl=None, show_spinner=False)
+def _load_boundary_geojson(path: str):
+    """Load the park boundary GeoJSON from disk. Returns None if missing/unreadable."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _boundary_trace(geojson_data: dict, colour: str = BOUNDARY_COLOUR) -> go.Scattermapbox | None:
+    """
+    Build a single Scattermapbox outline trace from a Polygon/MultiPolygon
+    FeatureCollection. Rings are joined with None gaps so they draw as
+    separate closed loops within one legend entry.
+    """
+    if not geojson_data:
+        return None
+
+    lats, lons = [], []
+
+    def _add_ring(ring):
+        if lats:
+            lats.append(None)
+            lons.append(None)
+        for lon, lat in ring:
+            lons.append(lon)
+            lats.append(lat)
+
+    for feat in geojson_data.get("features", []):
+        geom = feat.get("geometry") or {}
+        gtype = geom.get("type")
+        coords = geom.get("coordinates")
+        if not coords:
+            continue
+        if gtype == "Polygon":
+            for ring in coords:
+                _add_ring(ring)
+        elif gtype == "MultiPolygon":
+            for poly in coords:
+                for ring in poly:
+                    _add_ring(ring)
+
+    if not lats:
+        return None
+
+    return go.Scattermapbox(
+        lat=lats, lon=lons,
+        mode="lines",
+        line=dict(color=colour, width=2),
+        name="Park boundary",
+        hoverinfo="skip",
+        showlegend=True,
+    )
+
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 _SURVEY_COLOURS = {
@@ -141,7 +205,8 @@ _SURVEY_LABELS = {
 }
 
 
-def _survey_map(map_df: pd.DataFrame, event_type_col) -> go.Figure:
+def _survey_map(map_df: pd.DataFrame, event_type_col,
+                 boundary_geojson: dict | None = None) -> go.Figure:
     """Return a Plotly figure for survey sighting points, coloured by event type."""
     lats = map_df["lat"].tolist()
     lons = map_df["lon"].tolist()
@@ -186,6 +251,10 @@ def _survey_map(map_df: pd.DataFrame, event_type_col) -> go.Figure:
             hovertemplate="%{text}<extra></extra>",
         ))
 
+    boundary_trace = _boundary_trace(boundary_geojson)
+    if boundary_trace is not None:
+        fig.add_trace(boundary_trace)
+
     fig.update_layout(
         mapbox=dict(
             style="white-bg",
@@ -218,7 +287,7 @@ def _survey_map(map_df: pd.DataFrame, event_type_col) -> go.Figure:
     return fig
 
 
-def _movement_map(tracks: dict) -> go.Figure | None:
+def _movement_map(tracks: dict, boundary_geojson: dict | None = None) -> go.Figure | None:
     """Return a Plotly figure with one coloured line per subject (has built-in PNG toolbar)."""
     all_lats, all_lons = [], []
 
@@ -280,6 +349,10 @@ def _movement_map(tracks: dict) -> go.Figure | None:
             name=label,
             showlegend=False,
         ))
+
+    boundary_trace = _boundary_trace(boundary_geojson)
+    if boundary_trace is not None:
+        fig.add_trace(boundary_trace)
 
     # Fit zoom to bounding box
     lat_span = max(all_lats) - min(all_lats)
@@ -397,6 +470,12 @@ def main():
     since_str = date_start.strftime("%Y-%m-%dT00:00:00Z")
     until_str = date_end.strftime("%Y-%m-%dT23:59:59Z")
 
+    # ── Park boundary toggle (shared across both maps) ────────────────────────
+    show_boundary = st.checkbox("🗺️ Show park boundary", value=True, key="zmb_show_boundary")
+    boundary_geojson = _load_boundary_geojson(BOUNDARY_PATH) if show_boundary else None
+    if show_boundary and boundary_geojson is None:
+        st.caption("⚠️ Park boundary file not found — check data/Luangwa_Park.geojson.")
+
     st.markdown("---")
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
@@ -448,7 +527,7 @@ def main():
         map_df = df.dropna(subset=["lat", "lon"]) if "lat" in df.columns else pd.DataFrame()
         if not map_df.empty:
             _et_col = "event_type" if "event_type" in map_df.columns else None
-            st.plotly_chart(_survey_map(map_df, _et_col), use_container_width=True,
+            st.plotly_chart(_survey_map(map_df, _et_col, boundary_geojson), use_container_width=True,
                             config={"toImageButtonOptions": {"format": "png", "width": 1600, "height": 900, "scale": 2}})
         else:
             st.info("No coordinates available for mapping.")
@@ -539,7 +618,7 @@ def main():
             filtered_tracks = {k: v for k, v in tracks.items() if k in selected}
 
             if filtered_tracks:
-                fig = _movement_map(filtered_tracks)
+                fig = _movement_map(filtered_tracks, boundary_geojson)
                 if fig is not None:
                     st.plotly_chart(fig, use_container_width=True,
                                     config={"toImageButtonOptions": {"format": "png", "width": 1800, "height": 1200, "scale": 2}})
