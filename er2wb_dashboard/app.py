@@ -73,10 +73,11 @@ TIMEZONE_MAP = {
 COUNTRY_SITES = {
     "BWA":      ["CHNP", "CTGR", "MWNP", "NG20", "NG29", "NPNP", "NTGR"],
     "CMR":      ["BNNP"],
-    "KEN":      ["BINR", "COCO", "EOCO", "IMRA", "ISCO", "KONP", "LECO", "LOWC", "MBCO",
-                 "MENP", "MMNR", "MNWC", "MOCO", "MPRC", "MTCO", "MUWC", "MWNR", "NACO",
-                 "NAWC", "NIWC", "OHCO", "OICO", "OLCO", "OKWC", "PACA", "RHNP", "RICO",
-                 "RUNP", "SANR", "SICO", "TENP", "TWNP"],
+    "KEN":      ["BINR", "BSNR", "COCO", "EOCO", "IMRA", "ISCO", "KACC", "KLCC", "KONP",
+                 "LECC", "LECO", "LOWC", "MBCO", "MENP", "MMNR", "MNWC", "MOCO", "MPRC",
+                 "MTCO", "MUWC", "MWNR", "NACC", "NACO", "NAWC", "NGCC", "NIWC", "OHCO",
+                 "OICO", "OLCO", "OKWC", "PACA", "RHNP", "RICO", "RUNP", "SANR", "SEWC",
+                 "SHNR", "SICO", "TENP", "TWNP", "WGCC"],
     "NAM":      ["BACO", "BLCO", "BWNP", "DZCO", "EHGR", "GMCO", "KWCO", "MNCO",
                  "MNNP", "MSCO", "MUNP", "MYCO", "NANW", "NJCO", "NKNP", "NNCO", "SACO",
                  "SBCO", "SKCO", "UIFA", "WUCO"],
@@ -136,6 +137,11 @@ SITE_NAMES = {
     "SANR": "Samburu National Reserve",
     "MENP": "Meru National Park",             "KONP": "Kora National Park",
     "BINR": "Bisanadi National Reserve",
+    "BSNR": "Buffalo Spring National Reserve", "SHNR": "Shaba National Reserve",
+    "NGCC": "Nakuprat-Gotu Community Conservancy", "LECC": "Leparua Community Conservancy",
+    "NACC": "Nasulu Community Conservancy",   "KACC": "Kalama Community Conservancy",
+    "WGCC": "Westgate Community Conservancy", "SEWC": "Sera Wildlife Conservancy",
+    "KLCC": "Kalepo Community Conservancy",
     # Tanzania
     "MKNP": "Mkomazi National Park",       "SANP": "Serengeti National Park",
     # Uganda
@@ -1694,19 +1700,11 @@ def main():
     st.subheader("📸 Step 3: Process my images")
     st.caption(
         "Upload a flat ZIP of your survey JPEGs (no subfolders needed). "
-        "**Keep each ZIP under ~40 MB.** Large uploads (hundreds of MB) are "
+        "**Keep the ZIP under ~40 MB.** Large uploads (hundreds of MB) are "
         "unreliable here — the app buffers the whole file in a memory-limited "
         "shared process, so a big ZIP can hang on the spinner or crash before "
-        "it finishes uploading. Split your photos into several small ZIPs and "
-        "upload/rename them one at a time below; **each batch adds to the "
-        "results, it doesn't replace them.** Use **🔄 Start Over** above to "
-        "clear everything and begin fresh."
-    )
-    st.caption(
-        "💡 To split a big photo folder into upload-sized ZIPs automatically, "
-        "run `scripts/split_images_for_er2wb.ps1` on your PC — e.g. "
-        "`.\\split_images_for_er2wb.ps1 -Source \"C:\\path\\to\\photos\"`. "
-        "It writes `batch_01.zip`, `batch_02.zip`, … each ≤ 40 MB."
+        "it finishes uploading. Use **🔄 Start Over** above to clear everything "
+        "and begin fresh."
     )
 
     uploaded_zip = st.file_uploader("Upload image ZIP", type=["zip"])
