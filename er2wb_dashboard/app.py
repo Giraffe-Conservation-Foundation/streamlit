@@ -734,6 +734,11 @@ def process_er_data(raw_events: list, country: str, er_username: str,
                     continue
                 gr = _individual_field(giraffe, "right")
                 gl = _individual_field(giraffe, "left")
+                # Front/tail are only populated on the Whiskerbook (elephant)
+                # form — harmless None for giraffe/predator records, whose
+                # forms have no "*_front"/"*_tail" keys.
+                gf = _individual_field(giraffe, "front")
+                gt = _individual_field(giraffe, "tail")
                 herd_rows.append({
                     "id":            evt.get("id"),
                     "giraffe_id":    _individual_field(giraffe, "id") or "",
@@ -741,13 +746,17 @@ def process_er_data(raw_events: list, country: str, er_username: str,
                     "giraffe_sex":   _individual_field(giraffe, "sex") or "",
                     "giraffe_right": str(int(gr)).zfill(4) if gr is not None else None,
                     "giraffe_left":  str(int(gl)).zfill(4) if gl is not None else None,
+                    "giraffe_front": str(int(gf)).zfill(4) if gf is not None else None,
+                    "giraffe_tail":  str(int(gt)).zfill(4) if gt is not None else None,
                     "giraffe_notes": _individual_field(giraffe, "notes") or "",
                 })
         else:
             herd_rows.append({
                 "id": evt.get("id"),
                 "giraffe_id": "", "giraffe_age": "", "giraffe_sex": "",
-                "giraffe_right": None, "giraffe_left": None, "giraffe_notes": "",
+                "giraffe_right": None, "giraffe_left": None,
+                "giraffe_front": None, "giraffe_tail": None,
+                "giraffe_notes": "",
             })
 
     if not evt_rows:
@@ -771,6 +780,8 @@ def process_er_data(raw_events: list, country: str, er_username: str,
         "giraffe_sex":                "gir_giraffeSex",
         "giraffe_right":              "gir_giraffeRight",
         "giraffe_left":               "gir_giraffeLeft",
+        "giraffe_front":              "gir_giraffeFront",
+        "giraffe_tail":               "gir_giraffeTail",
         "giraffe_notes":              "gir_giraffeNotes",
         "event_details_herd_size":    "gir_herdSize",
         "event_details_herd_notes":   "gir_herdNotes",
@@ -826,10 +837,13 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
                    date_start: date = None,
                    survey_vessel: str = "vehicle_based_photographic",
                    genus: str = "Giraffa",
-                   location_id: str = None) -> pd.DataFrame:
+                   location_id: str = None,
+                   platform: str = "GiraffeSpotter") -> pd.DataFrame:
     """Convert processed ER DataFrame to Wildbook bulk import format.
     Works for any of the three platforms — genus/species_epithet/location_id
-    are resolved by the caller based on the selected Wildbook platform."""
+    are resolved by the caller based on the selected Wildbook platform.
+    Whiskerbook (elephant) records carry four photo angles instead of two,
+    so mediaAsset2/3 (front/tail) are only added when platform=="Whiskerbook"."""
     if final_df.empty:
         return pd.DataFrame()
 
@@ -892,6 +906,9 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
 
     df["media0"] = df.apply(lambda r: make_media(r, "Right"), axis=1)
     df["media1"] = df.apply(lambda r: make_media(r, "Left"),  axis=1)
+    # Whiskerbook (elephant) forms capture two extra angles beyond right/left.
+    df["media2"] = df.apply(lambda r: make_media(r, "Front"), axis=1)
+    df["media3"] = df.apply(lambda r: make_media(r, "Tail"),  axis=1)
 
     def safe_int(x):
         try:
@@ -946,6 +963,14 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
         "Encounter.mediaAsset1":        df["media1"],
     })
 
+    # Whiskerbook (elephant) needs four photo-angle columns (right/left/
+    # front/tail) instead of the two required for GiraffeSpotter/African
+    # Carnivore Wildbook — add the extra pair only for that platform so the
+    # other exports keep their existing two-column shape.
+    if platform == "Whiskerbook":
+        gs["Encounter.mediaAsset2"] = df["media2"]
+        gs["Encounter.mediaAsset3"] = df["media3"]
+
     # Clean up filenames that ended up with NA in place of a photo number
     def _clean_media(v):
         if pd.isna(v) or str(v).strip() in ("", "nan", "None"):
@@ -954,8 +979,9 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
             return None
         return v
 
-    gs["Encounter.mediaAsset0"] = gs["Encounter.mediaAsset0"].apply(_clean_media)
-    gs["Encounter.mediaAsset1"] = gs["Encounter.mediaAsset1"].apply(_clean_media)
+    for _col in gs.columns:
+        if _col.startswith("Encounter.mediaAsset"):
+            gs[_col] = gs[_col].apply(_clean_media)
 
     return gs
 
@@ -1011,10 +1037,16 @@ def validate_gs_data(gs_df: pd.DataFrame) -> list:
         issues.append({"level": "info", "icon": "ℹ️",
                         "message": f"{n} row(s) have no sex recorded{_serials_for(mask)}"})
 
-    # No image filename (missing prefix or photo numbers in ER)
+    # No image filename at all (missing prefix or photo numbers in ER) —
+    # flag a row only when EVERY mediaAsset column it has is empty, so a
+    # Whiskerbook row with e.g. only a front photo isn't flagged as missing.
     def _no_media(v):
         return pd.isna(v) or str(v).strip() in ("", "nan", "None")
-    mask = gs_df["Encounter.mediaAsset0"].apply(_no_media)
+    _media_cols = [c for c in gs_df.columns if c.startswith("Encounter.mediaAsset")]
+    if _media_cols:
+        mask = gs_df[_media_cols].apply(lambda col: col.apply(_no_media)).all(axis=1)
+    else:
+        mask = pd.Series(False, index=gs_df.index)
     n = mask.sum()
     if n:
         issues.append({"level": "warning", "icon": "⚠️",
@@ -1213,9 +1245,12 @@ def build_download_zip(renamed_paths: dict, gs_data: pd.DataFrame,
     from disk one at a time rather than held in memory as a dict of bytes.
     Returns (zip_bytes, n_matched_images).
     """
+    # Iterate every mediaAsset column present (0/1 for GiraffeSpotter and
+    # African Carnivore Wildbook; 0-3 for Whiskerbook) so front/tail elephant
+    # photos are matched and retained in the ZIP, not just right/left.
     gs_asset_names = set()
-    for col in ("Encounter.mediaAsset0", "Encounter.mediaAsset1"):
-        if col in gs_data.columns:
+    for col in gs_data.columns:
+        if col.startswith("Encounter.mediaAsset"):
             gs_asset_names.update(
                 str(v).upper() for v in gs_data[col].dropna()
                 if str(v) not in ("", "nan", "None")
@@ -1539,7 +1574,7 @@ def main():
                 gs_username, gs_org, species_epithet, initials,
                 date_start=date_start,
                 survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"),
-                genus=genus, location_id=location_id)
+                genus=genus, location_id=location_id, platform=platform)
         st.rerun()
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -1595,7 +1630,7 @@ def main():
                                             gs_username, gs_org, species_epithet, initials,
                                             date_start=date_start,
                                             survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"),
-                                            genus=genus, location_id=location_id)
+                                            genus=genus, location_id=location_id, platform=platform)
                         st.session_state.processed_df = processed
                         st.session_state.gs_data      = gs
                         st.rerun()   # rerun so observer filter renders with the new names
@@ -1620,10 +1655,10 @@ def main():
         n_gir    = len(gs)
         def _has_media(v):
             return pd.notna(v) and str(v) not in ("", "nan", "None")
-        n_photos = (
-            gs["Encounter.mediaAsset0"].apply(_has_media) |
-            gs["Encounter.mediaAsset1"].apply(_has_media)
-        ).sum()
+        _media_cols = [c for c in gs.columns if c.startswith("Encounter.mediaAsset")]
+        n_photos = pd.concat(
+            [gs[c].apply(_has_media) for c in _media_cols], axis=1
+        ).any(axis=1).sum() if _media_cols else 0
         m1, m2, m3 = st.columns(3)
         m1.metric("Encounters",  n_enc)
         m2.metric("Individuals", n_gir)
@@ -1802,7 +1837,7 @@ def main():
                         gs_username, gs_org, species_epithet, initials,
                         date_start=date_start,
                         survey_vessel=st.session_state.get("survey_vessel", "vehicle_based_photographic"),
-                        genus=genus, location_id=location_id)
+                        genus=genus, location_id=location_id, platform=platform)
                     st.session_state.gs_data = updated_gs
                     st.success("✅ Coordinates updated using EXIF GPS directions. "
                                "Wildbook data has been refreshed.")
