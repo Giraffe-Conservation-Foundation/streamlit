@@ -10,7 +10,7 @@ pandas>=2.0.0
 numpy>=1.24.0,<2.0.0
 
 # Visualization
-plotly>=5.0.0
+plotly>=5.24.0  # scatter_map/line_map (MapLibre); mapbox functions removed in v6+
 
 # HTTP Requests
 requests>=2.28.0
@@ -49,5 +49,13 @@ rasterio>=1.3.0  # Raster data I/O
 folium>=0.15.0  # Interactive maps
 streamlit-folium>=0.15.0  # Folium integration for Streamlit
 
-# GAD Dashboard - ArcGIS Integration  
+# GAD Dashboard - ArcGIS Integration
 arcgis>=2.4.0,<2.5  # 2.4+ required for pandas 2.0 compatibility (infer_datetime_format removed)
+
+# Site Overview Dashboard - Zotero Integration (skeleton, not yet implemented)
+pyzotero>=1.5.0
+
+# Site Overview Dashboard - GiraffeSpotter/Wildbook Integration
+# Official WildMe client, not published on PyPI — installed straight from GitHub.
+# Pin the tag (v1.0.1) rather than a branch so this doesn't silently change under us.
+pywildbook @ git+https://github.com/WildMeOrg/pywildbook.git@v1.0.1

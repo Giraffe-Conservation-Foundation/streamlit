@@ -248,7 +248,7 @@ def main():
     map_df = filtered_df.dropna(subset=["lat", "lon"])
     if not map_df.empty:
         # Create plotly map with dark satellite style and park boundaries
-        fig_map = px.scatter_mapbox(
+        fig_map = px.scatter_map(
             map_df, 
             lat="lat", 
             lon="lon",
@@ -262,15 +262,14 @@ def main():
         if MAPBOX_TOKEN:
             # Use satellite-streets for Google Maps-like experience with boundaries
             map_style = "satellite-streets"
-            px.set_mapbox_access_token(MAPBOX_TOKEN)
         else:
             # Fallback to open street map (free, no token required)
             map_style = "open-street-map"
         
         # Update layout for dark satellite style with boundaries
         fig_map.update_layout(
-            mapbox_style=map_style,
-            mapbox=dict(
+            map_style=map_style,
+            map=dict(
                 center=dict(
                     lat=map_df["lat"].mean(),
                     lon=map_df["lon"].mean()

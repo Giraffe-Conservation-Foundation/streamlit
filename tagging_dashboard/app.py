@@ -459,7 +459,7 @@ def build_immob_sites_map(events: list) -> go.Figure:
         if detail_lines:
             hover += f"<br><br>{detail_lines}"
 
-        fig.add_trace(go.Scattermapbox(
+        fig.add_trace(go.Scattermap(
             lat=[ev["lat"]], lon=[ev["lon"]],
             mode="markers",
             marker=dict(size=18, color=color),
@@ -471,7 +471,7 @@ def build_immob_sites_map(events: list) -> go.Figure:
 
     center, zoom = _map_center(lats, lons)
     fig.update_layout(
-        mapbox=dict(style="open-street-map", center=center, zoom=zoom),
+        map=dict(style="open-street-map", center=center, zoom=zoom),
         height=500,
         margin=dict(l=0, r=0, t=0, b=150),
         legend=dict(
@@ -499,7 +499,7 @@ def build_movement_map(events: list, subject_obs: dict) -> go.Figure:
         _track_key = ev["subject_name"] or ev["subject_id"]
         obs = subject_obs.get(_track_key, pd.DataFrame())
         if not obs.empty:
-            fig.add_trace(go.Scattermapbox(
+            fig.add_trace(go.Scattermap(
                 lat=obs["lat"], lon=obs["lon"],
                 mode="lines+markers",
                 line=dict(width=2, color=color),
@@ -518,7 +518,7 @@ def build_movement_map(events: list, subject_obs: dict) -> go.Figure:
 
     center, zoom = _map_center(lats, lons)
     fig.update_layout(
-        mapbox=dict(style="open-street-map", center=center, zoom=zoom),
+        map=dict(style="open-street-map", center=center, zoom=zoom),
         height=600,
         margin=dict(l=0, r=0, t=0, b=180),
         legend=dict(

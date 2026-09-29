@@ -6,8 +6,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import plotly.express as px
 import plotly.graph_objects as go
 from ecoscope.io.earthranger import EarthRangerIO
-import gspread
-from google.oauth2.service_account import Credentials
 import json
 from pathlib import Path
 
@@ -62,36 +60,24 @@ def init_session_state():
 
 @st.cache_data(ttl=900)
 def load_stock_sheet_data(sheet_id):
-    """Load stock, orders, and deployment plan data from Google Sheet (cached 15 min)."""
-    try:
-        if 'gcp_service_account' in st.secrets:
-            creds_dict = dict(st.secrets['gcp_service_account'])
-        elif 'gee_service_account' in st.secrets:
-            creds_dict = dict(st.secrets['gee_service_account'])
-        else:
-            return None, "No service account credentials found in Streamlit secrets."
+    """Load stock, orders, and deployment plan data from Google Sheet (cached 15 min).
+    Uses public CSV export — no service account needed.
+    Sheet must be shared as 'Anyone with the link → Viewer'."""
 
-        credentials = Credentials.from_service_account_info(
-            creds_dict,
-            scopes=[
-                'https://www.googleapis.com/auth/spreadsheets.readonly',
-                'https://www.googleapis.com/auth/drive.readonly',
-            ]
+    def _load_tab(tab_name):
+        url = (
+            f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+            f"/gviz/tq?tqx=out:csv&sheet={tab_name}"
         )
-        client = gspread.authorize(credentials)
-        spreadsheet = client.open_by_key(sheet_id)
+        try:
+            df = pd.read_csv(url)
+            df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
+            return df
+        except Exception:
+            return pd.DataFrame()
 
-        result = {}
-        for tab in ['stock', 'orders', 'deployment_plans']:
-            try:
-                result[tab] = pd.DataFrame(spreadsheet.worksheet(tab).get_all_records())
-            except gspread.WorksheetNotFound:
-                result[tab] = pd.DataFrame()
-
-        return result, None
-
-    except Exception as e:
-        return None, str(e)
+    result = {tab: _load_tab(tab) for tab in ['stock', 'orders', 'deployment_plans']}
+    return result, None
 
 
 def _er_source_assignment_panel():
@@ -158,8 +144,8 @@ def stock_planning_tab():
     st.header("📦 Stock & Deployment Planning")
 
     try:
-        sheet_id = st.secrets.get("gps_stock_sheet_id", "")
-    except FileNotFoundError:
+        sheet_id = st.secrets["gps_stock_sheet_id"]
+    except (KeyError, FileNotFoundError):
         sheet_id = ""
     if not sheet_id:
         st.warning("Google Sheet not configured yet.")
@@ -183,7 +169,7 @@ def stock_planning_tab():
    `project` | `country` | `site` | `office` | `device_type` | `units_needed` | `planned_date` | `status` | `notes`
    *(status values: `planned`, `confirmed`, `completed`, `cancelled`)*
 
-2. Share the sheet (view access) with your service account email — find it in the `client_email` field of your GEE/GCP service account JSON in Streamlit secrets.
+2. Share the sheet as **Anyone with the link → Viewer** (no service account needed).
 
 3. Copy the Sheet ID from the URL:
    `https://docs.google.com/spreadsheets/d/**SHEET_ID**/edit`
@@ -755,16 +741,16 @@ def unit_check_tab():
         if 'battery' in last_df.columns:
             hover_data['battery'] = True
 
-        fig_map = px.scatter_mapbox(
+        fig_map = px.scatter_map(
             last_df,
             lat='latitude', lon='longitude', color='source',
             hover_data=hover_data,
             title="Last known locations",
-            mapbox_style='open-street-map',
+            map_style='open-street-map',
             height=500, size_max=15
         )
         fig_map.update_traces(marker=dict(size=12))
-        fig_map.update_layout(mapbox=dict(
+        fig_map.update_layout(map=dict(
             center=dict(lat=last_df['latitude'].mean(), lon=last_df['longitude'].mean()),
             zoom=8
         ))

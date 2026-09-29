@@ -722,7 +722,7 @@ def display_events_map(df_events):
         ordered_statuses = present + extras
         color_discrete_map = {s: _status_color(s) for s in ordered_statuses}
 
-        fig = px.scatter_mapbox(
+        fig = px.scatter_map(
             df_map,
             lat=lat_col, lon=lon_col,
             hover_name='serial_number',
@@ -744,7 +744,7 @@ def display_events_map(df_events):
             labels={color_column: 'Sample Status'},
         )
     else:
-        fig = px.scatter_mapbox(
+        fig = px.scatter_map(
             df_map,
             lat=lat_col, lon=lon_col,
             hover_name='serial_number',
@@ -755,7 +755,7 @@ def display_events_map(df_events):
         )
 
     fig.update_layout(
-        mapbox_style="open-street-map",
+        map_style="open-street-map",
         margin={"r": 0, "t": 50, "l": 0, "b": 0},
         showlegend=True,
     )

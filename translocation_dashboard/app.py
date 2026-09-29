@@ -626,7 +626,7 @@ def mortality_dashboard():
                         elif species_val:
                             species = str(species_val)
                     
-                    fig_map.add_trace(go.Scattermapbox(
+                    fig_map.add_trace(go.Scattermap(
                         lat=[lat_float],
                         lon=[lon_float],
                         mode='markers',
@@ -643,7 +643,7 @@ def mortality_dashboard():
                     pass
         
         fig_map.update_layout(
-            mapbox=dict(
+            map=dict(
                 style="open-street-map",
                 zoom=2.5,
                 center=dict(lat=0, lon=20)
@@ -1655,7 +1655,7 @@ def translocation_dashboard():
                                 lon_end = (1-t_end)**2 * origin_lon_float + 2*(1-t_end)*t_end * (mid_lon + perp_x) + t_end**2 * dest_lon_float
                                 
                                 # Draw line segment
-                                fig_map.add_trace(go.Scattermapbox(
+                                fig_map.add_trace(go.Scattermap(
                                     lat=[lat_start, lat_end],
                                     lon=[lon_start, lon_end],
                                     mode='lines',
@@ -1669,7 +1669,7 @@ def translocation_dashboard():
                             
                             # Add small endpoint markers for clarity
                             # Origin marker (dark)
-                            fig_map.add_trace(go.Scattermapbox(
+                            fig_map.add_trace(go.Scattermap(
                                 lat=[origin_lat_float],
                                 lon=[origin_lon_float],
                                 mode='markers',
@@ -1680,7 +1680,7 @@ def translocation_dashboard():
                             ))
                             
                             # Destination marker (orange)
-                            fig_map.add_trace(go.Scattermapbox(
+                            fig_map.add_trace(go.Scattermap(
                                 lat=[dest_lat_float],
                                 lon=[dest_lon_float],
                                 mode='markers',
@@ -1694,7 +1694,7 @@ def translocation_dashboard():
             
             # Update map layout
             fig_map.update_layout(
-                mapbox=dict(
+                map=dict(
                     style="open-street-map",
                     zoom=2.5,  # Africa-wide zoom level
                     center=dict(

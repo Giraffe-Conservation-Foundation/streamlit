@@ -768,7 +768,7 @@ def mortality_dashboard():
                     # Show in legend only once per type
                     show_in_legend = mortality_type not in legend_items
                     
-                    fig_map.add_trace(go.Scattermapbox(
+                    fig_map.add_trace(go.Scattermap(
                         lat=[lat_float],
                         lon=[lon_float],
                         mode='markers',
@@ -793,7 +793,7 @@ def mortality_dashboard():
                     pass
         
         fig_map.update_layout(
-            mapbox=dict(
+            map=dict(
                 style="open-street-map",
                 zoom=2.5,
                 center=dict(lat=0, lon=20)

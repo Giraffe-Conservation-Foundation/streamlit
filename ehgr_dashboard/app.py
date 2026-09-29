@@ -12,7 +12,7 @@ from shapely.geometry import LineString
 
 
 def _zoom_for_extent(df, lat_col="lat", lon_col="lon"):
-    """Estimate a reasonable mapbox zoom level from the spread of points."""
+    """Estimate a reasonable map zoom level from the spread of points."""
     lat_range = df[lat_col].max() - df[lat_col].min()
     lon_range = df[lon_col].max() - df[lon_col].min()
     max_range = max(lat_range, lon_range)
@@ -336,7 +336,7 @@ def render_giraffe_tab(filtered_df, start_date, end_date, username, password, EA
         )
         _months_present = [m for m in _MONTH_ORDER if m in map_df["Month"].values]
 
-        fig_map = px.scatter_mapbox(
+        fig_map = px.scatter_map(
             map_df,
             lat="lat",
             lon="lon",
@@ -351,13 +351,12 @@ def render_giraffe_tab(filtered_df, start_date, end_date, username, password, EA
 
         if MAPBOX_TOKEN:
             map_style = "satellite-streets"
-            px.set_mapbox_access_token(MAPBOX_TOKEN)
         else:
             map_style = "open-street-map"
 
         fig_map.update_layout(
-            mapbox_style=map_style,
-            mapbox=dict(
+            map_style=map_style,
+            map=dict(
                 center=dict(lat=map_df["lat"].mean(), lon=map_df["lon"].mean()),
                 zoom=zoom_level
             ),
@@ -773,7 +772,7 @@ def render_giraffe_tab(filtered_df, start_date, end_date, username, password, EA
         if not patrol_plot_df.empty:
             patrol_zoom = _zoom_for_extent(patrol_plot_df)
 
-            fig_patrol = px.line_mapbox(
+            fig_patrol = px.line_map(
                 patrol_plot_df,
                 lat="lat",
                 lon="lon",
@@ -786,13 +785,12 @@ def render_giraffe_tab(filtered_df, start_date, end_date, username, password, EA
 
             if MAPBOX_TOKEN:
                 map_style = "satellite-streets"
-                px.set_mapbox_access_token(MAPBOX_TOKEN)
             else:
                 map_style = "open-street-map"
 
             fig_patrol.update_layout(
-                mapbox_style=map_style,
-                mapbox=dict(
+                map_style=map_style,
+                map=dict(
                     center=dict(
                         lat=patrol_plot_df["lat"].mean(),
                         lon=patrol_plot_df["lon"].mean()
@@ -837,7 +835,7 @@ def render_rhino_tab(rhino_df, rhino_full_df, start_date, end_date, username, pa
     map_df = rhino_df.dropna(subset=["lat", "lon"])
     if not map_df.empty:
         zoom_level = _zoom_for_extent(map_df)
-        fig_map = px.scatter_mapbox(
+        fig_map = px.scatter_map(
             map_df,
             lat="lat",
             lon="lon",
@@ -848,12 +846,11 @@ def render_rhino_tab(rhino_df, rhino_full_df, start_date, end_date, username, pa
         )
         if MAPBOX_TOKEN:
             map_style = "satellite-streets"
-            px.set_mapbox_access_token(MAPBOX_TOKEN)
         else:
             map_style = "open-street-map"
         fig_map.update_layout(
-            mapbox_style=map_style,
-            mapbox=dict(center=dict(lat=map_df["lat"].mean(), lon=map_df["lon"].mean()), zoom=zoom_level),
+            map_style=map_style,
+            map=dict(center=dict(lat=map_df["lat"].mean(), lon=map_df["lon"].mean()), zoom=zoom_level),
             margin={"r": 0, "t": 50, "l": 0, "b": 0},
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)"
@@ -1038,7 +1035,7 @@ def render_rhino_history_section(rhino_full_df):
     history_map_df = individual_history.dropna(subset=["lat", "lon"])
     if not history_map_df.empty:
         zoom_level = _zoom_for_extent(history_map_df)
-        fig_history = px.scatter_mapbox(
+        fig_history = px.scatter_map(
             history_map_df,
             lat="lat",
             lon="lon",
@@ -1048,8 +1045,8 @@ def render_rhino_history_section(rhino_full_df):
             title=f"Sighting locations — Rhino {selected_id}"
         )
         fig_history.update_layout(
-            mapbox_style="open-street-map",
-            mapbox=dict(center=dict(lat=history_map_df["lat"].mean(), lon=history_map_df["lon"].mean()), zoom=zoom_level),
+            map_style="open-street-map",
+            map=dict(center=dict(lat=history_map_df["lat"].mean(), lon=history_map_df["lon"].mean()), zoom=zoom_level),
             margin={"r": 0, "t": 50, "l": 0, "b": 0}
         )
         fig_history.update_traces(marker=dict(size=12, color="#4A4A4A", opacity=0.85))
@@ -1091,7 +1088,7 @@ def render_predator_tab(predator_df, start_date, end_date, MAPBOX_TOKEN):
     map_df = predator_df.dropna(subset=["lat", "lon"])
     if not map_df.empty:
         zoom_level = _zoom_for_extent(map_df)
-        fig_predator = px.scatter_mapbox(
+        fig_predator = px.scatter_map(
             map_df,
             lat="lat",
             lon="lon",
@@ -1104,12 +1101,11 @@ def render_predator_tab(predator_df, start_date, end_date, MAPBOX_TOKEN):
         )
         if MAPBOX_TOKEN:
             map_style = "satellite-streets"
-            px.set_mapbox_access_token(MAPBOX_TOKEN)
         else:
             map_style = "open-street-map"
         fig_predator.update_layout(
-            mapbox_style=map_style,
-            mapbox=dict(center=dict(lat=map_df["lat"].mean(), lon=map_df["lon"].mean()), zoom=zoom_level),
+            map_style=map_style,
+            map=dict(center=dict(lat=map_df["lat"].mean(), lon=map_df["lon"].mean()), zoom=zoom_level),
             margin={"r": 0, "t": 50, "l": 0, "b": 0},
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)"

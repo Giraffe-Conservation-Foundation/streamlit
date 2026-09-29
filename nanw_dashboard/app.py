@@ -564,7 +564,6 @@ def render_species_tab(
     if not map_df.empty:
         if MAPBOX_TOKEN:
             map_style = "satellite-streets"
-            px.set_mapbox_access_token(MAPBOX_TOKEN)
         else:
             map_style = "open-street-map"
 
@@ -583,11 +582,11 @@ def render_species_tab(
             if event_type_colors:
                 map_kwargs["color_discrete_map"] = event_type_colors
 
-        fig_map = px.scatter_mapbox(map_df, **map_kwargs)
+        fig_map = px.scatter_map(map_df, **map_kwargs)
 
         fig_map.update_layout(
-            mapbox_style=map_style,
-            mapbox=dict(
+            map_style=map_style,
+            map=dict(
                 center=dict(lat=map_df["lat"].mean(), lon=map_df["lon"].mean()),
                 zoom=8
             ),

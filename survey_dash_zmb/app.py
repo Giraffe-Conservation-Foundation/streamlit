@@ -145,9 +145,9 @@ def _load_boundary_geojson(path: str):
         return None
 
 
-def _boundary_trace(geojson_data: dict, colour: str = BOUNDARY_COLOUR) -> go.Scattermapbox | None:
+def _boundary_trace(geojson_data: dict, colour: str = BOUNDARY_COLOUR) -> go.Scattermap | None:
     """
-    Build a single Scattermapbox outline trace from a Polygon/MultiPolygon
+    Build a single Scattermap outline trace from a Polygon/MultiPolygon
     FeatureCollection. Rings are joined with None gaps so they draw as
     separate closed loops within one legend entry.
     """
@@ -181,7 +181,7 @@ def _boundary_trace(geojson_data: dict, colour: str = BOUNDARY_COLOUR) -> go.Sca
     if not lats:
         return None
 
-    return go.Scattermapbox(
+    return go.Scattermap(
         lat=lats, lon=lons,
         mode="lines",
         line=dict(color=colour, width=2),
@@ -230,7 +230,7 @@ def _survey_map(map_df: pd.DataFrame, event_type_col,
         label  = _SURVEY_LABELS.get(str(etype), etype)
         subset = map_df[map_df[event_type_col] == etype] if event_type_col else map_df
 
-        fig.add_trace(go.Scattermapbox(
+        fig.add_trace(go.Scattermap(
             lat=subset["lat"].tolist(),
             lon=subset["lon"].tolist(),
             mode="markers",
@@ -256,7 +256,7 @@ def _survey_map(map_df: pd.DataFrame, event_type_col,
         fig.add_trace(boundary_trace)
 
     fig.update_layout(
-        mapbox=dict(
+        map=dict(
             style="white-bg",
             center=dict(lat=(min(lats) + max(lats)) / 2,
                         lon=(min(lons) + max(lons)) / 2),
@@ -333,7 +333,7 @@ def _movement_map(tracks: dict, boundary_geojson: dict | None = None) -> go.Figu
         lons = obs["_lon"].tolist()
 
         # Track line
-        fig.add_trace(go.Scattermapbox(
+        fig.add_trace(go.Scattermap(
             lat=lats, lon=lons,
             mode="lines",
             line=dict(color=colour, width=2.5),
@@ -342,7 +342,7 @@ def _movement_map(tracks: dict, boundary_geojson: dict | None = None) -> go.Figu
         ))
 
         # Start dot
-        fig.add_trace(go.Scattermapbox(
+        fig.add_trace(go.Scattermap(
             lat=[lats[0]], lon=[lons[0]],
             mode="markers",
             marker=dict(color=colour, size=8),
@@ -364,7 +364,7 @@ def _movement_map(tracks: dict, boundary_geojson: dict | None = None) -> go.Figu
     map_height = max(600, min(900, int(lat_span / lon_span * 500))) if lon_span > 0 else 700
 
     fig.update_layout(
-        mapbox=dict(
+        map=dict(
             style="white-bg",
             center=dict(lat=(min(all_lats) + max(all_lats)) / 2,
                         lon=(min(all_lons) + max(all_lons)) / 2),

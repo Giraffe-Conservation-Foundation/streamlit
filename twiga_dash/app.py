@@ -864,7 +864,7 @@ def chart_last_seen_scatter(df: pd.DataFrame) -> go.Figure:
 
 
 def chart_map(df: pd.DataFrame) -> go.Figure:
-    """Plotly Scattermapbox showing last position of all subjects, coloured by subspecies."""
+    """Plotly Scattermap showing last position of all subjects, coloured by subspecies."""
     map_df = df[df["lat"].notna() & df["lon"].notna()].copy()
 
     if map_df.empty:
@@ -888,12 +888,12 @@ def chart_map(df: pd.DataFrame) -> go.Figure:
 
     for subsp, grp in map_df.groupby("subspecies"):
         color = SUBSPECIES_COLORS.get(subsp, "#888")
-        fig.add_trace(go.Scattermapbox(
+        fig.add_trace(go.Scattermap(
             lat=grp["lat"],
             lon=grp["lon"],
             mode="markers",
             name=SPECIES_LABELS.get(subsp, subsp),
-            marker=go.scattermapbox.Marker(
+            marker=go.scattermap.Marker(
                 size=6,
                 color=color,
                 opacity=0.88,
@@ -903,7 +903,7 @@ def chart_map(df: pd.DataFrame) -> go.Figure:
         ))
 
     fig.update_layout(
-        mapbox=dict(
+        map=dict(
             style="carto-darkmatter",
             center=dict(lat=0, lon=22),
             zoom=2.6,
