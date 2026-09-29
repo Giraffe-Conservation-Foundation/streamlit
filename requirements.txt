@@ -58,4 +58,4 @@ pyzotero>=1.5.0
 # Site Overview Dashboard - GiraffeSpotter/Wildbook Integration
 # Official WildMe client, not published on PyPI — installed straight from GitHub.
 # Pin the tag (v1.0.1) rather than a branch so this doesn't silently change under us.
-pywildbook @ git+https://github.com/WildMeOrg/pywildbook.git@v1.0.1
+pywildbook @ git+https://github.com/WildMeOrg/pywildbook.git@1.0.1
