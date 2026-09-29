@@ -117,11 +117,38 @@ def download_patrol_tracks(er_io, patrol_type_value, since, until, subject_name=
         # Get the patrol IDs that match our filter
         patrol_ids = patrols_df['id'].tolist() if 'id' in patrols_df.columns else patrols_df.index.tolist()
         
-        # Get patrol observations
-        patrol_observations = er_io.get_patrol_observations(
-            patrols_df=patrols_df,
-            include_patrol_details=True
-        )
+        # Get patrol observations.
+        # ecoscope pulls each segment leader's track over the segment time range and
+        # silently skips segments with no leader / no start time / no track points.
+        # If ALL segments are skipped it calls pd.concat([]) -> "No objects to concatenate".
+        try:
+            patrol_observations = er_io.get_patrol_observations(
+                patrols_df=patrols_df,
+                include_patrol_details=True
+            )
+        except ValueError as e:
+            if 'No objects to concatenate' not in str(e):
+                raise
+            n_seg = n_no_leader = n_no_start = 0
+            for segs in patrols_df['patrol_segments']:
+                for seg in (segs if isinstance(segs, list) else []):
+                    if not isinstance(seg, dict):
+                        continue
+                    n_seg += 1
+                    if not (seg.get('leader') or {}).get('id'):
+                        n_no_leader += 1
+                    elif not (seg.get('time_range') or {}).get('start_time'):
+                        n_no_start += 1
+            n_checked = n_seg - n_no_leader - n_no_start
+            return None, (
+                f"⚠️ Found {len(patrols_df)} matching patrol(s), but none have track data in EarthRanger.\n\n"
+                f"• {n_seg} patrol segment(s) checked\n"
+                f"• {n_no_leader} have no patrol leader (tracked subject) assigned\n"
+                f"• {n_no_start} have no start time\n"
+                f"• {n_checked} have a leader, but that subject has no GPS points during the patrol "
+                f"(or the fetch failed / you lack permission to view that subject)\n\n"
+                "Tip: in EarthRanger, make sure each patrol has a leader whose tracking device was reporting during the patrol."
+            )
         
         # Handle both Relocations object and GeoDataFrame
         if hasattr(patrol_observations, 'gdf'):
