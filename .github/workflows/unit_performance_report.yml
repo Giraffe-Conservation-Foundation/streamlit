@@ -1,0 +1,92 @@
+name: Quarterly Unit Performance Report
+
+# Builds the GPS unit performance report (same pipeline as the TwigaTools
+# "Unit Performance Report" page), converts it to PDF and emails it.
+# Runs 04:00 UTC (06:00 SAST) on 1 Jan / 1 Apr / 1 Jul / 1 Oct, reporting on the
+# quarter that just ended. Can also be run by hand from the Actions tab.
+#
+# Secrets used:
+#   ER_SERVER, ER_USERNAME, ER_PASSWORD   (already set for the EarthRanger backup)
+#   SMTP_USER          gcf.spatial@giraffeconservation.org
+#   SMTP_PASSWORD      Google Workspace app password for SMTP_USER
+#   REPORT_RECIPIENTS  comma-separated, e.g. courtney@giraffeconservation.org
+
+on:
+  schedule:
+    - cron: '0 4 1 1,4,7,10 *'
+
+  workflow_dispatch:
+    inputs:
+      report_date:
+        description: 'Report date YYYY-MM-DD — leave blank for today'
+        required: false
+        default: ''
+      send_email:
+        description: 'Email the report (untick to only save it as a run artifact)'
+        type: boolean
+        default: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install LibreOffice (for PDF conversion)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libreoffice-writer python3-uno fonts-dejavu
+
+      - name: Install Python dependencies
+        run: |
+          pip install \
+            ecoscope \
+            streamlit \
+            pandas \
+            numpy \
+            requests \
+            matplotlib \
+            python-docx \
+            lifelines
+
+      - name: Build and send report
+        run: |
+          ARGS="--out-dir unit_performance_out"
+          if [ -n "${{ github.event.inputs.report_date }}" ]; then
+            ARGS="$ARGS --report-date ${{ github.event.inputs.report_date }}"
+          fi
+          if [ "${{ github.event.inputs.send_email }}" = "false" ]; then
+            ARGS="$ARGS --no-email"
+          fi
+          python scripts/unit_performance_report.py $ARGS
+        env:
+          ER_SERVER:          ${{ secrets.ER_SERVER }}
+          ER_USERNAME:        ${{ secrets.ER_USERNAME }}
+          ER_PASSWORD:        ${{ secrets.ER_PASSWORD }}
+          SMTP_USER:          ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD:      ${{ secrets.SMTP_PASSWORD }}
+          REPORT_RECIPIENTS:  ${{ secrets.REPORT_RECIPIENTS }}
+
+      - name: Keep a copy with the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-performance-report
+          path: unit_performance_out/
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Email failure alert
+        if: failure()
+        run: python scripts/unit_performance_report.py --notify-failure
+        env:
+          RUN_URL:            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SMTP_USER:          ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD:      ${{ secrets.SMTP_PASSWORD }}
+          REPORT_RECIPIENTS:  ${{ secrets.REPORT_RECIPIENTS }}

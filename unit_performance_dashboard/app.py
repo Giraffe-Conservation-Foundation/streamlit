@@ -18,6 +18,18 @@ from datetime import date, datetime
 from pathlib import Path
 
 import matplotlib
+
+# lifelines (Kaplan-Meier survival chart) is OPTIONAL. It is deliberately NOT in
+# requirements.txt so the free Streamlit Cloud deployment stays within its
+# resource limits; there the survival chart is simply skipped. Locally
+# (`pip install lifelines`) and in the quarterly GitHub Actions report
+# (.github/workflows/unit_performance_report.yml installs it) the chart is included.
+try:
+    from lifelines import KaplanMeierFitter
+    HAS_LIFELINES = True
+except ImportError:
+    KaplanMeierFitter = None
+    HAS_LIFELINES = False
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -674,6 +686,39 @@ def chart_deployment(result):
     return _fig_to_png(fig)
 
 
+# Only called when HAS_LIFELINES — see the optional lifelines import at the top.
+def chart_km_survival(result):
+    """Kaplan-Meier estimate of deployment lifespan by unit type.
+
+    Time axis is days-since-deployment (not calendar date), so units that
+    started at different times line up naturally. Still-active units are
+    right-censored at their current deployment length rather than being
+    treated as a failure or dropped — this is what a plain mean/scatter of
+    deployment_length_days gets wrong for units that just haven't failed yet."""
+    summary = result["summary"]
+    durations = summary["deployment_length_days"]
+    event_observed = (summary["status"] != "Active").astype(int)
+
+    kmf = KaplanMeierFitter()
+    kmf.fit(durations, event_observed=event_observed, label=result["label"])
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    kmf.plot_survival_function(ax=ax, ci_show=True)
+    median = kmf.median_survival_time_
+    if np.isfinite(median):
+        ax.axvline(median, linestyle="--", color="black", alpha=0.7)
+        ax.text(median, 0.52, f"Median: {median:.0f} days", ha="left", fontsize=9)
+    ax.set_xlabel("Days since deployment")
+    ax.set_ylabel("Proportion of units still functioning")
+    ax.set_ylim(0, 1.02)
+    ax.set_title(f"{result['label']} — deployment survival (Kaplan-Meier)", loc="right")
+    legend = ax.get_legend()
+    if legend is not None:
+        legend.remove()
+    fig.tight_layout()
+    return _fig_to_png(fig)
+
+
 def chart_battery(result):
     unit = result["cfg"]["battery_unit"]
     obs = result["battery_obs"]
@@ -819,6 +864,16 @@ def build_docx(author, report_date, results, comments_by_label):
         document.add_picture(io.BytesIO(chart_deployment(result)), width=Inches(6))
         document.add_paragraph(f"Figure 1. Deployment lengths of {label} units deployed since "
                                 f"{result['first_deployed'].strftime('%d %B %Y')}.")
+        document.add_paragraph()
+
+        if HAS_LIFELINES:
+            document.add_picture(io.BytesIO(chart_km_survival(result)), width=Inches(6))
+            document.add_paragraph(f"Figure 2. Kaplan-Meier estimate of {label} deployment survival — "
+                                    f"still-active units are right-censored at their current deployment "
+                                    f"length rather than treated as a failure.")
+        else:
+            document.add_paragraph("Figure 2 (Kaplan-Meier deployment survival) is not available in this "
+                                   "version — see the quarterly emailed report.")
         document.add_page_break()
 
         # ── Battery ──────────────────────────────────────────────────────
@@ -838,7 +893,7 @@ def build_docx(author, report_date, results, comments_by_label):
         consistent = int((result["cv_df"]["cv"] < 0.3).sum()) if not result["cv_df"].empty else 0
         document.add_paragraph(f"Highly consistent batteries (CV < 0.3): {consistent} / {len(result['cv_df'])}")
         document.add_picture(io.BytesIO(chart_battery(result)), width=Inches(6))
-        document.add_paragraph(f"Figure 2. Mean battery {cfg['battery_unit']} of {label} units deployed since "
+        document.add_paragraph(f"Figure 3. Mean battery {cfg['battery_unit']} of {label} units deployed since "
                                 f"{result['first_deployed'].strftime('%d %B %Y')}.")
         document.add_page_break()
 
@@ -846,7 +901,7 @@ def build_docx(author, report_date, results, comments_by_label):
         document.add_heading("Success rate", level=2)
         document.add_paragraph(f"Mean fix rate: {result['overall_mean_fix_rate']:.2f} (recorded/scheduled)")
         document.add_picture(io.BytesIO(chart_fixrate(result)), width=Inches(6))
-        document.add_paragraph(f"Figure 3. Fix rate (received/scheduled) of {label} units deployed since "
+        document.add_paragraph(f"Figure 4. Fix rate (received/scheduled) of {label} units deployed since "
                                 f"{result['first_deployed'].strftime('%d %B %Y')}.")
         # Single combined view: grouped by site (full history) so regional clustering
         # is visible, with raw individual cause text (not bucketed into categories)
@@ -1030,6 +1085,11 @@ def _main_implementation():
             c3.metric("Mean fix rate", f"{result['overall_mean_fix_rate']:.2f}")
             c4.metric("Mean deployment (days)", f"{summary['deployment_length_days'].mean():.0f}")
             st.image(chart_deployment(result), use_container_width=True)
+            if HAS_LIFELINES:
+                st.image(chart_km_survival(result), use_container_width=True)
+            else:
+                st.caption("Survival (Kaplan-Meier) chart skipped — lifelines isn't installed on "
+                           "this deployment. It's included in the quarterly emailed report.")
             st.image(chart_battery(result), use_container_width=True)
             st.image(chart_fixrate(result), use_container_width=True)
 
