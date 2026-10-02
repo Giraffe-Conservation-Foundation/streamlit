@@ -859,8 +859,6 @@ def build_docx(author, report_date, results, comments_by_label):
             document.add_paragraph(
                 "Bottom 3 shortest deployments: " + ", ".join(f"{d} days" for d in lengths_asc.head(3))
             )
-        not_transmitting = summary[(summary["status"] == "Active") & (summary["days_since_last_tx"] > 30)]
-        document.add_paragraph(f"Active units not transmitting >30 days: {len(not_transmitting)}")
         document.add_picture(io.BytesIO(chart_deployment(result)), width=Inches(6))
         document.add_paragraph(f"Figure 1. Deployment lengths of {label} units deployed since "
                                 f"{result['first_deployed'].strftime('%d %B %Y')}.")
@@ -884,8 +882,6 @@ def build_docx(author, report_date, results, comments_by_label):
             f"Mean current battery {'voltage' if cfg['battery_unit'] == 'voltage' else 'percentage'}: "
             f"{mean_batt:.2f}{unit_suffix} (functional range = {rng[0]} - {rng[1]}{unit_suffix})"
         )
-        under_30 = int((result["battery_df"]["projected_life_days"] < 30).sum()) if not result["battery_df"].empty else 0
-        document.add_paragraph(f"Units with projected battery life <30 days: {under_30}")
         mean_cv = result["cv_df"]["cv"].mean() if not result["cv_df"].empty else float("nan")
         document.add_paragraph(
             f"Mean coefficient of variation (battery consistency, lower=more consistent): {mean_cv:.2f}"

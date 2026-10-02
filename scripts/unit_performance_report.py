@@ -63,9 +63,9 @@ def uncached(fn):
     return getattr(fn, "__wrapped__", fn)
 
 
-def previous_quarter(report_date: date) -> pd.Period:
-    """The last *completed* quarter, e.g. a run on 2026-10-01 → 2026Q3."""
-    return pd.Timestamp(report_date).to_period("Q") - 1
+def report_quarter(report_date: date) -> pd.Period:
+    """The quarter the report is written in, e.g. a run on 2026-10-01 → 2026Q4."""
+    return pd.Timestamp(report_date).to_period("Q")
 
 
 def quarter_text(q: pd.Period) -> str:
@@ -211,7 +211,7 @@ def send_email(subject: str, body: str, attachments: list[Path] | None = None) -
 
 def run(args) -> int:
     report_date = date.fromisoformat(args.report_date) if args.report_date else date.today()
-    quarter = previous_quarter(report_date)
+    quarter = report_quarter(report_date)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
