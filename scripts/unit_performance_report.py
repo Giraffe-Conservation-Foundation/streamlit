@@ -7,9 +7,7 @@ Builds the same report as the TwigaTools "Unit Performance Report" page
   1. logs in to EarthRanger with credentials from environment variables,
   2. runs the page's own fetch → analyse → chart → build_docx pipeline
      (imported from unit_performance_dashboard/app.py, so there is one source of truth),
-  3. converts the .docx to PDF with LibreOffice (scripts/docx_to_pdf.py, which also
-     fills in the table of contents),
-  4. emails the PDF, with the .docx attached as well so it can still be edited.
+  3. emails the .docx (open in Google Docs / Word to edit and add comments).
 
 Run by .github/workflows/unit_performance_report.yml on the 1st of Jan/Apr/Jul/Oct.
 
@@ -30,9 +28,7 @@ import gc
 import importlib.util
 import logging
 import os
-import shutil
 import smtplib
-import subprocess
 import sys
 from datetime import date
 from email.message import EmailMessage
@@ -42,7 +38,6 @@ import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 APP_FILE = REPO_ROOT / "unit_performance_dashboard" / "app.py"
-PDF_CONVERTER = Path(__file__).resolve().parent / "docx_to_pdf.py"
 DEFAULT_AUTHOR = "Courtney Marneweck, GCF"
 
 log = logging.getLogger("unit_performance_report")
@@ -80,14 +75,20 @@ def quarter_text(q: pd.Period) -> str:
 def connect_earthranger():
     from ecoscope.io.earthranger import EarthRangerIO
 
-    server = os.environ.get("ER_SERVER", "https://twiga.pamdas.org")
+    # An unset GitHub secret arrives as an empty string, not a missing variable.
+    server = (os.environ.get("ER_SERVER") or "https://twiga.pamdas.org").strip()
+    username = (os.environ.get("ER_USERNAME") or "").strip()
+    password = os.environ.get("ER_PASSWORD") or ""
+    if not username or not password:
+        raise RuntimeError("ER_USERNAME / ER_PASSWORD are empty — add them as repository secrets "
+                           "(Settings → Secrets and variables → Actions).")
     if not server.startswith("http"):
         server = f"https://{server}"
     log.info("Logging in to EarthRanger at %s", server)
     return EarthRangerIO(
         server=server,
-        username=os.environ["ER_USERNAME"],
-        password=os.environ["ER_PASSWORD"],
+        username=username,
+        password=password,
     )
 
 
@@ -174,25 +175,6 @@ def headline_lines(results: list[dict]) -> list[str]:
     return lines
 
 
-def docx_to_pdf(docx_path: Path) -> Path:
-    """Convert with LibreOffice. Uses the system python (which has the `uno`
-    bindings) so the TOC can be updated; falls back to a plain conversion."""
-    pdf_path = docx_path.with_suffix(".pdf")
-    system_python = shutil.which("python3", path="/usr/bin") or "python3"
-    try:
-        subprocess.run([system_python, str(PDF_CONVERTER), str(docx_path), str(pdf_path)],
-                       check=True, timeout=300)
-    except Exception as e:  # noqa: BLE001 — any failure → simpler conversion
-        log.warning("UNO conversion failed (%s); falling back to soffice --convert-to.", e)
-        subprocess.run(
-            ["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(docx_path.parent), str(docx_path)],
-            check=True, timeout=300,
-        )
-    if not pdf_path.exists():
-        raise RuntimeError(f"PDF conversion produced no file at {pdf_path}")
-    return pdf_path
-
-
 # ─── Email ──────────────────────────────────────────────────────────────────
 
 def recipients() -> list[str]:
@@ -215,11 +197,9 @@ def send_email(subject: str, body: str, attachments: list[Path] | None = None) -
     msg["To"] = ", ".join(to)
     msg.set_content(body)
     for path in attachments or []:
-        if path.suffix == ".pdf":
-            maintype, subtype = "application", "pdf"
-        else:
-            maintype, subtype = "application", "vnd.openxmlformats-officedocument.wordprocessingml.document"
-        msg.add_attachment(path.read_bytes(), maintype=maintype, subtype=subtype, filename=path.name)
+        msg.add_attachment(path.read_bytes(), maintype="application",
+                           subtype="vnd.openxmlformats-officedocument.wordprocessingml.document",
+                           filename=path.name)
 
     with smtplib.SMTP_SSL(host, port, timeout=60) as smtp:
         smtp.login(user, os.environ["SMTP_PASSWORD"])
@@ -247,8 +227,6 @@ def run(args) -> int:
     docx_path.write_bytes(docx_bytes.getvalue() if hasattr(docx_bytes, "getvalue") else docx_bytes)
     log.info("Wrote %s", docx_path)
 
-    pdf_path = docx_to_pdf(docx_path)
-    log.info("Wrote %s", pdf_path)
 
     if args.no_email:
         log.info("--no-email set; not sending.")
@@ -263,12 +241,12 @@ def run(args) -> int:
         "Headlines:",
         *headline_lines(results),
         "",
-        "The PDF is the final version; the .docx is attached too if you want to edit it "
-        "(open it in Google Docs and add any general comments to the Overall Assessment sections).",
+        "Open the attached .docx in Google Docs (or Word), right-click the table of contents to "
+        "update it, and add any general comments to the Overall Assessment sections.",
         "",
         "— Generated automatically by the Twiga Tools unit_performance_report workflow.",
     ])
-    send_email(f"GPS unit performance report — {quarter_text(quarter)}", body, [pdf_path, docx_path])
+    send_email(f"GPS unit performance report — {quarter_text(quarter)}", body, [docx_path])
     return 0
 
 
