@@ -729,7 +729,7 @@ def process_er_data(raw_events: list, country: str, er_username: str,
 
         herd_list = det.get(list_key) or []
         if isinstance(herd_list, list) and herd_list:
-            for giraffe in herd_list:
+            for herd_row, giraffe in enumerate(herd_list, start=1):
                 if not isinstance(giraffe, dict):
                     continue
                 gr = _individual_field(giraffe, "right")
@@ -741,6 +741,7 @@ def process_er_data(raw_events: list, country: str, er_username: str,
                 gt = _individual_field(giraffe, "tail")
                 herd_rows.append({
                     "id":            evt.get("id"),
+                    "herd_row":      herd_row,
                     "giraffe_id":    _individual_field(giraffe, "id") or "",
                     "giraffe_age":   _individual_field(giraffe, "age") or "",
                     "giraffe_sex":   _individual_field(giraffe, "sex") or "",
@@ -753,6 +754,7 @@ def process_er_data(raw_events: list, country: str, er_username: str,
         else:
             herd_rows.append({
                 "id": evt.get("id"),
+                "herd_row": 1,
                 "giraffe_id": "", "giraffe_age": "", "giraffe_sex": "",
                 "giraffe_right": None, "giraffe_left": None,
                 "giraffe_front": None, "giraffe_tail": None,
@@ -831,6 +833,22 @@ def process_er_data(raw_events: list, country: str, er_username: str,
 
 # ─── Wildbook formatting ────────────────────────────────────────────────────
 
+def er_record_ref(serial, herd_row, er_site: str = None) -> str:
+    """Link back to the source EarthRanger record, written into the Wildbook
+    remarks as  er=<site>:<event serial>:<row in Herd/Group list>
+    e.g. er=twiga:51048:2  (site = first part of the ER instance name)."""
+    if er_site is None:
+        er_site = str(st.session_state.get("er_instance", "") or "twiga")
+    er_site = er_site.replace("https://", "").replace("http://", "").strip()
+    er_site = er_site.split(".")[0].lower() or "twiga"
+    try:
+        serial = int(float(serial))
+        herd_row = int(float(herd_row))
+    except (TypeError, ValueError):
+        return ""
+    return f"er={er_site}:{serial}:{herd_row}"
+
+
 def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
                    gs_username: str, gs_org: str,
                    species_epithet: str, initials: str,
@@ -838,7 +856,8 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
                    survey_vessel: str = "vehicle_based_photographic",
                    genus: str = "Giraffa",
                    location_id: str = None,
-                   platform: str = "GiraffeSpotter") -> pd.DataFrame:
+                   platform: str = "GiraffeSpotter",
+                   er_site: str = None) -> pd.DataFrame:
     """Convert processed ER DataFrame to Wildbook bulk import format.
     Works for any of the three platforms — genus/species_epithet/location_id
     are resolved by the caller based on the selected Wildbook platform.
@@ -958,6 +977,7 @@ def format_gs_data(final_df: pd.DataFrame, country: str, site: str,
             lambda r: "; ".join(filter(None, [
                 str(r["gir_giraffeNotes"]).strip() if pd.notna(r["gir_giraffeNotes"]) and str(r["gir_giraffeNotes"]).strip() else "",
                 str(r["evt_notes"]).strip()        if pd.notna(r.get("evt_notes")) and str(r.get("evt_notes", "")).strip() else "",
+                er_record_ref(r.get("evt_serial"), r.get("herd_row"), er_site),
             ])), axis=1),
         "Encounter.mediaAsset0":        df["media0"],
         "Encounter.mediaAsset1":        df["media1"],
