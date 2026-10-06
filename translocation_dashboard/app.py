@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import json as _json
 import requests as _requests
 from datetime import datetime, timedelta, date
 import plotly.express as px
@@ -20,14 +21,31 @@ _DATA_TIMEOUT = 45   # seconds — event data request
 
 
 def _get_token(username, password):
-    """Authenticate and return an access token. Raises on failure."""
+    """Authenticate and return an access token. Raises on failure.
+
+    EarthRanger issues tokens from its OAuth2 endpoint (form-encoded password
+    grant) — the same call ecoscope / er-client make. There is no
+    /api/v1.0/auth/token/ route.
+    """
     r = _requests.post(
-        f"{_ER_BASE}/api/v1.0/auth/token/",
-        json={"username": username, "password": password},
+        f"{_ER_BASE}/oauth2/token",
+        data={
+            "grant_type": "password",
+            "client_id":  "das_web_client",
+            "username":   username,
+            "password":   password,
+        },
         timeout=_AUTH_TIMEOUT,
     )
     r.raise_for_status()
     return r.json()["access_token"]
+
+
+def _unwrap(payload):
+    """ER wraps responses as {"data": ..., "status": ...}; return the inner part."""
+    if isinstance(payload, dict) and "data" in payload and "results" not in payload:
+        return payload["data"]
+    return payload
 
 
 def _fetch_events(token, event_type_value, since=None, until=None):
@@ -48,10 +66,10 @@ def _fetch_events(token, event_type_value, since=None, until=None):
             timeout=_AUTH_TIMEOUT,
         )
         if et_r.ok:
-            items = et_r.json()
-            if not isinstance(items, list):
-                items = items.get("results", items.get("data", []))
-            for item in items:
+            items = _unwrap(et_r.json())
+            if isinstance(items, dict):
+                items = items.get("results", [])
+            for item in items or []:
                 if item.get("value") == event_type_value:
                     event_type_id = item.get("id")
                     break
@@ -70,28 +88,31 @@ def _fetch_events(token, event_type_value, since=None, until=None):
         # fallback: fetch by category and filter client-side
         params["event_category"] = "veterinary"
 
+    # ER takes the date window as a JSON `filter` param, not since/until
+    date_range = {}
     if since:
-        params["since"] = since
+        date_range["lower"] = since
     if until:
-        params["until"] = until
+        date_range["upper"] = until
+    if date_range:
+        params["filter"] = _json.dumps({"date_range": date_range})
 
     # ── paginate ──────────────────────────────────────────────────────────────
     results = []
-    url = f"{_ER_BASE}/api/v1.0/events/"
+    url = f"{_ER_BASE}/api/v1.0/activity/events/"
     req_params = params
 
     while url and len(results) < 500:
         r = _requests.get(url, headers=headers, params=req_params, timeout=_DATA_TIMEOUT)
         r.raise_for_status()
         req_params = None          # subsequent pages use the `next` URL directly
-        data = r.json()
+        data = _unwrap(r.json())
 
         if isinstance(data, list):
             results.extend(data)
             break
 
-        batch = data.get("results", data.get("data", []))
-        results.extend(batch)
+        results.extend(data.get("results", []))
         url = data.get("next")
 
     return results
