@@ -275,7 +275,7 @@ def _init_session_state():
         "available_observers":  [],
         "giraffe_id_map":       {},    # UUID → display-name for giraffe_id choice field
         # ── Settings (persisted across reruns) ─────────────────────────────────
-        "er_observer_filter":   "",    # "" = all observers
+        "er_observer_filter":   [],    # [] = all observers (multi-select)
         "er_instance":     "twiga.pamdas.org",
         "er_login_user":   "",
         "er_login_pass":   "",
@@ -674,7 +674,7 @@ def _individual_field(rec: dict, field: str):
     return None
 
 
-def process_er_data(raw_events: list, country: str, er_username: str,
+def process_er_data(raw_events: list, country: str, er_username,
                     date_start: date, date_end: date,
                     giraffe_id_map: dict = None,
                     list_key: str = "Herd") -> pd.DataFrame:
@@ -689,6 +689,13 @@ def process_er_data(raw_events: list, country: str, er_username: str,
     country_lower = country.lower()
     herd_rows, evt_rows = [], []
 
+    # Observer filter: accepts a single name (str) or a list of names.
+    # Empty string / empty list = no filter (all observers).
+    if isinstance(er_username, str):
+        _obs_set = {er_username.strip()} if er_username.strip() else set()
+    else:
+        _obs_set = {str(n).strip() for n in (er_username or []) if str(n).strip()}
+
     for evt in raw_events:
         try:
             evt_date = pd.to_datetime(evt.get("time", "")).date()
@@ -700,8 +707,8 @@ def process_er_data(raw_events: list, country: str, er_username: str,
         rep      = evt.get("reported_by") or {}
         rep_name = rep.get("name", "")
 
-        if er_username.strip() and country_lower != "rwa_aknp":
-            if rep_name != er_username.strip():
+        if _obs_set and country_lower != "rwa_aknp":
+            if str(rep_name).strip() not in _obs_set:
                 continue
 
         loc = evt.get("location") or {}
@@ -1491,10 +1498,16 @@ def main():
     st.markdown("**Observer filter**")
     _obs_available = st.session_state.available_observers
     if _obs_available:
-        _obs_options = ["All observers"] + _obs_available
-        if st.session_state.er_observer_filter not in _obs_options:
-            st.session_state.er_observer_filter = "All observers"
-        st.selectbox("Export data for", _obs_options, key="er_observer_filter")
+        # Keep only selections that still exist in the fetched list (also
+        # migrates any old single-string value from before multi-select).
+        _cur = st.session_state.er_observer_filter
+        if isinstance(_cur, str):
+            _cur = [] if _cur in ("", "All observers") else [_cur]
+        st.session_state.er_observer_filter = [o for o in _cur if o in _obs_available]
+        st.multiselect(
+            "Export data for", _obs_available, key="er_observer_filter",
+            placeholder="All observers",
+            help="Pick one or more observers. Leave empty to export all observers.")
     else:
         st.caption("Fetch data in Step 2 to see available observers.")
 
@@ -1576,7 +1589,10 @@ def main():
 
     # ── Auto-reprocess when observer filter changes (no re-fetch needed) ─────
     _obs_filter = st.session_state.er_observer_filter
-    _obs_for_proc = "" if _obs_filter in ("", "All observers") else _obs_filter
+    if isinstance(_obs_filter, str):
+        _obs_filter = [] if _obs_filter in ("", "All observers") else [_obs_filter]
+    _obs_for_proc = list(_obs_filter)          # [] = all observers
+    _obs_filter   = tuple(sorted(_obs_filter)) # hashable/order-free for change detection
     _prev_filter  = st.session_state.get("_prev_observer_filter", _obs_filter)
     if (st.session_state.raw_events
             and st.session_state.processed_df is not None
@@ -1619,7 +1635,7 @@ def main():
                     )
                 else:
                     st.session_state.raw_events = raw
-                    st.session_state._prev_observer_filter = _obs_for_proc
+                    st.session_state._prev_observer_filter = _obs_filter
 
                     # Resolve giraffe_id subject UUIDs → subject names
                     giraffe_id_map = _fetch_giraffe_id_mapping(
