@@ -39,7 +39,7 @@ This integrated platform provides essential tools for giraffe conservation resea
 
 Use the grouped sidebar to access:
 
-- **Home** — overview dashboards: Our Impact, Twiga Dash, Life History, Publications, Preferred Suppliers, Site Overview
+- **Home** — overview dashboards: Our Impact, Twiga Dash, Life History, Publications, Preferred Suppliers, Site Overview, GCF Project Database
 - **Survey dashboards** — country-level survey encounter dashboards (EHGR, NANW, ZAF, ZMB) and Patrol shapefile download
 - **Technical** — GPS unit health and deployment tools
 - **Data upload** — survey and camera trap image ingestion
@@ -78,6 +78,23 @@ pages = {
         # (StreamlitAPIException: file not found). This time the module + this line are
         # being committed together — see site_overview_dashboard/README.md before pushing.
         st.Page("pages/26_🗺️_Site_Overview.py",        title="Site Overview",       icon="🗺️"),
+        # 2026-10-27: GCF Project Database and Species Overview removed from v1 —
+        # both now live on TwigaTools 2.0 (Hetzner Arm server), and their live
+        # GQueues pulls were using up the GQueues API monthly allowance.
+        # st.Page("pages/99_📋_GQueues.py",               title="GCF Project Database", icon="📋"),
+        # Added 2026-08-26: the new species-grouped birds-eye view (see
+        # species_overview_dashboard/README or project memory
+        # project_gcf_species_overview.md). v1 scope is GQueues data only,
+        # tagged by species, with GAD/EarthRanger/GiraffeSpotter shown as
+        # "coming next" placeholders. This is meant to eventually
+        # replace/absorb Site Overview above once those sections are real —
+        # Site Overview is deliberately left in the nav for now rather than
+        # removed, since its map + single-site detail panel are still the
+        # only place those exist. Safe to remove the Site Overview line once
+        # this page's data sections have real GAD/ER/GiraffeSpotter content
+        # and Courtney confirms she's ready to drop the map view (still
+        # deferred to a future v2, not on this page at all yet).
+        # st.Page("pages/100_🦒_Species_Overview.py",     title="Species Overview",    icon="🦒"),
     ],
     "Survey dashboards": [
         st.Page("pages/4_🦒_Survey_dashboard_(EHGR).py", title="Survey dashboard (EHGR)", icon="🦒"),
